@@ -1,0 +1,86 @@
+import { compareVersion } from "../standard/registry.ts";
+import { SEVERITIES, type ItemDef } from "../standard/types.ts";
+
+/**
+ * How an overriding value relates to the default.
+ * - "alternative": a choice from the allowed list; not a deviation
+ * - "different": a style item set to another value; not a deviation
+ */
+export type Status = "same" | "stricter" | "looser" | "alternative" | "different" | "invalid";
+
+const VERSION = /^\d+(\.\d+)*$/;
+
+const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
+
+function byOrder(diff: number, lowerIsStricter: boolean): Status {
+  if (diff === 0) return "same";
+  return diff < 0 === lowerIsStricter ? "stricter" : "looser";
+}
+
+function compareList(def: string[], value: unknown): Status {
+  if (!isStringArray(value)) return "invalid";
+  if (def.some((x) => !value.includes(x))) return "looser";
+  return new Set(value).size > new Set(def).size ? "stricter" : "same";
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  if (isStringArray(a) && isStringArray(b)) return a.length === b.length && a.every((x, i) => x === b[i]);
+  return a === b;
+}
+
+function compareStyle(def: unknown, value: unknown): Status {
+  const shape = (v: unknown): string => (isStringArray(v) ? "string[]" : typeof v);
+  if (shape(def) !== shape(value)) return "invalid";
+  return sameValue(def, value) ? "same" : "different";
+}
+
+function compareChoice(item: ItemDef, value: unknown): Status {
+  if (typeof value !== "string") return "invalid";
+  if (value === item.value) return "same";
+  return item.allowed?.includes(value) ? "alternative" : "looser";
+}
+
+function compareNumber(item: ItemDef, value: unknown): Status {
+  if (typeof value !== "number" || typeof item.value !== "number") return "invalid";
+  return byOrder(value - item.value, item.kind === "max");
+}
+
+function compareMinVersion(item: ItemDef, value: unknown): Status {
+  const def = item.value;
+  if (typeof value !== "string" || !VERSION.test(value) || typeof def !== "string") return "invalid";
+  return byOrder(compareVersion(value.split(".").map(Number), def.split(".").map(Number)), false);
+}
+
+function compareBool(item: ItemDef, value: unknown): Status {
+  if (typeof value !== "boolean") return "invalid";
+  if (value === item.value) return "same";
+  return value ? "stricter" : "looser";
+}
+
+function compareSeverity(item: ItemDef, value: unknown): Status {
+  const levels: readonly unknown[] = SEVERITIES;
+  const at = levels.indexOf(value);
+  return at < 0 ? "invalid" : byOrder(at - levels.indexOf(item.value), true);
+}
+
+function compareIgnoredVulns(_item: ItemDef, value: unknown): Status {
+  if (!Array.isArray(value)) return "invalid";
+  return value.length === 0 ? "same" : "looser";
+}
+
+const COMPARERS: Record<ItemDef["kind"], (item: ItemDef, value: unknown) => Status> = {
+  max: compareNumber,
+  min: compareNumber,
+  minVersion: compareMinVersion,
+  bool: compareBool,
+  severity: compareSeverity,
+  list: (item, value) => compareList(item.value as string[], value),
+  choice: compareChoice,
+  style: (item, value) => compareStyle(item.value, value),
+  ignoredVulns: compareIgnoredVulns,
+};
+
+/** Judges `value` against the item's default, per the item's kind (SPEC §4.2). */
+export function compareToDefault(item: ItemDef, value: unknown): Status {
+  return COMPARERS[item.kind](item, value);
+}

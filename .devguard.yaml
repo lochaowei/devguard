@@ -1,0 +1,4 @@
+standard: team@1.0.0
+components:
+  - path: ./
+    language: typescript

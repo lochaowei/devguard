@@ -1,0 +1,4 @@
+.scratch/
+coverage/
+*.md
+i.json
