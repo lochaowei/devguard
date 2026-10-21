@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>專案宣告原型</title>
+<style>
+  :root { --accent:#2f6fde; --bg:#f7f8fa; --card:#fff; --ink:#1d2330; --mute:#6b7385; --line:#e3e6ec;
+          --ok:#1f8a4c; --warn:#b7791f; --bad:#c53030; --info:#2f6fde; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.6 "Segoe UI","Microsoft JhengHei",system-ui,sans-serif; background:var(--bg); color:var(--ink); }
+  main { max-width:1200px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  h2 { font-size:16px; margin:0 0 10px; }
+  h3 { font-size:14px; margin:14px 0 6px; color:var(--mute); font-weight:600; }
+  .proto { display:inline-block; background:#fff3cd; color:#7a5b00; border-radius:4px; padding:0 8px; font-size:12px; font-weight:600; }
+  .intro { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px 18px; margin:12px 0 20px; }
+  .intro p { margin:6px 0; }
+  .grid { display:grid; grid-template-columns: 1fr 1.4fr; gap:16px; }
+  @media (max-width:900px){ .grid { grid-template-columns:1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px 16px; }
+  pre { margin:0; background:#f2f4f8; border-radius:6px; padding:10px 12px; font:13px/1.5 Consolas,"Cascadia Mono",monospace; white-space:pre-wrap; word-break:break-all; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--mute); font-weight:600; }
+  .b { display:inline-block; border-radius:10px; padding:0 8px; font-size:12px; font-weight:600; white-space:nowrap; }
+  .b.same { background:#eef0f4; color:var(--mute); }
+  .b.stricter { background:#e3f4ea; color:var(--ok); }
+  .b.alternative { background:#e6efff; color:var(--info); }
+  .b.looser { background:#fff1dc; color:var(--warn); }
+  .b.invalid { background:#fde8e8; color:var(--bad); }
+  ul.issues { list-style:none; margin:0; padding:0; }
+  ul.issues li { padding:6px 8px; border-left:3px solid var(--line); margin-bottom:6px; background:#fafbfc; font-size:13px; }
+  ul.issues li.error { border-color:var(--bad); }
+  ul.issues li.deviation { border-color:var(--warn); }
+  ul.issues li.hint { border-color:var(--info); }
+  ul.issues li.ok { border-color:var(--ok); }
+  .lvl { font-weight:700; margin-right:6px; }
+  .error .lvl { color:var(--bad); } .deviation .lvl { color:var(--warn); } .hint .lvl { color:var(--info); } .ok .lvl { color:var(--ok); }
+  .changed { background:#fffbe6; border:1px solid #f5e3a3; border-radius:6px; padding:6px 10px; font-size:13px; margin-bottom:12px; }
+  .btns { display:flex; flex-wrap:wrap; gap:6px; }
+  button { font:inherit; font-size:13px; border:1px solid var(--line); background:#fff; border-radius:6px; padding:5px 10px; cursor:pointer; color:var(--ink); }
+  button:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
+  button:disabled { opacity:.45; cursor:default; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.primary:hover { color:#fff; opacity:.9; }
+  button.done { background:#e3f4ea; border-color:#bfe3cc; color:var(--ok); }
+  .tabs { display:flex; flex-wrap:wrap; gap:4px; border-bottom:1px solid var(--line); margin-bottom:10px; }
+  .tab { border:none; border-bottom:2px solid transparent; border-radius:0; background:none; padding:6px 10px; }
+  .tab.active { border-color:var(--accent); color:var(--accent); font-weight:600; }
+  .steps { display:flex; flex-direction:column; gap:6px; align-items:flex-start; }
+  .muted { color:var(--mute); font-size:13px; }
+  .section { margin-top:16px; }
+  .comp { margin-bottom:14px; }
+  .comp-h { font-weight:600; margin-bottom:4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>專案宣告：資料模型原型 <span class="proto">PROTOTYPE · 用完即丟</span></h1>
+  <div class="intro">
+    <p><b>要回答的問題：</b>「預設標準 + 專案宣告」這個模型，能不能清楚表達下面這些真實情況？宣告檔要長成什麼樣子？</p>
+    <p>要涵蓋的情況：照預設走；收緊標準；放寬標準（必須寫理由，並標示為偏離）；換用允許清單內的替代工具；monorepo 中不同目錄使用不同語言；專案沒有宣告時，依既有工具設定產生草稿；宣告寫的值和實際工具設定檔不一致。</p>
+    <p class="muted">本原型的假設：檔名為 <code>.standards.yaml</code>，以「元件」（目錄 + 語言）為單位；覆寫值可以是單一數值，也可以是 <code>{value, reason}</code>。只有比預設寬鬆的覆寫才必須寫理由。預設標準裡的數值都是佔位，實際數值由各語言的「預設標準」票決定。</p>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>宣告檔 <code>.standards.yaml</code></h2>
+        <div id="changed"></div>
+        <pre id="yaml"></pre>
+        <h3>偵測到的既有工具設定</h3>
+        <div id="detected"></div>
+        <h3>檔案查詢：這個檔案受哪個標準管理？</h3>
+        <div id="lookups"></div>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h2>檢查結果</h2>
+        <ul class="issues" id="issues"></ul>
+        <div class="section"><h2>有效標準（預設 + 覆寫）</h2><div id="effective"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card section">
+    <h2>引導情境</h2>
+    <p class="muted">選一個情境：畫面會先重設，再依序點下面的按鈕。</p>
+    <div class="tabs" id="tabs"></div>
+    <div id="scenario"></div>
+  </div>
+
+  <div class="card section">
+    <h2>自由操作</h2>
+    <div id="free"></div>
+    <div class="section"><button onclick="dispatch({type:'RESET'})">全部重設</button></div>
+  </div>
+</main>
+
+<script>
+/* ===================== 純邏輯模組（不碰 DOM，之後可直接搬進 CLI） ===================== */
+const Std = (() => {
+  const SEVERITY = ['low', 'moderate', 'high', 'critical']; // 越前面越嚴格
+
+  const KEY_META = {
+    'lint.tool':             { label: 'Lint / Format 工具', kind: 'choice' },
+    'typecheck.tool':        { label: '型別檢查工具',       kind: 'choice' },
+    'typecheck.strict':      { label: '型別檢查嚴格模式',   kind: 'bool' },
+    'complexity.cyclomatic': { label: '循環複雜度上限',     kind: 'max' },
+    'complexity.cognitive':  { label: '認知複雜度上限',     kind: 'max' },
+    'coverage.lines':        { label: '行覆蓋率門檻 (%)',   kind: 'min' },
+    'deps.lockfile':         { label: '必須有 lockfile',    kind: 'bool' },
+    'deps.vulnFailOn':       { label: '弱點掃描：此等級以上就擋下', kind: 'severity' },
+    'deps.banned':           { label: '禁用套件',           kind: 'banned' },
+  };
+
+  // 佔位的預設標準（實際值由 08–11 號票決定）
+  const DEFAULTS = {
+    version: 'team@1.0.0',
+    languages: {
+      python: {
+        'lint.tool': { value: 'ruff', allowed: ['ruff'] },
+        'typecheck.tool': { value: 'mypy', allowed: ['mypy', 'pyright'] },
+        'typecheck.strict': { value: true },
+        'complexity.cyclomatic': { value: 10 },
+        'coverage.lines': { value: 80 },
+        'deps.lockfile': { value: true },
+        'deps.vulnFailOn': { value: 'low' },
+        'deps.banned': { value: ['pycrypto'] },
+      },
+      go: {
+        'lint.tool': { value: 'golangci-lint', allowed: ['golangci-lint'] },
+        'complexity.cyclomatic': { value: 10 },
+        'complexity.cognitive': { value: 15 },
+        'coverage.lines': { value: 80 },
+        'deps.lockfile': { value: true },
+        'deps.vulnFailOn': { value: 'low' },
+        'deps.banned': { value: ['github.com/pkg/errors'] },
+      },
+      typescript: {
+        'lint.tool': { value: 'eslint+prettier', allowed: ['eslint+prettier', 'biome'] },
+        'typecheck.strict': { value: true },
+        'complexity.cyclomatic': { value: 10 },
+        'complexity.cognitive': { value: 15 },
+        'coverage.lines': { value: 80 },
+        'deps.lockfile': { value: true },
+        'deps.vulnFailOn': { value: 'high' },
+        'deps.banned': { value: ['moment', 'request'] },
+      },
+      java: {
+        'lint.tool': { value: 'checkstyle+spotless', allowed: ['checkstyle+spotless'] },
+        'complexity.cyclomatic': { value: 10 },
+        'complexity.cognitive': { value: 15 },
+        'coverage.lines': { value: 80 },
+        'deps.vulnFailOn': { value: 'high' },
+        'deps.banned': { value: ['log4j:log4j'] },
+      },
+    },
+  };
+
+  const LANG_LABEL = { python: 'Python', go: 'Go', typescript: 'TypeScript', java: 'Java' };
+  const EXT_LANG = { '.py': 'python', '.go': 'go', '.ts': 'typescript', '.tsx': 'typescript', '.java': 'java' };
+  const FILE_LANG = { 'ruff.toml': 'python', '.coveragerc': 'python', 'pyproject.toml': 'python',
+    '.golangci.yml': 'go', 'vitest.config.ts': 'typescript', 'eslint.config.js': 'typescript',
+    'checkstyle.xml': 'java', 'pom.xml': 'java' };
+
+  const normPath = p => (p === '' || p === '.' || p === './') ? '' : (p.endsWith('/') ? p : p + '/');
+  const showPath = p => p === '' ? '（根目錄）' : p;
+  const isTodo = r => typeof r === 'string' && r.startsWith('TODO');
+
+  function compare(kind, def, val, allowed) {
+    switch (kind) {
+      case 'max': if (typeof val !== 'number') return 'invalid'; return val === def ? 'same' : val < def ? 'stricter' : 'looser';
+      case 'min': if (typeof val !== 'number') return 'invalid'; return val === def ? 'same' : val > def ? 'stricter' : 'looser';
+      case 'bool': if (typeof val !== 'boolean') return 'invalid'; return val === def ? 'same' : val ? 'stricter' : 'looser';
+      case 'severity': {
+        const a = SEVERITY.indexOf(def), b = SEVERITY.indexOf(val);
+        if (b < 0) return 'invalid'; return a === b ? 'same' : b < a ? 'stricter' : 'looser';
+      }
+      case 'banned': {
+        if (!Array.isArray(val)) return 'invalid';
+        const missing = def.filter(x => !val.includes(x));
+        if (missing.length) return 'looser';
+        return val.length > def.length ? 'stricter' : 'same';
+      }
+      case 'choice':
+        if (val === def) return 'same';
+        return (allowed || []).includes(val) ? 'alternative' : 'looser';
+    }
+    return 'invalid';
+  }
+
+  const fmt = v => Array.isArray(v) ? '[' + v.join(', ') + ']' : String(v);
+
+  /** 預設標準 + 宣告 → 每個元件的有效標準、錯誤、偏離 */
+  function resolve(decl, defaults = DEFAULTS, today = new Date().toISOString().slice(0, 10)) {
+    const out = { components: [], issues: [] };
+    if (!decl) return out;
+    const seen = new Set();
+    for (const c of decl.components) {
+      const path = normPath(c.path);
+      const where = `${showPath(path)}（${LANG_LABEL[c.language] || c.language}）`;
+      if (seen.has(path + c.language)) out.issues.push({ level: 'error', text: `${where}：重複宣告同一個元件` });
+      seen.add(path + c.language);
+      const langDef = defaults.languages[c.language];
+      if (!langDef) { out.issues.push({ level: 'error', text: `${where}：預設標準中沒有「${c.language}」這個語言` }); continue; }
+      const eff = {};
+      for (const [key, d] of Object.entries(langDef)) eff[key] = { value: d.value, source: '預設', status: 'same' };
+      for (const [key, raw] of Object.entries(c.overrides || {})) {
+        const meta = KEY_META[key];
+        if (!meta || !langDef[key]) { out.issues.push({ level: 'error', text: `${where}：「${key}」不是 ${LANG_LABEL[c.language]} 標準中的項目` }); continue; }
+        const isObj = raw && typeof raw === 'object' && !Array.isArray(raw);
+        const value = isObj ? raw.value : raw;
+        const reason = isObj ? raw.reason : undefined;
+        const until = isObj ? raw.until : undefined;
+        const status = compare(meta.kind, langDef[key].value, value, langDef[key].allowed);
+        eff[key] = { value, source: '覆寫', status, reason, until };
+        const what = `${meta.label}：${fmt(langDef[key].value)} → ${fmt(value)}`;
+        if (status === 'invalid') out.issues.push({ level: 'error', text: `${where} ${what}：值的型別不對` });
+        else if (status === 'looser' && !reason) out.issues.push({ level: 'error', text: `${where} ${what}：比預設寬鬆，必須寫理由（改用 {value, reason}）` });
+        else if (status === 'looser' && isTodo(reason)) out.issues.push({ level: 'error', text: `${where} ${what}：理由還是草稿的 TODO，需要填寫` });
+        else if (status === 'looser' && until && until < today) out.issues.push({ level: 'error', text: `${where} ${what}：偏離已於 ${until} 到期，請收緊回預設或延長期限` });
+        else if (status === 'looser') out.issues.push({ level: 'deviation', text: `${where} ${what}｜理由：${reason}${until ? `｜到期：${until}` : '｜未設到期日'}` });
+        else if (reason) out.issues.push({ level: 'hint', text: `${where} ${what}：沒有放寬，不需要寫理由` });
+      }
+      out.components.push({ path, language: c.language, effective: eff });
+    }
+    return out;
+  }
+
+  /** 宣告的有效值 vs 實際工具設定檔中的值（設定檢查那一層） */
+  function checkToolConfigs(resolved, detected) {
+    const issues = [];
+    for (const d of detected) {
+      const path = normPath(d.path);
+      const lang = FILE_LANG[d.file];
+      const comp = resolved.components.find(c => c.path === path && c.language === lang);
+      if (!comp) continue;
+      const eff = comp.effective[d.key];
+      if (!eff) continue;
+      const meta = KEY_META[d.key];
+      if (eff.value === d.value) { issues.push({ level: 'ok', text: `${showPath(path)}${d.file}：${meta.label} = ${fmt(d.value)}，與宣告一致` }); continue; }
+      const rel = compare(meta.kind, eff.value, d.value);
+      if (rel === 'looser') issues.push({ level: 'error', text: `${showPath(path)}${d.file}：${meta.label} 實際為 ${fmt(d.value)}，比宣告的 ${fmt(eff.value)} 寬鬆 → 執行 fix 會改成宣告的值` });
+      else issues.push({ level: 'hint', text: `${showPath(path)}${d.file}：${meta.label} 實際為 ${fmt(d.value)}，比宣告的 ${fmt(eff.value)} 嚴格 → 建議把宣告同步成 ${fmt(d.value)}` });
+    }
+    return issues;
+  }
+
+  /** 沒有宣告時，依偵測到的工具設定產生草稿 */
+  function draftFromDetected(detected, defaults = DEFAULTS) {
+    const comps = new Map();
+    for (const d of detected) {
+      const path = normPath(d.path), lang = FILE_LANG[d.file];
+      const id = path + '|' + lang;
+      if (!comps.has(id)) comps.set(id, { path: path || './', language: lang, overrides: {} });
+      const def = defaults.languages[lang][d.key];
+      if (!def) continue;
+      const st = compare(KEY_META[d.key].kind, def.value, d.value, def.allowed);
+      if (st === 'same') continue;
+      comps.get(id).overrides[d.key] = st === 'looser' ? { value: d.value, reason: `TODO: 由 ${d.file} 推得，請填寫放寬理由` } : d.value;
+    }
+    return { standard: defaults.version, components: [...comps.values()] };
+  }
+
+  /** 檔案歸屬：路徑最長且語言相符的元件 */
+  function lookup(decl, file) {
+    const ext = file.slice(file.lastIndexOf('.'));
+    const lang = EXT_LANG[ext];
+    if (!decl) return { file, text: '沒有宣告檔：不受任何標準管理', level: 'error' };
+    const cands = decl.components.map(c => ({ ...c, path: normPath(c.path) }))
+      .filter(c => file.startsWith(c.path)).sort((a, b) => b.path.length - a.path.length);
+    const hit = cands.find(c => c.language === lang);
+    if (hit) return { file, level: 'ok', text: `套用 ${showPath(hit.path)} 的 ${LANG_LABEL[lang]} 標準` };
+    if (!lang) return { file, level: 'hint', text: '不是四種語言的檔案 → 不在檢查範圍內' };
+    return { file, level: 'hint', text: `沒有宣告涵蓋它的 ${LANG_LABEL[lang]} 元件 → 依副檔名推定為 ${LANG_LABEL[lang]}，套用 ${LANG_LABEL[lang]} 預設標準（沒有覆寫）；建議在宣告中補上元件` };
+  }
+
+  function toYaml(decl) {
+    if (!decl) return '# （專案中沒有 .standards.yaml）';
+    const val = v => Array.isArray(v) ? '[' + v.join(', ') + ']' : (typeof v === 'string' && /[:#]/.test(v) ? JSON.stringify(v) : String(v));
+    const lines = [`standard: ${decl.standard}      # 繼承哪一版預設標準`, 'components:'];
+    if (!decl.components.length) lines.push('  []');
+    for (const c of decl.components) {
+      lines.push(`  - path: ${c.path}`, `    language: ${c.language}`);
+      const ov = Object.entries(c.overrides || {});
+      if (!ov.length) continue;
+      lines.push('    overrides:');
+      for (const [k, v] of ov) {
+        if (v && typeof v === 'object' && !Array.isArray(v)) {
+          lines.push(`      ${k}:`, `        value: ${val(v.value)}`);
+          if (v.reason !== undefined) lines.push(`        reason: ${JSON.stringify(v.reason)}`);
+          if (v.until !== undefined) lines.push(`        until: ${v.until}`);
+        } else lines.push(`      ${k}: ${val(v)}`);
+      }
+    }
+    return lines.join('\n');
+  }
+
+  return { KEY_META, DEFAULTS, LANG_LABEL, resolve, checkToolConfigs, draftFromDetected, lookup, toYaml, showPath, normPath };
+})();
+
+/* ===================== 狀態與 reducer ===================== */
+const initial = () => ({ decl: null, detected: [], lookups: [], changed: '' });
+const clone = o => JSON.parse(JSON.stringify(o));
+
+function reducer(s, a) {
+  s = clone(s);
+  const ensureDecl = () => { if (!s.decl) s.decl = { standard: Std.DEFAULTS.version, components: [] }; };
+  const comp = p => s.decl && s.decl.components.find(c => Std.normPath(c.path) === Std.normPath(p));
+  switch (a.type) {
+    case 'RESET': return initial();
+    case 'INIT_DECL': s.decl = { standard: Std.DEFAULTS.version, components: [] }; s.changed = '建立了空白宣告檔'; break;
+    case 'ADD_COMPONENT': ensureDecl(); s.decl.components.push({ path: a.path, language: a.language }); s.changed = `加入元件 ${Std.showPath(Std.normPath(a.path))}（${Std.LANG_LABEL[a.language]}）`; break;
+    case 'SET_OVERRIDE': {
+      ensureDecl(); const c = comp(a.path);
+      if (!c) { s.changed = `⚠ 找不到元件 ${a.path}，請先加入元件`; break; }
+      c.overrides = c.overrides || {}; c.overrides[a.key] = a.value; s.changed = `${a.path} 覆寫 ${a.key}`; break;
+    }
+    case 'SET_REASON': {
+      const c = comp(a.path); if (!c || !c.overrides || c.overrides[a.key] === undefined) { s.changed = `⚠ ${a.path} 還沒有覆寫 ${a.key}`; break; }
+      const v = c.overrides[a.key]; const value = (v && typeof v === 'object' && !Array.isArray(v)) ? v.value : v;
+      const prev = (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+      c.overrides[a.key] = { value, reason: a.reason ?? prev.reason, ...(a.until || prev.until ? { until: a.until ?? prev.until } : {}) };
+      s.changed = a.until ? `替 ${a.path} 的 ${a.key} 設定到期日 ${a.until}` : `替 ${a.path} 的 ${a.key} 寫上理由`; break;
+    }
+    case 'FILL_TODO': {
+      if (!s.decl) break; let n = 0;
+      for (const c of s.decl.components) for (const [k, v] of Object.entries(c.overrides || {}))
+        if (v && typeof v === 'object' && typeof v.reason === 'string' && v.reason.startsWith('TODO')) { v.reason = '舊專案，2027 Q1 前逐步收緊'; n++; }
+      s.changed = `填寫了 ${n} 個 TODO 理由`; break;
+    }
+    case 'DETECT': s.detected = s.detected.filter(d => !(d.path === a.path && d.file === a.file && d.key === a.key)); s.detected.push({ path: a.path, file: a.file, key: a.key, value: a.value }); s.changed = `偵測到 ${a.path}${a.file}`; break;
+    case 'REMOVE_DECL': s.decl = null; s.changed = '刪除宣告檔（模擬專案還沒有宣告）'; break;
+    case 'DRAFT': s.decl = Std.draftFromDetected(s.detected); s.changed = '依既有工具設定產生了宣告草稿'; break;
+    case 'LOOKUP': s.lookups = s.lookups.filter(f => f !== a.file); s.lookups.push(a.file); s.changed = `查詢 ${a.file}`; break;
+  }
+  return s;
+}
+
+/* ===================== 頁面（薄殼） ===================== */
+const A = {
+  initDecl: { type: 'INIT_DECL' },
+  rootPy: { type: 'ADD_COMPONENT', path: './', language: 'python' },
+  backendGo: { type: 'ADD_COMPONENT', path: 'backend/', language: 'go' },
+  webTs: { type: 'ADD_COMPONENT', path: 'web/', language: 'typescript' },
+  serviceJava: { type: 'ADD_COMPONENT', path: 'service/', language: 'java' },
+  webCov60: { type: 'SET_OVERRIDE', path: 'web/', key: 'coverage.lines', value: 60 },
+  webCovReason: { type: 'SET_REASON', path: 'web/', key: 'coverage.lines', reason: '舊程式碼補測試中，2027 Q1 回到 80' },
+  webUntil: { type: 'SET_REASON', path: 'web/', key: 'coverage.lines', until: '2027-03-31' },
+  webExpired: { type: 'SET_REASON', path: 'web/', key: 'coverage.lines', until: '2026-01-01' },
+  webCx8: { type: 'SET_OVERRIDE', path: 'web/', key: 'complexity.cyclomatic', value: 8 },
+  webBiome: { type: 'SET_OVERRIDE', path: 'web/', key: 'lint.tool', value: 'biome' },
+  webRome: { type: 'SET_OVERRIDE', path: 'web/', key: 'lint.tool', value: 'rome' },
+  webUnban: { type: 'SET_OVERRIDE', path: 'web/', key: 'deps.banned', value: ['request'] },
+  webUnknown: { type: 'SET_OVERRIDE', path: 'web/', key: 'coverage.foo', value: 1 },
+  goVuln: { type: 'SET_OVERRIDE', path: 'backend/', key: 'deps.vulnFailOn', value: 'critical' },
+  detRuff: { type: 'DETECT', path: './', file: 'ruff.toml', key: 'complexity.cyclomatic', value: 15 },
+  detCov: { type: 'DETECT', path: './', file: '.coveragerc', key: 'coverage.lines', value: 70 },
+  detVitest: { type: 'DETECT', path: 'web/', file: 'vitest.config.ts', key: 'coverage.lines', value: 50 },
+  detGolangci: { type: 'DETECT', path: 'backend/', file: '.golangci.yml', key: 'complexity.cyclomatic', value: 10 },
+  detGolangciStrict: { type: 'DETECT', path: 'backend/', file: '.golangci.yml', key: 'complexity.cognitive', value: 12 },
+  removeDecl: { type: 'REMOVE_DECL' },
+  draft: { type: 'DRAFT' },
+  fillTodo: { type: 'FILL_TODO' },
+  lkWeb: { type: 'LOOKUP', file: 'web/src/app.ts' },
+  lkGo: { type: 'LOOKUP', file: 'backend/cmd/main.go' },
+  lkWebPy: { type: 'LOOKUP', file: 'web/scripts/build.py' },
+  lkToolsGo: { type: 'LOOKUP', file: 'tools/gen.go' },
+  lkRootPy: { type: 'LOOKUP', file: 'app/main.py' },
+  lkMd: { type: 'LOOKUP', file: 'docs/guide.md' },
+};
+const LABEL = {
+  initDecl: '建立空白宣告（繼承 team@1.0.0）', rootPy: '加入元件：根目錄 / Python', backendGo: '加入元件：backend/ / Go',
+  webTs: '加入元件：web/ / TypeScript', serviceJava: '加入元件：service/ / Java',
+  webCov60: 'web/ 覆蓋率降到 60（沒寫理由）', webCovReason: '替 web/ 覆蓋率補上理由', webUntil: 'web/ 偏離設定到期日 2027-03-31', webExpired: 'web/ 偏離設定到期日 2026-01-01（已過期）', webCx8: 'web/ 循環複雜度收緊到 8',
+  webBiome: 'web/ 改用 Biome（在允許清單內）', webRome: 'web/ 改用 Rome（不在允許清單）', webUnban: 'web/ 把 moment 從禁用清單移除',
+  webUnknown: 'web/ 覆寫不存在的項目 coverage.foo', goVuln: 'backend/ 弱點掃描改成 critical 才擋（沒寫理由）',
+  detRuff: '偵測到 ruff.toml：max-complexity = 15', detCov: '偵測到 .coveragerc：fail_under = 70',
+  detVitest: '偵測到 web/vitest.config.ts：lines = 50', detGolangci: '偵測到 backend/.golangci.yml：cyclop = 10',
+  detGolangciStrict: '偵測到 backend/.golangci.yml：gocognit = 12',
+  removeDecl: '刪除宣告檔', draft: '依既有設定產生草稿', fillTodo: '填寫草稿中的 TODO 理由',
+  lkWeb: '查詢 web/src/app.ts', lkGo: '查詢 backend/cmd/main.go', lkWebPy: '查詢 web/scripts/build.py',
+  lkToolsGo: '查詢 tools/gen.go', lkRootPy: '查詢 app/main.py', lkMd: '查詢 docs/guide.md',
+};
+const FREE = [
+  ['宣告與元件', ['initDecl', 'rootPy', 'backendGo', 'webTs', 'serviceJava']],
+  ['覆寫', ['webCov60', 'webCovReason', 'webUntil', 'webExpired', 'webCx8', 'webBiome', 'webRome', 'webUnban', 'webUnknown', 'goVuln']],
+  ['既有工具設定與草稿', ['detRuff', 'detCov', 'detVitest', 'detGolangci', 'detGolangciStrict', 'removeDecl', 'draft', 'fillTodo']],
+  ['檔案查詢', ['lkWeb', 'lkGo', 'lkWebPy', 'lkToolsGo', 'lkRootPy', 'lkMd']],
+];
+const SCENARIOS = [
+  { title: '1. 照預設走', desc: '單一 Python 專案，沒有任何覆寫。觀察：宣告檔只有兩行，有效標準全部來自預設，沒有任何問題。', steps: ['rootPy', 'lkRootPy'] },
+  { title: '2. 舊專案放寬覆蓋率', desc: 'web/ 是舊的 TS 專案，覆蓋率只有 60。觀察：不寫理由就是錯誤；寫了理由之後變成「偏離」，依然看得見，但不再擋人；設定到期日後，過期的偏離會再變回錯誤。', steps: ['webTs', 'webCov60', 'webCovReason', 'webUntil', 'webExpired'] },
+  { title: '3. 收緊、換工具、亂寫', desc: '收緊不需要理由；換成允許清單內的工具不算偏離；換成清單外的工具、移除禁用套件都算放寬；覆寫不存在的項目是錯誤。', steps: ['webTs', 'webCx8', 'webBiome', 'webRome', 'webUnban', 'webUnknown'] },
+  { title: '4. Monorepo', desc: '根目錄是 Python、backend/ 是 Go、web/ 是 TS。觀察檔案歸屬：web/ 底下的 .py 檔會往上找到根目錄的 Python 元件；tools/ 底下的 .go 檔沒有 Go 元件涵蓋，依副檔名推定語言並套用 Go 預設標準；.md 檔不在檢查範圍內。', steps: ['rootPy', 'backendGo', 'webTs', 'lkWeb', 'lkGo', 'lkWebPy', 'lkToolsGo', 'lkRootPy', 'lkMd'] },
+  { title: '5. 沒有宣告 → 產生草稿', desc: '專案只有 ruff.toml（複雜度 15）和 .coveragerc（70）。產生草稿時，兩者都比預設寬鬆，所以帶著 TODO 理由，在填好之前都算錯誤。', steps: ['detRuff', 'detCov', 'draft', 'fillTodo'] },
+  { title: '6. 宣告與工具設定不一致', desc: '宣告寫 web/ 覆蓋率 80（預設），但 vitest.config.ts 實際設 50；backend/ 的 gocognit 是 12，比宣告嚴格。觀察兩種不一致的處理差異。', steps: ['webTs', 'backendGo', 'detVitest', 'detGolangci', 'detGolangciStrict'] },
+];
+
+let state = initial();
+let active = -1, stepIdx = 0;
+
+function dispatch(a) { state = reducer(state, a); render(); }
+
+function render() {
+  const res = Std.resolve(state.decl);
+  const tool = Std.checkToolConfigs(res, state.detected);
+  document.getElementById('yaml').textContent = Std.toYaml(state.decl);
+  document.getElementById('changed').innerHTML = state.changed ? `<div class="changed">剛剛：${esc(state.changed)}</div>` : '';
+  const issues = [...res.issues, ...tool];
+  const LV = { error: '錯誤', deviation: '偏離', hint: '提示', ok: '一致' };
+  document.getElementById('issues').innerHTML = issues.length
+    ? issues.map(i => `<li class="${i.level}"><span class="lvl">${LV[i.level]}</span>${esc(i.text)}</li>`).join('')
+    : `<li class="ok"><span class="lvl">通過</span>${state.decl ? '沒有錯誤或偏離' : '尚未有宣告'}</li>`;
+  const ST = { same: '同預設', stricter: '更嚴格', alternative: '替代工具', looser: '放寬', invalid: '無效' };
+  document.getElementById('effective').innerHTML = res.components.length ? res.components.map(c => `
+    <div class="comp"><div class="comp-h">${esc(Std.showPath(c.path))} · ${Std.LANG_LABEL[c.language]}</div>
+    <table><tr><th>項目</th><th>值</th><th>來源</th><th>狀態</th></tr>
+    ${Object.entries(c.effective).map(([k, e]) => `<tr><td>${esc(Std.KEY_META[k].label)}</td><td>${esc(Array.isArray(e.value) ? e.value.join(', ') : String(e.value))}</td><td>${e.source}</td><td><span class="b ${e.status}">${ST[e.status]}</span></td></tr>`).join('')}
+    </table></div>`).join('') : '<p class="muted">尚無元件</p>';
+  document.getElementById('detected').innerHTML = state.detected.length
+    ? '<table>' + state.detected.map(d => `<tr><td>${esc(Std.showPath(Std.normPath(d.path)))}${esc(d.file)}</td><td>${esc(Std.KEY_META[d.key].label)} = ${esc(String(d.value))}</td></tr>`).join('') + '</table>'
+    : '<p class="muted">（無）</p>';
+  document.getElementById('lookups').innerHTML = state.lookups.length
+    ? '<ul class="issues">' + state.lookups.map(f => { const r = Std.lookup(state.decl, f); return `<li class="${r.level}"><code>${esc(f)}</code>：${esc(r.text)}</li>`; }).join('') + '</ul>'
+    : '<p class="muted">（尚未查詢）</p>';
+  renderScenario();
+}
+
+function renderScenario() {
+  document.getElementById('tabs').innerHTML = SCENARIOS.map((s, i) => `<button class="tab ${i === active ? 'active' : ''}" onclick="startScenario(${i})">${esc(s.title)}</button>`).join('');
+  const box = document.getElementById('scenario');
+  if (active < 0) { box.innerHTML = '<p class="muted">選上面一個情境開始。</p>'; return; }
+  const sc = SCENARIOS[active];
+  box.innerHTML = `<p>${esc(sc.desc)}</p><div class="steps">` + sc.steps.map((k, i) =>
+    `<button class="${i < stepIdx ? 'done' : i === stepIdx ? 'primary' : ''}" ${i === stepIdx ? '' : 'disabled'} onclick="doStep()">${i + 1}. ${esc(LABEL[k])}${i < stepIdx ? ' ✓' : ''}</button>`).join('') +
+    `</div>${stepIdx >= sc.steps.length ? '<p class="muted">情境完成。可以繼續用下方的自由操作試試看。</p>' : ''}`;
+}
+function startScenario(i) { active = i; stepIdx = 0; state = initial(); render(); }
+function doStep() { const k = SCENARIOS[active].steps[stepIdx]; stepIdx++; dispatch(A[k]); }
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+document.getElementById('free').innerHTML = FREE.map(([t, ks]) =>
+  `<h3>${t}</h3><div class="btns">${ks.map(k => `<button onclick="dispatch(A.${k})">${esc(LABEL[k])}</button>`).join('')}</div>`).join('');
+render();
+</script>
+</body>
+</html>
