@@ -109,6 +109,9 @@ web/ (TypeScript)
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint（typescript-eslint `strictTypeChecked`，循環複雜度上限 10） |
 | `npm run format` / `format:check` | Prettier（行寬 120、LF） |
+| `npm run build:exe [-- x64\|arm64]` | 用 Bun（≥ 1.2.23）打包成 `dist/devguard-windows-<arch>.exe`，含圖示與版本資訊。交叉編譯的目標沒有圖示與版本資訊（Bun 的限制） |
+| `npm run smoke:exe [-- <exe>]` | 從 PATH 移除 Node 後，對 exe 執行 `--version` 與 `check`（範例專案） |
+| `npm run t2:probe` / `build:t2-probe` | SPEC §13 T2：子程序行為探測，先在 Node 下跑基準，再打包成 `dist/t2-probe-windows-<arch>.exe` 執行比對 |
 
 devguard 本身也遵守 SPEC §6.3 的 TypeScript 預設標準，並以 [.devguard.yaml](.devguard.yaml) 宣告自己。
 
@@ -118,10 +121,13 @@ devguard 本身也遵守 SPEC §6.3 的 TypeScript 預設標準，並以 [.devgu
 src/
   cli.ts                 指令列入口
   check.ts               devguard check 的宣告檢查層
+  process/               啟動外部程序（.cmd 透過 cmd.exe）
   standard/              內建的預設標準與版本查找
   declaration/           宣告檔的解析、比對、套用、檔案歸屬
   report/                finding 型別、文字與 JSON 報告、exit code
 test/                    Vitest 測試
+scripts/                 exe 打包、smoke test、T2 探測
+assets/                  exe 圖示
 SPEC.md                  實作規格
 GLOSSARY.md              用語定義
 .scratch/                規劃過程：地圖、決策票、研究紀錄、原型
