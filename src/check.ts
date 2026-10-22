@@ -1,6 +1,7 @@
 import type { Resolution } from "./declaration/resolve.ts";
 import { codeLayer } from "./layers/code.ts";
 import { declarationLayer } from "./layers/declaration.ts";
+import { pythonSettingsLayer } from "./layers/python-settings.ts";
 import type { CheckLayer, CheckScope, LayerContext } from "./layers/types.ts";
 import { uncoveredFilesLayer } from "./layers/uncovered.ts";
 import type { Finding } from "./report/finding.ts";
@@ -18,6 +19,7 @@ export interface CheckResult extends ReportInput {
 export const CHECK_LAYERS: readonly CheckLayer[] = [
   declarationLayer,
   uncoveredFilesLayer,
+  pythonSettingsLayer,
   // Layers above check the setup; code checks run last.
   codeLayer,
 ];

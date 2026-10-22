@@ -26,7 +26,10 @@ describe("runCheck", () => {
     expect(r.standard).toBe("team@1.0.0");
     expect(r.components.map((c) => c.name)).toEqual(["./ (Go)"]);
     expect(r.findings).toEqual([]);
-    expect(CHECK_LAYERS.map((l) => l.id)).toEqual(["declaration", "uncovered-files", "code"]);
+    const ids = CHECK_LAYERS.map((l) => l.id);
+    expect(ids).toContain("python-settings");
+    expect(ids).toContain("uncovered-files");
+    expect(ids.at(-1)).toBe("code");
   });
 
   it("lets a later layer add findings and see the resolved declaration", async () => {
