@@ -71,6 +71,24 @@ describe("devguard check", () => {
     expect(run([]).code).toBe(2);
   });
 
+  it("rejects an unknown --only category and --full together with files", () => {
+    const dir = project("standard: team@1.0.0\ncomponents: []\n");
+    const bad = run(["check", "--cwd", dir, "--only", "speling"]);
+    expect(bad.code).toBe(2);
+    expect(bad.err).toContain("lint|format|typecheck");
+    expect(run(["check", "--cwd", dir, "--full", join(dir, "a.ts")]).code).toBe(2);
+    expect(run(["check", "--cwd", dir, join(tmpdir(), "elsewhere.ts")]).code).toBe(2);
+  });
+
+  it("exits 2 with `npm ci` when the TypeScript tools are not installed", () => {
+    const dir = project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: typescript}\n");
+    writeFileSync(join(dir, "a.ts"), "export const a = 1;\n");
+    const r = run(["check", "--cwd", dir, "--only", "lint", join(dir, "a.ts")]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("eslint");
+    expect(r.err).toContain("npm ci");
+  });
+
   it("prints the version and help", () => {
     expect(run(["--version"]).out).toBe("devguard 0.1.0\n");
     expect(run(["--help"]).code).toBe(0);
