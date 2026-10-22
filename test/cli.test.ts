@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { localDate } from "../src/check.ts";
-import { GO_CLEAN_FILES } from "./helpers.ts";
 
 const CLI = join(import.meta.dirname, "..", "src", "cli.ts");
 const dirs: string[] = [];
@@ -13,6 +12,8 @@ function project(declaration?: string): string {
   const dir = mkdtempSync(join(tmpdir(), "devguard-"));
   dirs.push(dir);
   if (declaration !== undefined) writeFileSync(join(dir, ".devguard.yaml"), declaration);
+  // Satisfies the deps layer for npm components; the temp dir is not a git repo, so existing counts as committed.
+  writeFileSync(join(dir, "package-lock.json"), "{}");
   return dir;
 }
 
@@ -37,9 +38,11 @@ const DEVIATING = [
 
 describe("devguard check", () => {
   it("exits 0 for a clean declaration", () => {
-    const dir = project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: go}\n");
-    for (const [name, text] of Object.entries(GO_CLEAN_FILES)) writeFileSync(join(dir, name), text);
-    const r = run(["check", "--cwd", dir]);
+    const r = run([
+      "check",
+      "--cwd",
+      project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: typescript}\n"),
+    ]);
     expect(r.code).toBe(0);
     expect(r.out).toContain("通過");
   });

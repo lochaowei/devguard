@@ -146,6 +146,19 @@ describe("tool runner: Go", () => {
     const { runner } = fakeRunner({ "C:\\repo\\go.mod": GO_MOD }, { exec: enoent });
     expect((await missing(runner.run(req({ language: "go", tool: "stringer" })))).message).toBe("找不到 go");
   });
+
+  it("runs go itself for module commands, offline and with the local toolchain", async () => {
+    const { runner, started } = fakeRunner({});
+    await runner.run(req({ language: "go", tool: "go", dir: "svc/", args: ["mod", "tidy", "-diff"] }));
+    expect(started).toEqual([
+      {
+        file: "go",
+        args: ["mod", "tidy", "-diff"],
+        cwd: "C:\\repo\\svc",
+        env: { GOTOOLCHAIN: "local", GOPROXY: "off" },
+      },
+    ]);
+  });
 });
 
 describe("tool runner: Java", () => {

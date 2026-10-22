@@ -32,6 +32,7 @@ export function runSmoke(command: readonly string[], expectedVersion: string, en
   const empty = mkdtempSync(join(tmpdir(), "devguard-smoke-empty-"));
   try {
     writeFileSync(join(dir, ".devguard.yaml"), SAMPLE);
+    writeFileSync(join(dir, "package-lock.json"), "{}");
     const version = run(command, ["--version"], env);
     const sample = run(command, ["check", "--cwd", dir], env);
     const missing = run(command, ["check", "--cwd", empty], env);

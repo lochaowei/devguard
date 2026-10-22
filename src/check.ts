@@ -1,5 +1,6 @@
 import type { Resolution } from "./declaration/resolve.ts";
 import { declarationLayer } from "./layers/declaration.ts";
+import { depsLayer } from "./layers/deps.ts";
 import { pythonSettingsLayer } from "./layers/python-settings.ts";
 import { goSettingsLayer } from "./layers/settings-go.ts";
 import { javaSettingsLayer } from "./layers/settings-java.ts";
@@ -21,6 +22,7 @@ export const CHECK_LAYERS: readonly CheckLayer[] = [
   pythonSettingsLayer,
   goSettingsLayer,
   javaSettingsLayer,
+  depsLayer,
 ];
 
 export interface CheckOptions {
