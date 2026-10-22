@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { CHECK_LAYERS, runCheck, type CheckLayer } from "../src/check.ts";
 import type { ToolRunner } from "../src/tools/runner.ts";
-import { rules, TODAY } from "./helpers.ts";
+import { GO_CLEAN_FILES, rules, TODAY } from "./helpers.ts";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -15,6 +15,7 @@ function project(declaration: string): string {
   const dir = mkdtempSync(join(tmpdir(), "devguard-"));
   dirs.push(dir);
   writeFileSync(join(dir, ".devguard.yaml"), declaration);
+  for (const [name, text] of Object.entries(GO_CLEAN_FILES)) writeFileSync(join(dir, name), text);
   return dir;
 }
 
@@ -26,7 +27,7 @@ describe("runCheck", () => {
     expect(r.standard).toBe("team@1.0.0");
     expect(r.components.map((c) => c.name)).toEqual(["./ (Go)"]);
     expect(r.findings).toEqual([]);
-    expect(CHECK_LAYERS.map((l) => l.id)).toEqual(["declaration"]);
+    expect(CHECK_LAYERS[0]?.id).toBe("declaration");
   });
 
   it("lets a later layer add findings and see the resolved declaration", async () => {

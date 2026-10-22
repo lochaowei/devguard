@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { localDate } from "../src/check.ts";
+import { GO_CLEAN_FILES } from "./helpers.ts";
 
 const CLI = join(import.meta.dirname, "..", "src", "cli.ts");
 const dirs: string[] = [];
@@ -36,7 +37,9 @@ const DEVIATING = [
 
 describe("devguard check", () => {
   it("exits 0 for a clean declaration", () => {
-    const r = run(["check", "--cwd", project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: go}\n")]);
+    const dir = project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: go}\n");
+    for (const [name, text] of Object.entries(GO_CLEAN_FILES)) writeFileSync(join(dir, name), text);
+    const r = run(["check", "--cwd", dir]);
     expect(r.code).toBe(0);
     expect(r.out).toContain("通過");
   });
