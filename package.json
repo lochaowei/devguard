@@ -24,6 +24,7 @@
     "build:t2-probe": "node scripts/build-exe.ts --entry scripts/t2-probe.ts --name t2-probe"
   },
   "dependencies": {
+    "@rgrove/parse-xml": "^5.0.0",
     "yaml": "^2.9.1"
   },
   "devDependencies": {
