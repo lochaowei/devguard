@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { nodeExec, toSpawnSpec } from "../src/tools/process.ts";
+import { nodeExec, toSpawnSpec } from "../src/process/exec.ts";
 
 describe("toSpawnSpec", () => {
   it("starts executables directly", () => {
@@ -14,20 +14,22 @@ describe("toSpawnSpec", () => {
   });
 
   it("runs .cmd and .bat files through cmd.exe /d /s /c", () => {
-    expect(
-      toSpawnSpec({ file: "C:\\p\\node_modules\\.bin\\eslint.cmd", args: ["src", "a b", 'say "hi"'], cwd: "C:\\p" }),
-    ).toEqual({
+    expect(toSpawnSpec({ file: "C:\\p\\node_modules\\.bin\\eslint.cmd", args: ["src", "a b"], cwd: "C:\\p" })).toEqual({
       file: "cmd.exe",
-      args: ["/d", "/s", "/c", '""C:\\p\\node_modules\\.bin\\eslint.cmd" src "a b" "say ""hi""""'],
+      args: ["/d", "/s", "/c", '""C:\\p\\node_modules\\.bin\\eslint.cmd" "src" "a b""'],
       cwd: "C:\\p",
       windowsVerbatimArguments: true,
     });
-    expect(toSpawnSpec({ file: "gradlew.BAT", args: ["check", "x&y", ""], cwd: "C:\\p" }).args).toEqual([
+    expect(toSpawnSpec({ file: "gradlew.BAT", args: ["check", "x&y"], cwd: "C:\\p" }).args).toEqual([
       "/d",
       "/s",
       "/c",
-      '""gradlew.BAT" check "x&y" """',
+      '""gradlew.BAT" "check" "x&y""',
     ]);
+  });
+
+  it("refuses arguments that cmd.exe would alter", () => {
+    expect(() => toSpawnSpec({ file: "x.cmd", args: ['say "hi"'], cwd: "." })).toThrow("cmd.exe");
   });
 
   it("keeps extra environment variables", () => {
@@ -53,10 +55,14 @@ describe("nodeExec", () => {
     try {
       writeFileSync(join(dir, "echo args.cmd"), "@echo [%1] [%2] [%3]\r\n");
       const r = await nodeExec({ file: join(dir, "echo args.cmd"), args: ["a b", "x&y", "plain"], cwd: dir });
-      expect(r.stdout.trim()).toBe('["a b"] ["x&y"] [plain]');
+      expect(r.stdout.trim()).toBe('["a b"] ["x&y"] ["plain"]');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("rejects arguments cmd.exe would alter instead of throwing", async () => {
+    await expect(nodeExec({ file: "x.cmd", args: ["%PATH%"], cwd: "." })).rejects.toThrow("cmd.exe");
   });
 
   it("rejects with ENOENT when the program does not exist", async () => {

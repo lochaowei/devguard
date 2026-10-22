@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Command, Exec } from "../src/tools/process.ts";
+import type { Command, Exec } from "../src/process/exec.ts";
 import { createToolRunner, ToolMissingError, type ToolRequest, type ToolRunnerDeps } from "../src/tools/runner.ts";
 
 const ROOT = "C:\\repo";

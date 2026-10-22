@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { assignFiles, listRepoFiles } from "../src/repo/files.ts";
-import type { Exec } from "../src/tools/process.ts";
+import type { Exec } from "../src/process/exec.ts";
 import { resolveText } from "./helpers.ts";
 
 const dirs: string[] = [];

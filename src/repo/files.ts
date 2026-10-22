@@ -3,7 +3,7 @@ import { relative } from "node:path";
 import { findOwner, type FileOwner } from "../declaration/lookup.ts";
 import { normalizePath } from "../declaration/path.ts";
 import type { ResolvedComponent } from "../declaration/resolve.ts";
-import { nodeExec, type Exec } from "../tools/process.ts";
+import { nodeExec, type Exec } from "../process/exec.ts";
 
 /** Directories never walked when the repo is not under git: VCS data and installed dependencies. */
 const SKIPPED_DIRS = new Set([".git", "node_modules", ".venv", "venv", "vendor", "target", "build", "dist"]);

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { viaCmd } from "./cmd-shim.ts";
 
 /** A program to start: absolute path or a name looked up on PATH. */
 export interface Command {
@@ -23,23 +24,19 @@ export interface ExecResult {
 export type Exec = (command: Command) => Promise<ExecResult>;
 
 const BATCH = /\.(cmd|bat)$/i;
-const NEEDS_QUOTES = /[\s"&|<>^()%!,;=]/;
 
-function quoteForCmd(arg: string): string {
-  return arg === "" || NEEDS_QUOTES.test(arg) ? `"${arg.replace(/"/g, '""')}"` : arg;
-}
-
-/** `.cmd` / `.bat` files cannot be started directly; they run through `cmd.exe /d /s /c` (SPEC §3.2). */
+/**
+ * `.cmd` / `.bat` files cannot be started directly; they run through `cmd.exe /d /s /c` (SPEC §3.2, via `viaCmd`).
+ * Throws when an argument cannot pass through cmd.exe unchanged.
+ */
 export function toSpawnSpec(command: Command): SpawnSpec {
-  if (!BATCH.test(command.file)) return command;
-  const line = [`"${command.file}"`, ...command.args.map(quoteForCmd)].join(" ");
-  return { ...command, file: "cmd.exe", args: ["/d", "/s", "/c", `"${line}"`], windowsVerbatimArguments: true };
+  return BATCH.test(command.file) ? { ...command, ...viaCmd(command.file, command.args) } : command;
 }
 
 /** The real Exec, built on child_process.spawn. */
-export const nodeExec: Exec = (command) => {
-  const spec = toSpawnSpec(command);
-  return new Promise((resolve, reject) => {
+export const nodeExec: Exec = (command) =>
+  new Promise((resolve, reject) => {
+    const spec = toSpawnSpec(command);
     const child = spawn(spec.file, spec.args, {
       cwd: spec.cwd,
       env: { ...process.env, ...spec.env },
@@ -59,4 +56,3 @@ export const nodeExec: Exec = (command) => {
       });
     });
   });
-};

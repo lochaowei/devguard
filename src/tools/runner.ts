@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { posix, win32 } from "node:path";
 import type { Language } from "../standard/types.ts";
-import { nodeExec, type Command, type Exec } from "./process.ts";
+import { nodeExec, type Command, type Exec } from "../process/exec.ts";
 
 export interface ToolRequest {
   language: Language;
