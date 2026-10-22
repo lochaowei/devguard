@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { assignFiles, listRepoFiles } from "../src/repo/files.ts";
+import { assignFiles, listRepoFiles, listTrackedFiles } from "../src/repo/files.ts";
 import type { Exec } from "../src/process/exec.ts";
 import { resolveText } from "./helpers.ts";
 
@@ -23,6 +23,26 @@ function tree(files: Record<string, string>): string {
 }
 
 const noGit: Exec = () => Promise.resolve({ code: 128, stdout: "", stderr: "fatal: not a git repository" });
+
+describe("listTrackedFiles", () => {
+  it("lists only files git tracks, including staged ones", async () => {
+    const dir = tree({ "a.ts": "", "uv.lock": "", "untracked.txt": "" });
+    expect(spawnSync("git", ["init", "-q"], { cwd: dir }).status).toBe(0);
+    spawnSync("git", ["add", "a.ts", "uv.lock"], { cwd: dir });
+    expect([...((await listTrackedFiles(dir)) ?? [])].sort()).toEqual(["a.ts", "uv.lock"]);
+  });
+
+  it("is undefined outside a git repo or without git", async () => {
+    expect(await listTrackedFiles("C:\\x", noGit)).toBeUndefined();
+    const enoent: Exec = () => Promise.reject(Object.assign(new Error("spawn git ENOENT"), { code: "ENOENT" }));
+    expect(await listTrackedFiles("C:\\x", enoent)).toBeUndefined();
+  });
+
+  it("passes other failures through", async () => {
+    const boom: Exec = () => Promise.reject(new Error("boom"));
+    await expect(listTrackedFiles("C:\\x", boom)).rejects.toThrow("boom");
+  });
+});
 
 describe("listRepoFiles", () => {
   it("lists tracked and untracked files git does not ignore", async () => {

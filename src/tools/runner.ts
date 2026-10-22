@@ -6,7 +6,8 @@ import { nodeExec, type Command, type Exec } from "../process/exec.ts";
 export interface ToolRequest {
   language: Language;
   /**
-   * Tool name, e.g. "ruff", "eslint", "golangci-lint". For Go, a `tool` path from go.mod or its last segment.
+   * Tool name, e.g. "ruff", "eslint", "golangci-lint". For Go, a `tool` path from go.mod or its last segment,
+   * or "go" itself (e.g. `go mod tidy -diff`).
    * Ignored for Java, which always runs the project's build wrapper (pass the plugin goal in `args`).
    */
   tool: string;
@@ -120,8 +121,13 @@ function onPath(name: string, env: Env): string | undefined {
   return undefined;
 }
 
+/** GOPROXY=off: running a check must never download modules. */
+const GO_ENV = { GOTOOLCHAIN: "local", GOPROXY: "off" };
+
 function go(req: ToolRequest, cwd: string, env: Env): Resolved {
   const args = req.args ?? [];
+  // `go` itself, for module commands such as `go mod tidy -diff`.
+  if (req.tool === "go") return { ok: true, command: { file: "go", args: [...args], cwd, env: GO_ENV } };
   if (req.tool === "golangci-lint") {
     // Exception in SPEC §5.2: not a go.mod tool, but a binary from the internal Scoop bucket.
     const exe = onPath(req.tool, env);
@@ -138,11 +144,7 @@ function go(req: ToolRequest, cwd: string, env: Env): Resolved {
       install: inDir(req.dir, `go get -tool <${req.tool} 的套件路徑>`),
     };
   }
-  // GOPROXY=off: running a check must never download modules.
-  return {
-    ok: true,
-    command: { file: "go", args: ["tool", req.tool, ...args], cwd, env: { GOTOOLCHAIN: "local", GOPROXY: "off" } },
-  };
+  return { ok: true, command: { file: "go", args: ["tool", req.tool, ...args], cwd, env: GO_ENV } };
 }
 
 function java(req: ToolRequest, cwd: string, env: Env): Resolved {

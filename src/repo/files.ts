@@ -31,6 +31,19 @@ export async function listRepoFiles(cwd: string, exec: Exec = nodeExec): Promise
   return walk(cwd);
 }
 
+/**
+ * Repo-relative paths git tracks (committed or staged), or undefined when `cwd` is not a git repo or git is missing.
+ */
+export async function listTrackedFiles(cwd: string, exec: Exec = nodeExec): Promise<string[] | undefined> {
+  try {
+    const r = await exec({ file: "git", args: ["ls-files", "-z", "--cached"], cwd });
+    return r.code === 0 ? r.stdout.split("\0").filter((p) => p !== "") : undefined;
+  } catch (e) {
+    if ((e as { code?: unknown } | null)?.code !== "ENOENT") throw e;
+    return undefined;
+  }
+}
+
 export interface OwnedFile {
   file: string;
   owner: Exclude<FileOwner, { kind: "out-of-scope" }>;

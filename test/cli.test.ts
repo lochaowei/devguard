@@ -12,6 +12,8 @@ function project(declaration?: string): string {
   const dir = mkdtempSync(join(tmpdir(), "devguard-"));
   dirs.push(dir);
   if (declaration !== undefined) writeFileSync(join(dir, ".devguard.yaml"), declaration);
+  // Satisfies the deps layer for npm components; the temp dir is not a git repo, so existing counts as committed.
+  writeFileSync(join(dir, "package-lock.json"), "{}");
   return dir;
 }
 
@@ -36,7 +38,11 @@ const DEVIATING = [
 
 describe("devguard check", () => {
   it("exits 0 for a clean declaration", () => {
-    const r = run(["check", "--cwd", project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: go}\n")]);
+    const r = run([
+      "check",
+      "--cwd",
+      project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: typescript}\n"),
+    ]);
     expect(r.code).toBe(0);
     expect(r.out).toContain("通過");
   });
