@@ -2,6 +2,7 @@ import type { Resolution } from "./declaration/resolve.ts";
 import { declarationLayer } from "./layers/declaration.ts";
 import { pythonSettingsLayer } from "./layers/python-settings.ts";
 import { goSettingsLayer } from "./layers/settings-go.ts";
+import { javaSettingsLayer } from "./layers/settings-java.ts";
 import type { CheckLayer, LayerContext } from "./layers/types.ts";
 import type { Finding } from "./report/finding.ts";
 import type { ReportInput } from "./report/render.ts";
@@ -15,7 +16,12 @@ export interface CheckResult extends ReportInput {
 }
 
 /** The layers of `devguard check`, in order. A new layer only needs to be added here. */
-export const CHECK_LAYERS: readonly CheckLayer[] = [declarationLayer, pythonSettingsLayer, goSettingsLayer];
+export const CHECK_LAYERS: readonly CheckLayer[] = [
+  declarationLayer,
+  pythonSettingsLayer,
+  goSettingsLayer,
+  javaSettingsLayer,
+];
 
 export interface CheckOptions {
   cwd: string;
