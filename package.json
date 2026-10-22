@@ -24,6 +24,7 @@
     "build:t2-probe": "node scripts/build-exe.ts --entry scripts/t2-probe.ts --name t2-probe"
   },
   "dependencies": {
+    "@decimalturn/toml-patch": "^3.3.1",
     "yaml": "^2.9.1"
   },
   "devDependencies": {
