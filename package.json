@@ -17,7 +17,11 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "build:exe": "node scripts/build-exe.ts",
+    "smoke:exe": "node scripts/smoke-exe.ts",
+    "t2:probe": "node scripts/t2-probe.ts",
+    "build:t2-probe": "node scripts/build-exe.ts --entry scripts/t2-probe.ts --name t2-probe"
   },
   "dependencies": {
     "yaml": "^2.9.1"
