@@ -1,49 +1,56 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { parseDeclaration } from "./declaration/parse.ts";
-import { resolveDeclaration, type Resolution } from "./declaration/resolve.ts";
-import { DECLARATION_FILE } from "./declaration/types.ts";
+import type { Resolution } from "./declaration/resolve.ts";
+import { declarationLayer } from "./layers/declaration.ts";
+import type { CheckLayer, LayerContext } from "./layers/types.ts";
+import type { Finding } from "./report/finding.ts";
 import type { ReportInput } from "./report/render.ts";
+import { listRepoFiles } from "./repo/files.ts";
+import { createToolRunner, type ToolRunner } from "./tools/runner.ts";
+
+export type { CheckLayer, LayerContext, LayerResult } from "./layers/types.ts";
 
 export interface CheckResult extends ReportInput {
   resolution?: Resolution;
 }
 
-async function readDeclaration(cwd: string): Promise<string | undefined> {
-  try {
-    return await readFile(join(cwd, DECLARATION_FILE), "utf8");
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw e;
-  }
+/** The layers of `devguard check`, in order. A new layer only needs to be added here. */
+export const CHECK_LAYERS: readonly CheckLayer[] = [declarationLayer];
+
+export interface CheckOptions {
+  cwd: string;
+  today: string;
+  /** Defaults to the real runner; tests pass a fake. */
+  tools?: ToolRunner;
+  /** Defaults to listing the repo with git. */
+  listFiles?: (cwd: string) => Promise<string[]>;
 }
 
-/** The declaration layer of `devguard check`: parse `.devguard.yaml` and resolve it against the bundled standard. */
-export async function checkDeclaration(cwd: string, today: string): Promise<CheckResult> {
-  const text = await readDeclaration(cwd);
-  if (text === undefined) {
-    return {
-      components: [],
-      findings: [
-        {
-          level: "error",
-          layer: "config",
-          rule: "declaration/missing",
-          message: `找不到 ${DECLARATION_FILE}`,
-          fix: `在 repo 根目錄建立 ${DECLARATION_FILE}（格式見 SPEC §4）`,
-        },
-      ],
-    };
-  }
-  const parsed = parseDeclaration(text, DECLARATION_FILE);
-  if (!parsed.declaration) return { components: [], findings: parsed.findings };
-  const resolution = resolveDeclaration(parsed.declaration, today);
-  return {
-    standard: resolution.standard?.id,
-    components: resolution.components,
-    findings: [...parsed.findings, ...resolution.findings],
-    resolution,
+/** Runs the layers in order and merges their findings into one report. */
+export async function runCheck(
+  options: CheckOptions,
+  layers: readonly CheckLayer[] = CHECK_LAYERS,
+): Promise<CheckResult> {
+  const { cwd, today } = options;
+  const listFiles = options.listFiles ?? ((dir: string) => listRepoFiles(dir));
+  let files: Promise<string[]> | undefined;
+  const ctx: LayerContext = {
+    cwd,
+    today,
+    tools: options.tools ?? createToolRunner({ cwd }),
+    files: () => (files ??= listFiles(cwd)),
   };
+  const findings: Finding[] = [];
+  for (const layer of layers) {
+    const result = await layer.run(ctx);
+    findings.push(...result.findings);
+    if (result.resolution) ctx.resolution = result.resolution;
+  }
+  const { resolution } = ctx;
+  return { standard: resolution?.standard?.id, components: resolution?.components ?? [], findings, resolution };
+}
+
+/** The declaration layer alone: parse `.devguard.yaml` and resolve it against the bundled standard. */
+export function checkDeclaration(cwd: string, today: string): Promise<CheckResult> {
+  return runCheck({ cwd, today }, [declarationLayer]);
 }
 
 export function localDate(now = new Date()): string {
