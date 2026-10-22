@@ -17,7 +17,23 @@ export interface SmokeResult {
   detail: string;
 }
 
-const SAMPLE = "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: typescript\n";
+/** A TypeScript project whose tool configs meet team@1.0.0. */
+const SAMPLE: Readonly<Record<string, string>> = {
+  ".devguard.yaml": "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: typescript\n",
+  "tsconfig.json": JSON.stringify({
+    compilerOptions: {
+      strict: true,
+      noUncheckedIndexedAccess: true,
+      noImplicitOverride: true,
+      noFallthroughCasesInSwitch: true,
+    },
+  }),
+  ".prettierrc": '{ "printWidth": 120, "endOfLine": "lf" }',
+  "eslint.config.js":
+    'export default [tseslint.configs.strictTypeChecked, { rules: { complexity: ["error", 10], "sonarjs/cognitive-complexity": ["error", 15] } }];\n',
+  "vitest.config.ts":
+    "export default { test: { coverage: { thresholds: { lines: 80, branches: 80, functions: 80, statements: 80 } } } };\n",
+};
 
 function run(command: readonly string[], args: string[], env: NodeJS.ProcessEnv) {
   const [file = "", ...pre] = command;
@@ -31,7 +47,7 @@ export function runSmoke(command: readonly string[], expectedVersion: string, en
   const dir = mkdtempSync(join(tmpdir(), "devguard-smoke-"));
   const empty = mkdtempSync(join(tmpdir(), "devguard-smoke-empty-"));
   try {
-    writeFileSync(join(dir, ".devguard.yaml"), SAMPLE);
+    for (const [name, text] of Object.entries(SAMPLE)) writeFileSync(join(dir, name), text);
     const version = run(command, ["--version"], env);
     const sample = run(command, ["check", "--cwd", dir], env);
     const missing = run(command, ["check", "--cwd", empty], env);

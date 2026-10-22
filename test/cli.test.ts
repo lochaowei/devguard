@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -34,6 +34,24 @@ const DEVIATING = [
   "",
 ].join("\n");
 
+/** DEVIATING plus web/ tool configs that match it, so the deviation is the only finding. */
+function deviatingProject(): string {
+  const dir = project(DEVIATING);
+  const web = join(dir, "web");
+  mkdirSync(web);
+  const tsOptions = ["strict", "noUncheckedIndexedAccess", "noImplicitOverride", "noFallthroughCasesInSwitch"];
+  const files: Record<string, string> = {
+    "tsconfig.json": JSON.stringify({ compilerOptions: Object.fromEntries(tsOptions.map((o) => [o, true])) }),
+    ".prettierrc": '{ "printWidth": 120, "endOfLine": "lf" }',
+    "eslint.config.js":
+      'export default [tseslint.configs.strictTypeChecked, { rules: { complexity: ["error", 10], "sonarjs/cognitive-complexity": ["error", 15] } }];',
+    "vitest.config.ts":
+      "export default { test: { coverage: { thresholds: { lines: 60, branches: 60, functions: 60, statements: 60 } } } };",
+  };
+  for (const [name, text] of Object.entries(files)) writeFileSync(join(web, name), text);
+  return dir;
+}
+
 describe("devguard check", () => {
   it("exits 0 for a clean declaration", () => {
     const r = run(["check", "--cwd", project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: go}\n")]);
@@ -42,7 +60,7 @@ describe("devguard check", () => {
   });
 
   it("exits 0 with deviations, 1 with --strict", () => {
-    const dir = project(DEVIATING);
+    const dir = deviatingProject();
     expect(run(["check", "--cwd", dir]).code).toBe(0);
     expect(run(["check", "--cwd", dir, "--strict"]).code).toBe(1);
   });
@@ -58,7 +76,7 @@ describe("devguard check", () => {
   });
 
   it("prints JSON with --format json", () => {
-    const r = run(["check", "--cwd", project(DEVIATING), "--format", "json"]);
+    const r = run(["check", "--cwd", deviatingProject(), "--format", "json"]);
     const json = JSON.parse(r.out) as { standard: string; findings: { level: string }[] };
     expect(json.standard).toBe("team@1.0.0");
     expect(json.findings.map((x) => x.level)).toEqual(["deviation"]);
