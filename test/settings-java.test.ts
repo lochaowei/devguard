@@ -165,7 +165,7 @@ describe("Checkstyle settings", () => {
   it("errors when CyclomaticComplexity max is looser than declared", async () => {
     const decl = JAVA_ROOT + "    overrides: {complexity.cyclomatic: 8}\n";
     const findings = await check(GOOD, decl);
-    expect(rules(findings)).toEqual(["error:settings/looser-than-declared"]);
+    expect(rules(findings)).toEqual(["error:settings/looser"]);
     expect(findings[0]?.message).toContain("10");
     expect(findings[0]?.message).toContain("8");
     expect(findings[0]?.line).toBe(5);
@@ -175,7 +175,7 @@ describe("Checkstyle settings", () => {
   it("hints when CyclomaticComplexity max is stricter than declared", async () => {
     const strict = '<module name="CyclomaticComplexityCheck"><property name="max" value="7"/></module>';
     const findings = await check({ ...GOOD, "checkstyle.xml": checkstyle(ILLEGAL_IMPORT + strict) });
-    expect(rules(findings)).toEqual(["hint:settings/stricter-than-declared"]);
+    expect(rules(findings)).toEqual(["hint:settings/stricter"]);
     expect(findings[0]?.fix).toContain("complexity.cyclomatic");
   });
 
@@ -183,9 +183,7 @@ describe("Checkstyle settings", () => {
     const bare = checkstyle(ILLEGAL_IMPORT + '<module name="CyclomaticComplexity"/>');
     expect(await check({ ...GOOD, "checkstyle.xml": bare })).toEqual([]);
     const decl = JAVA_ROOT + "    overrides: {complexity.cyclomatic: 8}\n";
-    expect(rules(await check({ ...GOOD, "checkstyle.xml": bare }, decl))).toEqual([
-      "error:settings/looser-than-declared",
-    ]);
+    expect(rules(await check({ ...GOOD, "checkstyle.xml": bare }, decl))).toEqual(["error:settings/looser"]);
   });
 
   it("hints instead of guessing when max is a property reference", async () => {
@@ -245,15 +243,15 @@ describe("PMD settings", () => {
 
   it("errors when reportLevel is looser than declared", async () => {
     const findings = await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(level("25"))) });
-    expect(rules(findings)).toEqual(["error:settings/looser-than-declared"]);
+    expect(rules(findings)).toEqual(["error:settings/looser"]);
     expect(findings[0]?.file).toBe("pmd-ruleset.xml");
   });
 
   it("judges reportLevel against the declared cognitive limit", async () => {
     const decl = JAVA_ROOT + "    overrides:\n      complexity.cognitive: 12\n";
-    expect(rules(await check(GOOD, decl))).toEqual(["error:settings/looser-than-declared"]);
+    expect(rules(await check(GOOD, decl))).toEqual(["error:settings/looser"]);
     const strict = { ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(level("10"))) };
-    expect(rules(await check(strict, decl))).toEqual(["hint:settings/stricter-than-declared"]);
+    expect(rules(await check(strict, decl))).toEqual(["hint:settings/stricter"]);
   });
 
   it("accepts reportLevel written as a value element, and PMD's default of 15", async () => {

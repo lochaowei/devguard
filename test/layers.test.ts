@@ -34,6 +34,7 @@ describe("runCheck", () => {
       "settings-go",
       "settings-java",
       "deps",
+      "settings-typescript",
     ]);
   });
 
