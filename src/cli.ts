@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
-import { checkDeclaration, localDate } from "./check.ts";
+import { localDate, runCheck } from "./check.ts";
+import { failureMessage, UsageError } from "./report/failure.ts";
 import { exitCodeFor, renderJson, renderText } from "./report/render.ts";
 
 const VERSION = "0.1.0";
@@ -43,24 +44,17 @@ async function main(argv: string[]): Promise<number> {
   if (command !== "check") throw new UsageError(`不認得的指令「${command}」`);
   if (values.format !== "text" && values.format !== "json") throw new UsageError(`不支援的格式「${values.format}」`);
 
-  const result = await checkDeclaration(values.cwd ?? process.cwd(), localDate());
+  const result = await runCheck({ cwd: values.cwd ?? process.cwd(), today: localDate() });
   process.stdout.write(values.format === "json" ? renderJson(result) : renderText(result, values.verbose));
   return exitCodeFor(result.findings, values.strict);
 }
-
-class UsageError extends Error {}
 
 main(process.argv.slice(2)).then(
   (code) => {
     process.exitCode = code;
   },
   (e: unknown) => {
-    const message = e instanceof Error ? e.message : String(e);
-    process.stderr.write(
-      e instanceof UsageError || (e as { code?: string }).code?.startsWith("ERR_PARSE_ARGS")
-        ? `${message}\n\n${USAGE}`
-        : `devguard 內部錯誤：${message}\n`,
-    );
+    process.stderr.write(failureMessage(e, USAGE));
     process.exitCode = 2;
   },
 );
