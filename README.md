@@ -69,6 +69,22 @@ mirrors:
 
 可以覆寫的項目與預設值，見 [src/standard/team-1.0.0.ts](src/standard/team-1.0.0.ts) 或 SPEC §5、§6。
 
+### 工具版本範圍
+
+`check` 會讀出各元件用依賴管理鎖定的工具版本（`uv.lock` / `poetry.lock`、`package-lock.json`、`go.mod` 的 `tool`、`pom.xml` / `build.gradle(.kts)` 中的 plugin 版本），超出標準的版本範圍（`tools.<工具>` 項目，例如 `tools.ruff: ">=0.17,<0.18"`）就回報錯誤。golangci-lint 例外：從 PATH 呼叫 `golangci-lint --version` 核對，不符時提示 `scoop update golangci-lint`。
+
+要使用範圍外的版本，在宣告中放寬範圍並寫理由，依偏離規則處理：
+
+```yaml
+    overrides:
+      tools.ruff:
+        value: ">=0.17,<0.19"
+        reason: "升級到 0.18 中"
+        until: 2027-01-31
+```
+
+> **待團隊訂定**：`team@1.0.0` 中各工具的版本範圍與 golangci-lint 的指定版本目前都是**佔位值**（SPEC §12 第 5 項），在 [src/standard/team-1.0.0.ts](src/standard/team-1.0.0.ts) 以 `placeholderRange` 與 `TODO` 標註，發佈前必須換成團隊訂定的範圍。
+
 ## 指令
 
 ```
@@ -123,6 +139,7 @@ src/
   check.ts               devguard check 的宣告檢查層
   process/               啟動外部程序（.cmd 透過 cmd.exe）
   standard/              內建的預設標準與版本查找
+  versions/              版本範圍，以及從 lockfile / 建置檔讀出鎖定的工具版本
   declaration/           宣告檔的解析、比對、套用、檔案歸屬
   report/                finding 型別、文字與 JSON 報告、exit code
 test/                    Vitest 測試

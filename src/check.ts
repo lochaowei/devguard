@@ -1,5 +1,6 @@
 import type { Resolution } from "./declaration/resolve.ts";
 import { declarationLayer } from "./layers/declaration.ts";
+import { toolVersionsLayer } from "./layers/tool-versions.ts";
 import type { CheckLayer, LayerContext } from "./layers/types.ts";
 import type { Finding } from "./report/finding.ts";
 import type { ReportInput } from "./report/render.ts";
@@ -13,7 +14,7 @@ export interface CheckResult extends ReportInput {
 }
 
 /** The layers of `devguard check`, in order. A new layer only needs to be added here. */
-export const CHECK_LAYERS: readonly CheckLayer[] = [declarationLayer];
+export const CHECK_LAYERS: readonly CheckLayer[] = [declarationLayer, toolVersionsLayer];
 
 export interface CheckOptions {
   cwd: string;

@@ -1,6 +1,6 @@
 import type { ItemDef, Standard } from "./types.ts";
 
-// Draft values from SPEC §5–§6. Tool version ranges are added once they are set for the release.
+// Draft values from SPEC §5–§6.
 
 const cyclomatic: ItemDef = { kind: "max", label: "循環複雜度上限", value: 10 };
 const cognitive: ItemDef = { kind: "max", label: "認知複雜度上限", value: 15 };
@@ -11,6 +11,58 @@ const ignoredVulns: ItemDef = { kind: "ignoredVulns", label: "忽略的弱點", 
 const bannedApisEmpty: ItemDef = { kind: "list", label: "禁用 API", value: [] };
 
 const mirror = (label: string, value: string): ItemDef => ({ kind: "style", label, value });
+
+/**
+ * TODO(SPEC §12 item 5): PLACEHOLDER tool version ranges. The team has not set the real ranges, nor the exact
+ * golangci-lint version, for team@1.0.0 yet. These only bracket the current major/minor lines so the check can run;
+ * replace every `placeholderRange` with the agreed range before releasing team@1.0.0 (see README「工具版本範圍」).
+ */
+const placeholderRange = (tool: string, range: string, pinnedAs: readonly string[] = [tool]): ItemDef => ({
+  kind: "versionRange",
+  label: `${tool} 版本範圍`,
+  value: range,
+  pinnedAs,
+});
+
+const pythonTools: Record<string, ItemDef> = {
+  "tools.ruff": placeholderRange("ruff", ">=0.17,<0.18"),
+  "tools.mypy": placeholderRange("mypy", ">=1.18,<2"),
+  "tools.pyright": placeholderRange("pyright", ">=1.1.400,<1.2"),
+  "tools.pytest": placeholderRange("pytest", ">=8,<10"),
+  "tools.pytest-cov": placeholderRange("pytest-cov", ">=6,<8"),
+};
+
+const typescriptTools: Record<string, ItemDef> = {
+  "tools.eslint": placeholderRange("eslint", ">=10,<11"),
+  "tools.prettier": placeholderRange("prettier", ">=3,<4"),
+  "tools.typescript": placeholderRange("typescript", ">=6,<7"),
+  "tools.typescript-eslint": placeholderRange("typescript-eslint", ">=8,<9"),
+  "tools.eslint-plugin-sonarjs": placeholderRange("eslint-plugin-sonarjs", ">=3,<4"),
+  "tools.biome": placeholderRange("biome", ">=2,<3", ["@biomejs/biome"]),
+  "tools.vitest": placeholderRange("vitest", ">=5,<6"),
+  "tools.jest": placeholderRange("jest", ">=30,<31"),
+};
+
+const goTools: Record<string, ItemDef> = {
+  // SPEC §5.2 exception: an exact binary from the internal Scoop bucket, checked on PATH. ≥2.12 for gomodguard_v2.
+  "tools.golangci-lint": { ...placeholderRange("golangci-lint", ">=2.12,<3", []), onPath: true },
+  "tools.gofumpt": placeholderRange("gofumpt", ">=0.9,<1", ["mvdan.cc/gofumpt"]),
+  "tools.goimports": placeholderRange("goimports", ">=0.38,<1", ["golang.org/x/tools/cmd/goimports"]),
+  "tools.govulncheck": placeholderRange("govulncheck", ">=1.1,<2", ["golang.org/x/vuln/cmd/govulncheck"]),
+};
+
+const javaTools: Record<string, ItemDef> = {
+  "tools.maven-checkstyle-plugin": placeholderRange("maven-checkstyle-plugin", ">=3.6,<4"),
+  "tools.maven-pmd-plugin": placeholderRange("maven-pmd-plugin", ">=3.26,<4"),
+  "tools.spotless-maven-plugin": placeholderRange("spotless-maven-plugin", ">=2.44,<3"),
+  "tools.jacoco-maven-plugin": placeholderRange("jacoco-maven-plugin", ">=0.8.12,<0.9"),
+  "tools.maven-enforcer-plugin": placeholderRange("maven-enforcer-plugin", ">=3.5,<4"),
+  "tools.spotless-gradle-plugin": placeholderRange("spotless-gradle-plugin", ">=7,<8", ["com.diffplug.spotless"]),
+  // Gradle's built-in plugins pin the tool itself through `toolVersion`.
+  "tools.checkstyle": placeholderRange("checkstyle", ">=10.21,<11"),
+  "tools.pmd": placeholderRange("pmd", ">=7,<8"),
+  "tools.jacoco": placeholderRange("jacoco", ">=0.8.12,<0.9"),
+};
 
 export const team_1_0_0: Standard = {
   id: "team@1.0.0",
@@ -48,6 +100,7 @@ export const team_1_0_0: Standard = {
       "deps.ignoredVulns": ignoredVulns,
       "deps.banned": { kind: "list", label: "禁用套件", value: ["pycrypto", "nose"] },
       "deps.bannedApis": bannedApisEmpty,
+      ...pythonTools,
     },
     go: {
       "go.minVersion": { kind: "minVersion", label: "Go 最低版本", value: "1.26" },
@@ -86,6 +139,7 @@ export const team_1_0_0: Standard = {
         value: ["github.com/pkg/errors", "github.com/golang/protobuf"],
       },
       "deps.bannedApis": { kind: "list", label: "禁用套件 import", value: ["io/ioutil"] },
+      ...goTools,
     },
     typescript: {
       "node.minVersion": { kind: "minVersion", label: "Node 最低版本", value: "22" },
@@ -115,6 +169,7 @@ export const team_1_0_0: Standard = {
       "deps.ignoredVulns": ignoredVulns,
       "deps.banned": { kind: "list", label: "禁用套件", value: ["moment", "request", "node-fetch"] },
       "deps.bannedApis": bannedApisEmpty,
+      ...typescriptTools,
     },
     java: {
       "java.minVersion": { kind: "minVersion", label: "Java 最低版本", value: "17" },
@@ -132,6 +187,7 @@ export const team_1_0_0: Standard = {
       "deps.ignoredVulns": ignoredVulns,
       "deps.banned": { kind: "list", label: "禁用套件", value: ["log4j:log4j", "junit:junit"] },
       "deps.bannedApis": { kind: "list", label: "禁用 API", value: ["sun.*"] },
+      ...javaTools,
     },
   },
 };

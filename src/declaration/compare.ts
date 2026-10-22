@@ -1,5 +1,6 @@
 import { compareVersion } from "../standard/registry.ts";
 import { SEVERITIES, type ItemDef } from "../standard/types.ts";
+import { compareRanges, parseRange } from "../versions/range.ts";
 
 /**
  * How an overriding value relates to the default.
@@ -51,6 +52,14 @@ function compareMinVersion(item: ItemDef, value: unknown): Status {
   return byOrder(compareVersion(value.split(".").map(Number), def.split(".").map(Number)), false);
 }
 
+function compareVersionRange(item: ItemDef, value: unknown): Status {
+  const def = typeof item.value === "string" ? parseRange(item.value) : undefined;
+  const range = typeof value === "string" ? parseRange(value) : undefined;
+  if (!def || !range) return "invalid";
+  const order = compareRanges(range, def);
+  return order === 0 ? "same" : order < 0 ? "stricter" : "looser";
+}
+
 function compareBool(item: ItemDef, value: unknown): Status {
   if (typeof value !== "boolean") return "invalid";
   if (value === item.value) return "same";
@@ -72,6 +81,7 @@ const COMPARERS: Record<ItemDef["kind"], (item: ItemDef, value: unknown) => Stat
   max: compareNumber,
   min: compareNumber,
   minVersion: compareMinVersion,
+  versionRange: compareVersionRange,
   bool: compareBool,
   severity: compareSeverity,
   list: (item, value) => compareList(item.value as string[], value),
