@@ -42,27 +42,27 @@ describe("devguard doctor: check plus the environment layer (SPEC §3.2, §11)",
 });
 
 describe("git hooks installed (SPEC §7.4)", () => {
-  const PRE_COMMIT = ".git/hooks/pre-commit";
+  /** A repo with devguard's intact pre-push hook and the given pre-commit hook. */
+  const withPreCommit = (text: string) =>
+    repo({ ".devguard.yaml": DECL, ".git/hooks/pre-push": renderHookFile("pre-push"), ".git/hooks/pre-commit": text });
 
-  it("passes with devguard's intact hook", async () => {
-    const dir = repo({ ".devguard.yaml": DECL, [PRE_COMMIT]: renderHookFile("pre-commit") });
+  it("passes with devguard's intact hooks", async () => {
+    const dir = withPreCommit(renderHookFile("pre-commit"));
     expect(environment((await runDoctor({ cwd: dir, today: TODAY })).findings)).toEqual([]);
   });
 
   it("reports devguard's hook whose checksum no longer matches", async () => {
-    const edited = renderHookFile("pre-commit").replace("exec devguard", "exec true || devguard");
-    const dir = repo({ ".devguard.yaml": DECL, [PRE_COMMIT]: edited });
+    const dir = withPreCommit(renderHookFile("pre-commit").replace("exec devguard", "exec true || devguard"));
     const findings = environment((await runDoctor({ cwd: dir, today: TODAY })).findings);
     expect(rules(findings)).toEqual(["error:environment/hook-modified"]);
     expect(findings[0]?.fix).toContain("devguard install");
   });
 
   it("accepts a hand-written hook that calls devguard and reports one that does not", async () => {
-    const calling = '#!/bin/sh\nnpm test\nexec devguard hook git-pre-commit "$@"\n';
-    const ok = repo({ ".devguard.yaml": DECL, [PRE_COMMIT]: calling });
+    const ok = withPreCommit('#!/bin/sh\nnpm test\nexec devguard hook git-pre-commit "$@"\n');
     expect(environment((await runDoctor({ cwd: ok, today: TODAY })).findings)).toEqual([]);
 
-    const dir = repo({ ".devguard.yaml": DECL, [PRE_COMMIT]: "#!/bin/sh\nnpm test\n" });
+    const dir = withPreCommit("#!/bin/sh\nnpm test\n");
     const [finding] = environment((await runDoctor({ cwd: dir, today: TODAY })).findings);
     expect(finding).toMatchObject({ level: "error", rule: "environment/hook-foreign" });
     expect(finding?.fix).toContain("devguard hook git-pre-commit");
@@ -99,7 +99,11 @@ function gitConfigSays(line: string): Exec {
 
 describe("core.hooksPath and where it is set (SPEC §7.4)", () => {
   it("finds the hooks under core.hooksPath", async () => {
-    const dir = repo({ ".devguard.yaml": DECL, ".githooks/pre-commit": renderHookFile("pre-commit") });
+    const dir = repo({
+      ".devguard.yaml": DECL,
+      ".githooks/pre-commit": renderHookFile("pre-commit"),
+      ".githooks/pre-push": renderHookFile("pre-push"),
+    });
     execFileSync("git", ["config", "core.hooksPath", ".githooks"], { cwd: dir });
     expect(environment((await runDoctor({ cwd: dir, today: TODAY })).findings)).toEqual([]);
   });
