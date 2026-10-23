@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -13,7 +13,7 @@ function project(declaration?: string): string {
   dirs.push(dir);
   if (declaration !== undefined) writeFileSync(join(dir, ".devguard.yaml"), declaration);
   // Satisfies the deps layer for npm components; the temp dir is not a git repo, so existing counts as committed.
-  writeFileSync(join(dir, "package-lock.json"), "{}");
+  writeFileSync(join(dir, "package-lock.json"), "{}\n");
   return dir;
 }
 
@@ -36,20 +36,36 @@ const DEVIATING = [
   "",
 ].join("\n");
 
-/** Writes TypeScript tool configs that meet team@1.0.0, with the given coverage threshold. */
+const ESLINT_CONFIG = `import tseslint from "typescript-eslint";
+
+// A stand-in for eslint-plugin-sonarjs, which this sample does not install.
+const sonarjs = { rules: { "cognitive-complexity": { meta: { schema: false }, create: () => ({}) } } };
+
+export default tseslint.config({ ignores: ["eslint.config.js"] }, tseslint.configs.strictTypeChecked, {
+  languageOptions: { parserOptions: { projectService: true } },
+  plugins: { sonarjs },
+  rules: { complexity: ["error", 10], "sonarjs/cognitive-complexity": ["error", 15] },
+});
+`;
+
+/**
+ * Writes TypeScript tool configs that meet team@1.0.0, with the given coverage threshold. The configs are clean
+ * under the real ESLint, Prettier and tsc, which run from this repo's node_modules (linked in).
+ */
 function writeTsConfigs(dir: string, coverage: number): void {
   const tsOptions = ["strict", "noUncheckedIndexedAccess", "noImplicitOverride", "noFallthroughCasesInSwitch"];
   const thresholds = ["lines", "branches", "functions", "statements"]
     .map((k) => `${k}: ${String(coverage)}`)
     .join(", ");
+  const compilerOptions = { ...Object.fromEntries(tsOptions.map((o) => [o, true])), types: [] };
   const files: Record<string, string> = {
-    "tsconfig.json": JSON.stringify({ compilerOptions: Object.fromEntries(tsOptions.map((o) => [o, true])) }),
-    ".prettierrc": '{ "printWidth": 120, "endOfLine": "lf" }',
-    "eslint.config.js":
-      'export default [tseslint.configs.strictTypeChecked, { rules: { complexity: ["error", 10], "sonarjs/cognitive-complexity": ["error", 15] } }];',
-    "vitest.config.ts": `export default { test: { coverage: { thresholds: { ${thresholds} } } } };`,
+    "tsconfig.json": `${JSON.stringify({ compilerOptions }, null, 2)}\n`,
+    ".prettierrc": '{ "printWidth": 120, "endOfLine": "lf" }\n',
+    "eslint.config.js": ESLINT_CONFIG,
+    "vitest.config.ts": `export default { test: { coverage: { thresholds: { ${thresholds} } } } };\n`,
   };
   for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text);
+  symlinkSync(join(import.meta.dirname, "..", "node_modules"), join(dir, "node_modules"), "junction");
 }
 
 /** DEVIATING plus web/ tool configs that match it, so the deviation is the only finding. */
@@ -61,9 +77,9 @@ function deviatingProject(): string {
   return dir;
 }
 
-describe("devguard check", () => {
+describe("devguard check", { timeout: 60_000 }, () => {
   it("exits 0 for a clean declaration", () => {
-    const dir = project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: typescript}\n");
+    const dir = project("standard: team@1.0.0\ncomponents:\n  - { path: ./, language: typescript }\n");
     writeTsConfigs(dir, 80);
     const r = run(["check", "--cwd", dir]);
     expect(r.code).toBe(0);
@@ -100,20 +116,38 @@ describe("devguard check", () => {
     expect(run([]).code).toBe(2);
   });
 
+  it("rejects an unknown --only category and --full together with files", () => {
+    const dir = project("standard: team@1.0.0\ncomponents: []\n");
+    const bad = run(["check", "--cwd", dir, "--only", "speling"]);
+    expect(bad.code).toBe(2);
+    expect(bad.err).toContain("lint|format|typecheck");
+    expect(run(["check", "--cwd", dir, "--full", join(dir, "a.ts")]).code).toBe(2);
+    expect(run(["check", "--cwd", dir, join(tmpdir(), "elsewhere.ts")]).code).toBe(2);
+  });
+
+  it("exits 2 with `npm ci` when the TypeScript tools are not installed", () => {
+    const dir = project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: typescript}\n");
+    writeFileSync(join(dir, "a.ts"), "export const a = 1;\n");
+    const r = run(["check", "--cwd", dir, "--only", "lint", join(dir, "a.ts")]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("eslint");
+    expect(r.err).toContain("npm ci");
+  });
+
   it("prints the version and help", () => {
     expect(run(["--version"]).out).toBe("devguard 0.1.0\n");
     expect(run(["--help"]).code).toBe(0);
   });
 });
 
-describe("devguard draft", () => {
+describe("devguard draft", { timeout: 60_000 }, () => {
   /** A project with no declaration whose web/ TypeScript component has a coverage threshold of 60. */
   function undeclared(): string {
     const dir = project();
     const web = join(dir, "web");
     mkdirSync(join(web, "src"), { recursive: true });
     writeTsConfigs(web, 60);
-    writeFileSync(join(web, "package.json"), "{}");
+    writeFileSync(join(web, "package.json"), "{}\n");
     writeFileSync(join(web, "src", "app.ts"), "");
     return dir;
   }

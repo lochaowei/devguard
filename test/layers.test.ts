@@ -33,12 +33,14 @@ describe("runCheck", () => {
     expect(r.findings).toEqual([]);
     expect(CHECK_LAYERS.map((l) => l.id)).toEqual([
       "declaration",
+      "uncovered-files",
       "python-settings",
       "settings-go",
       "settings-java",
       "deps",
       "settings-typescript",
       "tool-versions",
+      "code",
     ]);
   });
 
