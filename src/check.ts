@@ -12,6 +12,7 @@ import { toolVersionsLayer } from "./layers/tool-versions.ts";
 import type { CheckLayer, CheckScope, LayerContext } from "./layers/types.ts";
 import { uncoveredFilesLayer } from "./layers/uncovered.ts";
 import { vscodeFixLayer, vscodeLayer } from "./layers/vscode.ts";
+import { vulnLayer } from "./layers/vuln.ts";
 import type { Finding } from "./report/finding.ts";
 import type { ReportInput } from "./report/render.ts";
 import { listRepoFiles } from "./repo/files.ts";
@@ -37,8 +38,9 @@ export const CHECK_LAYERS: readonly CheckLayer[] = [
   vscodeLayer,
   // Layers above check the setup; code checks run last.
   codeLayer,
-  // Tests and coverage run only with --full.
+  // Tests, coverage and vulnerability scans run only with --full.
   testsLayer,
+  vulnLayer,
 ];
 
 /**
@@ -105,11 +107,12 @@ export function checkDeclaration(cwd: string, today: string): Promise<CheckResul
 }
 
 /**
- * Tests and coverage alone, as `check --full` runs them (SPEC §7.1, for the pre-push hook): the declaration layer,
- * then each component's tests. Test failures and coverage below the declared threshold are separate errors.
+ * Tests, coverage and vulnerability scans alone, as `check --full` runs them (SPEC §7.1, for the pre-push hook): the
+ * declaration layer, then each component's tests, then the scans of components with `deps.vulnScan` on. Test failures
+ * and coverage below the declared threshold are separate errors.
  */
 export function checkTestsAndCoverage(options: Omit<CheckOptions, "scope">): Promise<CheckResult> {
-  return runCheck({ ...options, scope: { full: true } }, [declarationLayer, testsLayer]);
+  return runCheck({ ...options, scope: { full: true } }, [declarationLayer, testsLayer, vulnLayer]);
 }
 
 export function localDate(now = new Date()): string {

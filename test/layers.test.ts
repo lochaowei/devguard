@@ -45,6 +45,7 @@ describe("runCheck", () => {
       "vscode",
       "code",
       "tests",
+      "vuln",
     ]);
   });
 
