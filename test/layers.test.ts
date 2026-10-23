@@ -44,6 +44,7 @@ describe("runCheck", () => {
       "gitattributes",
       "code",
       "tests",
+      "vuln",
     ]);
   });
 

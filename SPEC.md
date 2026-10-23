@@ -491,6 +491,8 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 | `mirrors.go` | `https://nexus.example.internal/repository/go-proxy/` |
 | `mirrors.gosumdb` | `https://nexus.example.internal/repository/go-sumdb-proxy/`（raw proxy，指向 `https://sum.golang.org`，需關閉 Strict Content Type Validation） |
 | `mirrors.govulndb` | `https://nexus.example.internal/repository/go-vulndb-proxy/`（raw proxy，指向 `https://vuln.go.dev`；只在開啟弱點掃描時使用） |
+| `mirrors.osv` | `https://osv.example.internal/v1/query`（OSV 相容的查詢端點，給 `pip-audit -s osv --osv-url` 使用；Nexus raw proxy 無法代理 POST，需自架或由轉送代理放行；只在開啟弱點掃描時使用） |
+| `mirrors.nvd` | `https://nexus.example.internal/repository/nvd-mirror/`（raw hosted，放 vulnz 產生的 `nvdcve-*.json.gz`；Dependency-Check 的 `nvdDatafeedUrl` 為 `<mirrors.nvd>nvdcve-{0}.json.gz`；只在開啟弱點掃描時使用） |
 | `mirrors.maven` | `https://nexus.example.internal/repository/maven-public/` |
 | `mirrors.tools` | `https://nexus.example.internal/repository/raw-tools/` |
 | `mirrors.vscode` | `https://vsmarketplace.example.internal`（公司內部 marketplace） |
