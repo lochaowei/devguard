@@ -4,7 +4,7 @@ import { codeLayer } from "./layers/code.ts";
 import { declarationLayer } from "./layers/declaration.ts";
 import { depsLayer } from "./layers/deps.ts";
 import { gitattributesLayer } from "./layers/gitattributes.ts";
-import { pythonSettingsLayer } from "./layers/python-settings.ts";
+import { pythonSettingsLayer } from "./layers/settings-python.ts";
 import { goSettingsLayer } from "./layers/settings-go.ts";
 import { mirrorsLayer } from "./layers/mirrors.ts";
 import { javaSettingsLayer } from "./layers/settings-java.ts";

@@ -49,7 +49,7 @@ export async function checkLombok(t: JavaTarget): Promise<Finding[]> {
   const repairs: Repair[] = [{ op: "line", file, value: LINE }];
   const message = `專案使用 Lombok，但 lombok.config 沒有 ${LINE}：Lombok 產生的程式碼會計入覆蓋率`;
   return [
-    finding(t, "error", "java/lombok-generated-annotation", message, {
+    finding(t, "error", "settings/lombok-generated-annotation", message, {
       file,
       fix: fixText(`在 ${file} 加上 ${LINE}`, repairs),
       repairs,

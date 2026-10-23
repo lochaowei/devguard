@@ -63,7 +63,7 @@ describe("doctor: Claude Code environment (SPEC §7.3)", () => {
   });
 
   it("reports a Claude Code older than claude.minVersion as an error", async () => {
-    const dir = repo({ ...SETUP, ".git/standards-guard/claude-last-seen": "x\n" });
+    const dir = repo({ ...SETUP, ".git/devguard/claude-last-seen": "x\n" });
     const findings = await environment(dir, claude("2.1.200"));
     expect(rules(findings)).toEqual(["error:environment/claude-version"]);
     expect(findings[0]?.message).toContain("2.1.295");
@@ -71,7 +71,7 @@ describe("doctor: Claude Code environment (SPEC §7.3)", () => {
   });
 
   it("passes once the version is new enough and the hooks have run", async () => {
-    const dir = repo({ ...SETUP, ".git/standards-guard/claude-last-seen": "x\n" });
+    const dir = repo({ ...SETUP, ".git/devguard/claude-last-seen": "x\n" });
     expect(await environment(dir, claude("2.1.309"))).toEqual([]);
   });
 
@@ -81,8 +81,13 @@ describe("doctor: Claude Code environment (SPEC §7.3)", () => {
     expect(findings[0]?.message).toContain("尚未信任此資料夾");
   });
 
-  it("hints when the claude command is not found", async () => {
+  it("still accepts claude-last-seen where earlier versions wrote it (.git/standards-guard/)", async () => {
     const dir = repo({ ...SETUP, ".git/standards-guard/claude-last-seen": "x\n" });
+    expect(await environment(dir, claude("2.1.309"))).toEqual([]);
+  });
+
+  it("hints when the claude command is not found", async () => {
+    const dir = repo({ ...SETUP, ".git/devguard/claude-last-seen": "x\n" });
     expect(rules(await environment(dir, claude(undefined)))).toEqual(["hint:environment/claude-missing"]);
   });
 });

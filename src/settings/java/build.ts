@@ -36,7 +36,7 @@ export function checkWrapper(t: JavaTarget): Finding[] {
     finding(
       t,
       "error",
-      "java/wrapper-missing",
+      "settings/wrapper-missing",
       `沒有提交 ${wrapper.label} wrapper（${wrapper.files.join(" / ")}），CLI 一律透過 wrapper 呼叫建置工具`,
       { fix: wrapper.fix },
     ),

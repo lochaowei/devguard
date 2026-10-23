@@ -1,9 +1,9 @@
-import { compareToDefault } from "../declaration/compare.ts";
 import type { ResolvedComponent } from "../declaration/resolve.ts";
 import { fixText } from "../fix/category.ts";
 import type { KeyPath, Repair } from "../fix/repair.ts";
 import type { Finding, Level } from "../report/finding.ts";
 import { compareVersion } from "../standard/registry.ts";
+import { judgeConfigValue, setAt } from "./judge.ts";
 import type { ItemDef } from "../standard/types.ts";
 
 type Table = Record<string, unknown>;
@@ -73,7 +73,7 @@ class Report {
     this.findings.push({
       level,
       layer: "config",
-      rule: `python-settings/${rule}`,
+      rule: `settings/${rule}`,
       message,
       component: this.component.name,
       file: this.file,
@@ -92,46 +92,25 @@ class Report {
     return { op: "set", file: this.file, path, value };
   }
 
-  /** How a setting goes back to the declared value; settings outside [tool.*] are not the CLI's to change. */
-  private putBack(
-    name: string,
-    declared: unknown,
-    path: KeyPath | undefined,
-    toFile: Setting["toFile"],
-  ): { detail: string; repairs: Repair[] } {
-    if (!path) return { detail: `把 ${name} 改成符合 ${fmt(declared)}（不在 [tool.*]，CLI 不修改）`, repairs: [] };
-    const back = toFile ? toFile(declared) : declared;
-    return { detail: `把 ${name} 改為 ${fmt(back)}`, repairs: [this.set(path, back)] };
-  }
-
-  /** Judges a tool setting against the declaration with the standard item's kind (SPEC §4.2, §8). */
+  /** Judges a tool setting against the declaration (or the project's own bar) through the shared judge (SPEC §8). */
   compare({ name, key, value, toolDefault, path, toFile }: Setting, bar?: Bar): void {
     const item = this.defs[key];
     if (!item) return;
-    const declared = bar ? bar.value : this.want(key);
-    const shown = toolDefault ? `未設定（${toolDefault} ${fmt(value)}）` : fmt(value);
-    const basis = bar ? `專案 ${bar.source} 的` : "宣告的";
-    const what = `${name} 為 ${shown}，${basis}「${item.label}」是 ${fmt(declared)}`;
-    const { detail, repairs } = this.putBack(name, declared, path, toFile);
-    const observed = { key, value };
-    switch (compareToDefault({ ...item, value: declared as ItemDef["value"] }, value)) {
-      case "invalid":
-        this.fixable("invalid-setting", `${name} 的值 ${fmt(value)} 無法辨識`, detail, repairs);
-        return;
-      case "looser":
-        this.fixable("looser", `${what}：設定檔比宣告寬鬆`, detail, repairs, observed);
-        return;
-      case "stricter":
-        this.add("hint", "stricter", `${what}：設定檔比宣告嚴格，建議把宣告同步成 ${fmt(value)}`, undefined, {
-          observed,
-        });
-        return;
-      case "different":
-        this.fixable("style-mismatch", `${what}：與宣告不一致`, detail, repairs, observed);
-        return;
-      default:
-        return;
-    }
+    // Settings outside [tool.*] (requires-python) are not the CLI's to change: no repair.
+    const repair = path ? setAt(this.file, path, toFile) : undefined;
+    const finding = judgeConfigValue({
+      key,
+      item,
+      declared: this.component.effective[key],
+      actual: value,
+      site: { component: this.component.name, file: this.file },
+      label: name,
+      repair,
+      reportInvalid: true,
+      ...(toolDefault ? { toolDefault } : {}),
+      ...(bar ? { bar } : {}),
+    });
+    if (finding) this.findings.push(finding);
   }
 }
 

@@ -30,7 +30,7 @@ function checkIllegalImport(t: JavaTarget, file: string, module: XmlEl): Finding
       finding(
         t,
         "hint",
-        "java/config-value-unreadable",
+        "settings/config-value-unreadable",
         `${file}：IllegalImport 使用 regexp，無法確認是否涵蓋禁用 API`,
         {
           file,
@@ -56,7 +56,7 @@ function checkIllegalImport(t: JavaTarget, file: string, module: XmlEl): Finding
     finding(
       t,
       "error",
-      "java/banned-api-not-enforced",
+      "settings/banned-api-not-enforced",
       `${file}：IllegalImport 沒有涵蓋禁用 API ${missing.join("、")}`,
       { file, line: module.line, ...generated(t, file) },
     ),
@@ -64,7 +64,7 @@ function checkIllegalImport(t: JavaTarget, file: string, module: XmlEl): Finding
 }
 
 function moduleMissing(t: JavaTarget, file: string, name: string, why: string): Finding {
-  return finding(t, "error", "java/checkstyle-module-missing", `${file}：缺少 Checkstyle 的 ${name}（${why}）`, {
+  return finding(t, "error", "settings/checkstyle-module-missing", `${file}：缺少 Checkstyle 的 ${name}（${why}）`, {
     file,
     ...generated(t, file),
   });
@@ -75,7 +75,7 @@ export async function checkCheckstyle(t: JavaTarget): Promise<Finding[]> {
   const file = findConfig(t, CHECKSTYLE_FILES);
   if (!file) {
     return [
-      finding(t, "error", "java/checkstyle-missing", `找不到 Checkstyle 設定（${CHECKSTYLE_FILES.join(" 或 ")}）`, {
+      finding(t, "error", "settings/checkstyle-missing", `找不到 Checkstyle 設定（${CHECKSTYLE_FILES.join(" 或 ")}）`, {
         ...generated(t, t.component.dir + CHECKSTYLE_FILES[0]),
       }),
     ];

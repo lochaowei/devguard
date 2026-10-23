@@ -1,5 +1,5 @@
 import { stat } from "node:fs/promises";
-import { hasClaudeSetup, lastSeenPath } from "../claude/setup.ts";
+import { hasClaudeSetup, lastSeenPath, LEGACY_LAST_SEEN } from "../claude/setup.ts";
 import type { Exec, ExecResult } from "../process/exec.ts";
 import type { Finding, Level } from "../report/finding.ts";
 import { compareVersion } from "../standard/registry.ts";
@@ -71,6 +71,8 @@ async function versionProblem({ cwd, exec, resolution }: EnvironmentContext): Pr
 async function neverRan({ cwd, exec }: EnvironmentContext): Promise<Finding[]> {
   const seen = await lastSeenPath(cwd, exec);
   if (!seen || (await exists(seen))) return [];
+  const legacy = await lastSeenPath(cwd, exec, LEGACY_LAST_SEEN);
+  if (legacy && (await exists(legacy))) return [];
   return [
     finding(
       "hint",

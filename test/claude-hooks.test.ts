@@ -233,7 +233,7 @@ describe("devguard hook claude-session-start (SPEC §7.3)", () => {
       source: "startup",
     });
     expect(code).toBe(0);
-    expect(existsSync(join(dir, ".git/standards-guard/claude-last-seen"))).toBe(true);
+    expect(existsSync(join(dir, ".git/devguard/claude-last-seen"))).toBe(true);
     // No git hooks installed: doctor --quiet reports it.
     expect(stdout).toContain("environment/hook-missing");
     expect(stdout).not.toContain("提示 ");

@@ -35,7 +35,7 @@ describe("runCheck", () => {
     expect(CHECK_LAYERS.map((l) => l.id)).toEqual([
       "declaration",
       "uncovered-files",
-      "python-settings",
+      "settings-python",
       "settings-go",
       "settings-java",
       "deps",

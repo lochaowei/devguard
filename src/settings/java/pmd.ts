@@ -33,7 +33,7 @@ export async function checkPmd(t: JavaTarget): Promise<Finding[]> {
       finding(
         t,
         "error",
-        "java/pmd-missing",
+        "settings/pmd-missing",
         `找不到 PMD 規則集（${PMD_FILES.join("、")}）`,
         generated(t, t.component.dir + PMD_FILES[0]),
       ),
@@ -44,7 +44,7 @@ export async function checkPmd(t: JavaTarget): Promise<Finding[]> {
   const rule = findRule(root);
   if (!rule) {
     return [
-      finding(t, "error", "java/pmd-rule-missing", `${file}：缺少 PMD 的 ${RULE}（complexity.cognitive）`, {
+      finding(t, "error", "settings/pmd-rule-missing", `${file}：缺少 PMD 的 ${RULE}（complexity.cognitive）`, {
         file,
         ...generated(t, file),
       }),

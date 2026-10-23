@@ -181,10 +181,12 @@ export async function hasClaudeSetup(cwd: string): Promise<boolean> {
 }
 
 /** Where SessionStart records that Claude Code ran devguard's hooks here (SPEC §7.3), inside the git directory. */
-export const LAST_SEEN = "standards-guard/claude-last-seen";
+export const LAST_SEEN = "devguard/claude-last-seen";
+/** Where versions before the rename to devguard wrote it; still read so an existing record keeps counting. */
+export const LEGACY_LAST_SEEN = "standards-guard/claude-last-seen";
 
-/** The absolute path of `claude-last-seen`, or undefined outside a git repo. */
-export async function lastSeenPath(cwd: string, exec: Exec = nodeExec): Promise<string | undefined> {
-  const r = await exec({ file: "git", args: ["rev-parse", "--git-path", LAST_SEEN], cwd });
+/** The absolute path of `claude-last-seen` (or of `name` in the git directory), or undefined outside a git repo. */
+export async function lastSeenPath(cwd: string, exec: Exec = nodeExec, name = LAST_SEEN): Promise<string | undefined> {
+  const r = await exec({ file: "git", args: ["rev-parse", "--git-path", name], cwd });
   return r.code === 0 ? resolve(cwd, r.stdout.trim()) : undefined;
 }

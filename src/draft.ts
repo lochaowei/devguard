@@ -7,7 +7,7 @@ import { compareToDefault } from "./declaration/compare.ts";
 import { displayDir, normalizePath } from "./declaration/path.ts";
 import { resolveDeclaration, type Resolution } from "./declaration/resolve.ts";
 import { DECLARATION_FILE } from "./declaration/types.ts";
-import { pythonSettingsLayer } from "./layers/python-settings.ts";
+import { pythonSettingsLayer } from "./layers/settings-python.ts";
 import { goSettingsLayer } from "./layers/settings-go.ts";
 import { javaSettingsLayer } from "./layers/settings-java.ts";
 import { typescriptSettingsLayer } from "./layers/settings-typescript.ts";
