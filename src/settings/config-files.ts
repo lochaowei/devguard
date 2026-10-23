@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { parse as parseJsoncTree, type ParseError } from "jsonc-parser";
 import { readIfExists } from "../shared/fs.ts";
 import { isRecord } from "../shared/guards.ts";
 
@@ -16,42 +17,11 @@ export async function findFirst(dir: string, names: readonly string[]): Promise<
   return undefined;
 }
 
-/** Drops comments and trailing commas outside strings, so JSONC (tsconfig, biome.jsonc) parses as JSON. */
-function stripJsonc(text: string): string {
-  let out = "";
-  let i = 0;
-  while (i < text.length) {
-    const c = text.charAt(i);
-    if (c === '"') {
-      const end = endOfString(text, i);
-      out += text.slice(i, end);
-      i = end;
-    } else if (text.startsWith("//", i)) {
-      while (i < text.length && text.charAt(i) !== "\n") i++;
-    } else if (text.startsWith("/*", i)) {
-      const end = text.indexOf("*/", i + 2);
-      i = end < 0 ? text.length : end + 2;
-    } else {
-      out += c;
-      i++;
-    }
-  }
-  return out.replace(/,(\s*[}\]])/g, "$1");
-}
-
-function endOfString(text: string, start: number): number {
-  let i = start + 1;
-  while (i < text.length && text.charAt(i) !== '"') i += text.charAt(i) === "\\" ? 2 : 1;
-  return i + 1;
-}
-
 /** Parses JSON with comments and trailing commas; undefined when it is not valid. */
 export function parseJsonc(text: string): unknown {
-  try {
-    return JSON.parse(stripJsonc(text)) as unknown;
-  } catch {
-    return undefined;
-  }
+  const errors: ParseError[] = [];
+  const value = parseJsoncTree(text, errors, { allowTrailingComma: true }) as unknown;
+  return errors.length === 0 ? value : undefined;
 }
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");

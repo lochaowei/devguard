@@ -250,9 +250,7 @@ describe("python settings layer", () => {
         declarationLayer,
         pythonSettingsLayer,
       ]);
-      expect(r.findings).toEqual([
-        expect.objectContaining({ level: "error", rule: "settings/ruff-test-asserts" }),
-      ]);
+      expect(r.findings).toEqual([expect.objectContaining({ level: "error", rule: "settings/ruff-test-asserts" })]);
       const ignores = ["tool", "ruff", "lint", "per-file-ignores"];
       expect(r.findings[0]?.repairs).toEqual([
         { op: "set", file: "pyproject.toml", path: [...ignores, "**/tests/**"], value: ["S101"] },

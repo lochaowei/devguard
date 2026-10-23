@@ -276,7 +276,9 @@ describe("PMD settings", () => {
   });
 
   it("reports a malformed ruleset", async () => {
-    expect(rules(await check({ ...GOOD, "pmd-ruleset.xml": "<ruleset>" }))).toEqual(["error:settings/config-unparseable"]);
+    expect(rules(await check({ ...GOOD, "pmd-ruleset.xml": "<ruleset>" }))).toEqual([
+      "error:settings/config-unparseable",
+    ]);
   });
 });
 

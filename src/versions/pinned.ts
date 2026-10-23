@@ -1,9 +1,12 @@
 import type { Language } from "../standard/types.ts";
+import { parseConfigText } from "../fix/edit.ts";
 import { upwards } from "../repo/paths.ts";
+import { isRecord } from "../shared/guards.ts";
+import { child, descendants, parseXmlText } from "../xml/parse.ts";
 
 /**
- * Exact versions a component pins through its own dependency manager (SPEC §5.2). Self-contained line readers:
- * they only pick out names and versions, and do not validate the files.
+ * Exact versions a component pins through its own dependency manager (SPEC §5.2). Lockfiles and pom.xml are read with
+ * the same TOML / XML parsers as the settings checks; go.mod and Gradle scripts (not TOML / XML) by line.
  */
 export interface Pinned {
   /** Repo-relative path of the file the versions came from. */
@@ -17,14 +20,13 @@ export type ReadRepoFile = (path: string) => string | undefined;
 
 /** `[[package]]` tables with `name` and `version` keys: uv.lock and poetry.lock. */
 export function readPackageTables(text: string): Map<string, string> {
-  const versions = new Map<string, string>();
-  for (const block of text.split(/^\[\[package\]\]\s*$/m).slice(1)) {
-    const field = (key: string) => new RegExp(`^${key}\\s*=\\s*"([^"]*)"`, "m").exec(block)?.[1];
-    const name = field("name");
-    const version = field("version");
-    if (name && version) versions.set(name, version);
-  }
-  return versions;
+  const doc = parseConfigText("x.lock.toml", text);
+  const packages = isRecord(doc) && Array.isArray(doc.package) ? doc.package : [];
+  return new Map(
+    packages.flatMap((p): [string, string][] =>
+      isRecord(p) && typeof p.name === "string" && typeof p.version === "string" ? [[p.name, p.version]] : [],
+    ),
+  );
 }
 
 function python(dir: string, read: ReadRepoFile): Pinned | undefined {
@@ -107,33 +109,20 @@ function go(dir: string, read: ReadRepoFile): Pinned | undefined {
   return text === undefined ? undefined : { file, versions: readGoModTools(text) };
 }
 
-const tag = (xml: string, name: string): string | undefined =>
-  new RegExp(`<${name}>\\s*([^<]*?)\\s*</${name}>`).exec(xml)?.[1];
-
-/** `<plugin>` artifactId → version in a pom.xml; `${property}` versions resolve from `<properties>`. */
+/** `<plugin>` artifactId → version in a pom.xml; `${property}` versions resolve from the POM's `<properties>`. */
 export function readMavenPlugins(text: string): Map<string, string> {
-  const xml = text.replace(/<!--[\s\S]*?-->/g, "");
-  const properties = mavenProperties(xml);
+  const parsed = parseXmlText(text);
+  if (!parsed.ok) return new Map();
+  const properties = new Map((child(parsed.root, "properties")?.children ?? []).map((e) => [e.name, e.text.trim()]));
   const versions = new Map<string, string>();
-  for (const [, body = ""] of xml.matchAll(/<plugin>([\s\S]*?)<\/plugin>/g)) {
-    const own = body.replace(/<(dependencies|configuration|executions)>[\s\S]*?<\/\1>/g, "");
-    const artifact = tag(own, "artifactId");
-    const version = tag(own, "version")?.replace(
-      /^\$\{([^}]+)\}$/,
-      (whole, key: string) => properties.get(key) ?? whole,
-    );
+  for (const plugin of descendants(parsed.root, "plugin")) {
+    const artifact = child(plugin, "artifactId")?.text.trim();
+    const version = child(plugin, "version")
+      ?.text.trim()
+      .replace(/^\$\{([^}]+)\}$/, (whole, key: string) => properties.get(key) ?? whole);
     if (artifact && version && !version.startsWith("${")) versions.set(artifact, version);
   }
   return versions;
-}
-
-function mavenProperties(xml: string): Map<string, string> {
-  const properties = new Map<string, string>();
-  for (const block of xml.match(/<properties>[\s\S]*?<\/properties>/g) ?? []) {
-    for (const [, key = "", value = ""] of block.matchAll(/<([\w.-]+)>\s*([^<]*?)\s*<\/\1>/g))
-      properties.set(key, value);
-  }
-  return properties;
 }
 
 const GRADLE_PLUGIN = /\bid\s*\(?\s*["']([^"']+)["']\s*\)?\s*version\s*\(?\s*["']([^"']+)["']/g;

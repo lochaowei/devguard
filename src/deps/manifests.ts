@@ -1,5 +1,7 @@
 import type { Language } from "../standard/types.ts";
-import { lineAt } from "../shared/guards.ts";
+import { parseConfigText } from "../fix/edit.ts";
+import { isRecord } from "../shared/guards.ts";
+import { child, descendants, parseXmlText } from "../xml/parse.ts";
 
 /** A direct dependency as written in a manifest. */
 export interface Dependency {
@@ -16,49 +18,56 @@ type Read = (path: string) => Promise<string | undefined>;
 const pyName = (name: string) => name.toLowerCase().replace(/[-_.]+/g, "-");
 
 const PY_REQ = /^\s*([A-Za-z0-9][A-Za-z0-9._-]*)/;
-const POETRY_TABLE = /^tool\.poetry\.(dependencies|dev-dependencies|group\.[^.]+\.dependencies)$/;
-const ARRAY_TABLES = new Set(["project.optional-dependencies", "dependency-groups"]);
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Requirement strings in a TOML array fragment; inline tables (`{include-group = ...}`) are skipped. */
-function requirementNames(fragment: string): string[] {
-  const strings = [...fragment.replace(/\{[^}]*\}/g, "").matchAll(/"([^"]*)"|'([^']*)'/g)];
-  return strings.flatMap((m) => PY_REQ.exec(m[1] ?? m[2] ?? "")?.[1] ?? []);
+/** The name a PEP 508 requirement string starts with. */
+const requirementName = (spec: unknown): string[] => {
+  const name = typeof spec === "string" ? PY_REQ.exec(spec)?.[1] : undefined;
+  return name ? [name] : [];
+};
+
+const requirementList = (v: unknown): string[] => (Array.isArray(v) ? v.flatMap(requirementName) : []);
+
+/** Poetry dependency tables: the keys, except `python` itself. */
+const poetryTable = (v: unknown): string[] => (isRecord(v) ? Object.keys(v).filter((k) => k !== "python") : []);
+
+/** Direct dependency names in a parsed pyproject.toml, in file order of their tables. */
+function pyprojectNames(doc: Record<string, unknown>): string[] {
+  const project = isRecord(doc.project) ? doc.project : {};
+  const optional = isRecord(project["optional-dependencies"]) ? project["optional-dependencies"] : {};
+  const groups = isRecord(doc["dependency-groups"]) ? doc["dependency-groups"] : {};
+  const tool = isRecord(doc.tool) ? doc.tool : {};
+  const poetry = isRecord(tool.poetry) ? tool.poetry : {};
+  const poetryGroups = isRecord(poetry.group) ? Object.values(poetry.group) : [];
+  return [
+    ...requirementList(project.dependencies),
+    ...Object.values(optional).flatMap(requirementList),
+    // Inline tables such as {include-group = "..."} are not dependencies.
+    ...Object.values(groups).flatMap(requirementList),
+    ...poetryTable(poetry.dependencies),
+    ...poetryTable(poetry["dev-dependencies"]),
+    ...poetryGroups.flatMap((g) => (isRecord(g) ? poetryTable(g.dependencies) : [])),
+  ];
 }
 
 /**
  * Direct dependencies in pyproject.toml: `[project] dependencies`, optional dependencies, dependency groups and
- * Poetry dependency tables. A line-based reader, enough for these tables; not a TOML parser.
+ * Poetry dependency tables, read with the TOML parser `fix` uses. Each is located at the next line naming it.
  */
 export function pyprojectDependencies(text: string, file: string): Dependency[] {
-  const state = { table: "", inArray: false };
-  return text
-    .split(/\r?\n/)
-    .flatMap((raw, i) =>
-      pyprojectLine(state, raw.replace(/\s#.*$|^#.*$/, "").trim()).map((name) => ({ name, file, line: i + 1 })),
-    );
-}
-
-/** Dependency names on one pyproject.toml line; tracks the current table and open arrays in `state`. */
-function pyprojectLine(state: { table: string; inArray: boolean }, line: string): string[] {
-  if (state.inArray) {
-    state.inArray = !line.includes("]");
-    return requirementNames(line);
-  }
-  const header = /^\[\[?\s*([^\]]+?)\s*\]\]?$/.exec(line);
-  if (header) {
-    state.table = (header[1] ?? "").replace(/"/g, "");
-    return [];
-  }
-  const kv = /^("[^"]+"|'[^']+'|[\w.-]+)\s*=\s*(.*)$/.exec(line);
-  return kv ? pyprojectEntry(state, (kv[1] ?? "").replace(/["']/g, ""), kv[2] ?? "") : [];
-}
-
-function pyprojectEntry(state: { table: string; inArray: boolean }, key: string, value: string): string[] {
-  if (POETRY_TABLE.test(state.table)) return key === "python" ? [] : [key];
-  const isArray = (state.table === "project" && key === "dependencies") || ARRAY_TABLES.has(state.table);
-  if (!isArray || !value.startsWith("[")) return [];
-  state.inArray = !value.includes("]");
-  return requirementNames(value);
+  const doc = parseConfigText("pyproject.toml", text);
+  if (!isRecord(doc)) return [];
+  const lines = text.split(/\r?\n/);
+  const seen = new Map<string, number>();
+  return pyprojectNames(doc).map((name) => {
+    // A Poetry key (`name = ...`) or a requirement string, not a value such as {include-group = "name"}.
+    const id = escapeRegExp(name);
+    const named = new RegExp(`^\\s*(["']?)${id}\\1\\s*=|(?<!=\\s*)["']${id}(?![A-Za-z0-9_.-])`);
+    const from = seen.get(name) ?? 0;
+    const at = lines.findIndex((l, i) => i >= from && !l.trimStart().startsWith("#") && named.test(l));
+    seen.set(name, at + 1);
+    return { name, file, line: at + 1 };
+  });
 }
 
 export function requirementsDependencies(text: string, file: string): Dependency[] {
@@ -111,13 +120,14 @@ export function goModDependencies(text: string, file: string): Dependency[] {
   return deps;
 }
 
+/** `<dependency>` coordinates in a pom.xml, read with the XML parser the Java settings use. */
 export function pomDependencies(text: string, file: string): Dependency[] {
-  const xml = text.replace(/<!--[\s\S]*?-->/g, (c) => c.replace(/[^\n]/g, ""));
-  return [...xml.matchAll(/<dependency>([\s\S]*?)<\/dependency>/g)].flatMap((m) => {
-    const body = m[1] ?? "";
-    const group = /<groupId>\s*([^<\s]+)\s*<\/groupId>/.exec(body)?.[1];
-    const artifact = /<artifactId>\s*([^<\s]+)\s*<\/artifactId>/.exec(body)?.[1];
-    return group && artifact ? [{ name: `${group}:${artifact}`, file, line: lineAt(xml, m.index) }] : [];
+  const parsed = parseXmlText(text);
+  if (!parsed.ok) return [];
+  return descendants(parsed.root, "dependency").flatMap((d) => {
+    const group = child(d, "groupId")?.text.trim();
+    const artifact = child(d, "artifactId")?.text.trim();
+    return group && artifact ? [{ name: `${group}:${artifact}`, file, line: d.line }] : [];
   });
 }
 
