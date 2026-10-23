@@ -5,6 +5,7 @@ import { pythonSettingsLayer } from "./layers/python-settings.ts";
 import { goSettingsLayer } from "./layers/settings-go.ts";
 import { javaSettingsLayer } from "./layers/settings-java.ts";
 import { typescriptSettingsLayer } from "./layers/settings-typescript.ts";
+import { toolVersionsLayer } from "./layers/tool-versions.ts";
 import type { CheckLayer, LayerContext } from "./layers/types.ts";
 import type { Finding } from "./report/finding.ts";
 import type { ReportInput } from "./report/render.ts";
@@ -25,6 +26,7 @@ export const CHECK_LAYERS: readonly CheckLayer[] = [
   javaSettingsLayer,
   depsLayer,
   typescriptSettingsLayer,
+  toolVersionsLayer,
 ];
 
 export interface CheckOptions {

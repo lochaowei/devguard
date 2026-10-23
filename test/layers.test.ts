@@ -20,11 +20,14 @@ function project(declaration: string): string {
 }
 
 const GO = "standard: team@1.0.0\ncomponents:\n  - {path: ./, language: go}\n";
-const tidyGo: ToolRunner = { run: () => Promise.resolve({ code: 0, stdout: "", stderr: "" }) };
+/** A clean `go mod tidy -diff`, and golangci-lint on PATH inside the standard's range. */
+const goTools: ToolRunner = {
+  run: () => Promise.resolve({ code: 0, stdout: "golangci-lint has version 2.12.1", stderr: "" }),
+};
 
 describe("runCheck", () => {
   it("runs the declaration layer by default", async () => {
-    const r = await runCheck({ cwd: project(GO), today: TODAY, tools: tidyGo });
+    const r = await runCheck({ cwd: project(GO), today: TODAY, tools: goTools });
     expect(r.standard).toBe("team@1.0.0");
     expect(r.components.map((c) => c.name)).toEqual(["./ (Go)"]);
     expect(r.findings).toEqual([]);
@@ -35,6 +38,7 @@ describe("runCheck", () => {
       "settings-java",
       "deps",
       "settings-typescript",
+      "tool-versions",
     ]);
   });
 
@@ -47,7 +51,7 @@ describe("runCheck", () => {
         return Promise.resolve({ findings: [{ level: "hint", layer: "code", rule: "fake/hint", message: "hi" }] });
       },
     };
-    const r = await runCheck({ cwd: project(GO), today: TODAY, tools: tidyGo }, [...CHECK_LAYERS, extra]);
+    const r = await runCheck({ cwd: project(GO), today: TODAY, tools: goTools }, [...CHECK_LAYERS, extra]);
     expect(seen).toEqual(["go"]);
     expect(rules(r.findings)).toEqual(["hint:fake/hint"]);
     expect(r.standard).toBe("team@1.0.0");
