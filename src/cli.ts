@@ -2,6 +2,7 @@
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { localDate, runCheck } from "./check.ts";
+import { runDoctor } from "./doctor.ts";
 import { DeclarationExistsError, writeDraft } from "./draft.ts";
 import { terminalInteraction } from "./fix/interaction.ts";
 import { runCodeFix } from "./fix/code.ts";
@@ -10,7 +11,7 @@ import { runInstall } from "./hooks/install.ts";
 import { HOOK_HANDLERS } from "./hooks/registry.ts";
 import { failureMessage, UsageError } from "./report/failure.ts";
 import { claudeFeedback } from "./report/claude.ts";
-import { exitCodeFor, renderJson, renderText, type ReportInput } from "./report/render.ts";
+import { exitCodeFor, problemsOnly, renderJson, renderText, type ReportInput } from "./report/render.ts";
 import { renderSarif } from "./report/sarif.ts";
 import { renderVscode } from "./report/vscode.ts";
 import { checkScope } from "./scope.ts";
@@ -22,6 +23,7 @@ const USAGE = `用法：devguard <指令> [選項]
 
 指令：
   check [檔案…]  檢查專案宣告（.devguard.yaml）與程式碼；指定檔案時只檢查這些檔案
+  doctor         check 加上環境檢查（git hook 是否安裝、標準是否有更新）；只回報並附上修正指令
   fix            修正設定：先預覽，確認後套用；--yes 直接套用
   fix --code [檔案…]  修正程式碼（格式化與可自動修正的 lint），修正後回報剩餘問題
   install        產生各防線的設定並安裝 git pre-commit 與 pre-push hook：先預覽，確認後套用；--yes 直接套用
@@ -36,6 +38,7 @@ const USAGE = `用法：devguard <指令> [選項]
   --format <格式>       輸出格式：text|json|sarif|vscode|claude（預設 text）
   --strict              偏離也算失敗
   --verbose             展開所有提示
+  --quiet               doctor：只輸出有問題的項目（錯誤與偏離），沒有問題時不輸出
   --cwd <dir>           專案根目錄（預設為目前目錄）
   --code                fix：修正程式碼而不是設定
   --yes                 fix / install：不詢問，直接套用
@@ -74,6 +77,7 @@ async function main(argv: string[]): Promise<number> {
       format: { type: "string", default: "text" },
       strict: { type: "boolean", default: false },
       verbose: { type: "boolean", default: false },
+      quiet: { type: "boolean", default: false },
       only: { type: "string" },
       full: { type: "boolean", default: false },
       cwd: { type: "string" },
@@ -99,7 +103,7 @@ async function main(argv: string[]): Promise<number> {
 function dispatch(
   command: string,
   cwd: string,
-  values: CheckFlags & { code: boolean; yes: boolean; apply: boolean },
+  values: CheckFlags & { code: boolean; yes: boolean; apply: boolean; quiet: boolean },
   args: string[],
 ) {
   switch (command) {
@@ -115,6 +119,8 @@ function dispatch(
       return standard(cwd, args, values.apply);
     case "check":
       return check(cwd, values, args);
+    case "doctor":
+      return doctor(cwd, values, args);
     default:
       throw new UsageError(`不認得的指令「${command}」`);
   }
@@ -134,6 +140,17 @@ async function check(cwd: string, flags: CheckFlags, files: string[]): Promise<n
   const scope = checkScope({ files, only: flags.only, full: flags.full }, cwd, process.cwd());
   const result = await runCheck({ cwd, today: localDate(), scope });
   process.stdout.write(render(format, result, flags.verbose));
+  return exitCodeFor(result.findings, flags.strict);
+}
+
+/** `devguard doctor`: check plus the environment checks; `--quiet` prints only the problems, nothing when none. */
+async function doctor(cwd: string, flags: CheckFlags & { quiet: boolean }, args: string[]): Promise<number> {
+  const format = flags.format;
+  if (!isFormat(format)) throw new UsageError(`不支援的格式「${format}」`);
+  if (args.length > 0) throw new UsageError("doctor 不接受檔案");
+  const result = await runDoctor({ cwd, today: localDate() });
+  const shown = flags.quiet ? problemsOnly(result) : result;
+  if (!flags.quiet || shown.findings.length > 0) process.stdout.write(render(format, shown, flags.verbose));
   return exitCodeFor(result.findings, flags.strict);
 }
 

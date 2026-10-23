@@ -70,6 +70,11 @@ export function renderJson(input: ReportInput): string {
   );
 }
 
+/** The report without hints: what `doctor --quiet` prints (errors and deviations). */
+export function problemsOnly(input: ReportInput): ReportInput {
+  return { ...input, findings: input.findings.filter((f) => f.level !== "hint") };
+}
+
 /** 0 = pass (deviations and hints allowed), 1 = errors, or deviations with --strict. 2 is reserved for CLI failures. */
 export function exitCodeFor(findings: Finding[], strict: boolean): 0 | 1 {
   if (findings.some((f) => f.level === "error")) return 1;

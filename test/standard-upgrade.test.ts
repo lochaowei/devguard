@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCheck } from "../src/check.ts";
+import { runDoctor } from "../src/doctor.ts";
+import { createStandardUpgradeCheck } from "../src/environment/standard-upgrade.ts";
 import { createDeclarationLayer } from "../src/layers/declaration.ts";
 import type { Interaction } from "../src/fix/interaction.ts";
 import { runFix } from "../src/fix/run.ts";
@@ -238,11 +240,19 @@ describe("devguard standard upgrade (SPEC §5.5)", () => {
   });
 });
 
-describe("check reports the upgrade suggestion as a hint (until doctor exists)", () => {
-  it("adds standard/upgrade-available when a newer minor is bundled", async () => {
+describe("the upgrade suggestion is doctor's, not check's (SPEC §5.5)", () => {
+  const bundled = [team_1_0_0, version("team@1.1.0")];
+
+  it("check does not report it", async () => {
     const dir = repo({ ".devguard.yaml": "standard: team@1.0.0\ncomponents: []\n" });
-    const layer = createDeclarationLayer({ bundled: [team_1_0_0, version("team@1.1.0")] });
-    const { findings } = await runCheck({ cwd: dir, today: TODAY }, [layer]);
+    const { findings } = await runCheck({ cwd: dir, today: TODAY }, [createDeclarationLayer({ bundled })]);
+    expect(rules(findings)).not.toContain("hint:standard/upgrade-available");
+  });
+
+  it("doctor adds standard/upgrade-available when a newer minor is bundled", async () => {
+    const dir = repo({ ".devguard.yaml": "standard: team@1.0.0\ncomponents: []\n" });
+    const checks = [createStandardUpgradeCheck(bundled)];
+    const { findings } = await runDoctor({ cwd: dir, today: TODAY, checks });
     expect(rules(findings)).toContain("hint:standard/upgrade-available");
     expect(read(dir, ".devguard.yaml")).toContain("team@1.0.0");
   });
