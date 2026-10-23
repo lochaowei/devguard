@@ -1,4 +1,5 @@
 import type { Resolution } from "./declaration/resolve.ts";
+import { claudeCodeLayer } from "./layers/claude-code.ts";
 import { codeLayer } from "./layers/code.ts";
 import { declarationLayer } from "./layers/declaration.ts";
 import { depsLayer } from "./layers/deps.ts";
@@ -34,6 +35,7 @@ export const CHECK_LAYERS: readonly CheckLayer[] = [
   typescriptSettingsLayer,
   toolVersionsLayer,
   gitattributesLayer,
+  claudeCodeLayer,
   // Layers above check the setup; code checks run last.
   codeLayer,
   // Tests, coverage and vulnerability scans run only with --full.
@@ -52,6 +54,7 @@ export const FIX_LAYERS: readonly CheckLayer[] = [
   javaSettingsLayer,
   typescriptSettingsLayer,
   gitattributesLayer,
+  claudeCodeLayer,
 ];
 
 export interface CheckOptions {

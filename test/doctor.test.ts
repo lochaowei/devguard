@@ -102,7 +102,9 @@ describe("an existing hook framework (SPEC §7.4 step 2)", () => {
       today: TODAY,
       io: { yes: true, interactive: false, write: () => undefined, confirm: () => Promise.resolve(false) },
     });
-    expect(environment((await runDoctor({ cwd: dir, today: TODAY })).findings)).toEqual([]);
+    // install also writes the Claude Code setup; only the git hooks matter here.
+    const after = await runDoctor({ cwd: dir, today: TODAY, checks: [createGitHooksCheck()] });
+    expect(environment(after.findings)).toEqual([]);
   });
 
   it("reports a core.hooksPath that conflicts with the framework", async () => {

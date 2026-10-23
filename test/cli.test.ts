@@ -282,6 +282,22 @@ describe("devguard hook / install", () => {
     expect(r.err).toContain("git-pre-commit");
   });
 
+  it("passes the Claude Code hook its JSON input on stdin and answers on stdout", () => {
+    const dir = project("standard: team@1.0.0\ncomponents: []\n");
+    const input = JSON.stringify({ hook_event_name: "PostToolUse", tool_input: { file_path: join(dir, "README.md") } });
+    const r = spawnSync(process.execPath, [CLI, "hook", "claude-post-edit", "--cwd", dir], {
+      encoding: "utf8",
+      input,
+    });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toBe("");
+  });
+
+  it("exits 2 on a Claude Code hook input that is not JSON", () => {
+    const r = spawnSync(process.execPath, [CLI, "hook", "claude-stop"], { encoding: "utf8", input: "nope" });
+    expect(r.status).toBe(2);
+  });
+
   it("install refuses outside a git repo with exit 2", () => {
     const r = run(["install", "--yes", "--cwd", project("standard: team@1.0.0\ncomponents: []\n")]);
     expect(r.code).toBe(2);
@@ -305,6 +321,12 @@ describe("devguard doctor", { timeout: 60_000 }, () => {
     );
   });
 
+  it("exits 0 with --exit-zero although it found problems (for the /standards-doctor skill)", () => {
+    const r = run(["doctor", "--exit-zero", "--format", "claude", "--cwd", gitProject()]);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("environment/hook-missing");
+  });
+
   it("reports a directory outside git instead of failing", () => {
     const r = run(["doctor", "--cwd", project("standard: team@1.0.0\ncomponents: []\n")]);
     expect(r.code).toBe(1);
@@ -317,7 +339,8 @@ describe("devguard doctor", { timeout: 60_000 }, () => {
     expect(before.out).toContain("environment/hook-missing");
     expect(run(["install", "--yes", "--cwd", dir]).code).toBe(0);
     expect(run(["doctor", "--quiet", "--cwd", dir])).toMatchObject({ code: 0, out: "" });
-    expect(run(["doctor", "--cwd", dir]).out).toContain("通過");
+    // Only hints remain (Claude Code's hooks have not run here yet).
+    expect(run(["doctor", "--cwd", dir]).out).toContain("0 個錯誤、0 個偏離");
   });
 });
 
