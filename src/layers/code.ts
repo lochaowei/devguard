@@ -29,14 +29,16 @@ function groupFiles(owned: readonly OwnedFile[]): Group[] {
   return [...groups.values()];
 }
 
-function effectiveValues(group: Group, standard: Standard): Record<string, unknown> {
-  if (group.owner.kind === "component") {
-    return Object.fromEntries(Object.entries(group.owner.component.effective).map(([k, item]) => [k, item.value]));
-  }
-  return Object.fromEntries(Object.entries(standard.languages[group.language]).map(([k, item]) => [k, item.value]));
+const values = (items: Readonly<Record<string, { value: unknown }>>) =>
+  Object.fromEntries(Object.entries(items).map(([k, item]) => [k, item.value]));
+
+/** The language's items plus the repo-wide ones (`mirrors.*`), as resolved from the declaration. */
+function effectiveValues(group: Group, standard: Standard, global: Record<string, unknown>): Record<string, unknown> {
+  const own = group.owner.kind === "component" ? group.owner.component.effective : standard.languages[group.language];
+  return { ...global, ...values(own) };
 }
 
-function toTarget(group: Group, scope: CheckScope, standard: Standard): CodeTarget {
+function toTarget(group: Group, scope: CheckScope, standard: Standard, global: Record<string, unknown>): CodeTarget {
   // A whole component is checked as a directory; a file list is passed only when it was asked for, or when the
   // files are scattered outside any component.
   const listFiles = scope.files !== undefined || group.owner.kind !== "component";
@@ -44,7 +46,7 @@ function toTarget(group: Group, scope: CheckScope, standard: Standard): CodeTarg
     ...(group.owner.kind === "component" ? { component: group.owner.component.name } : {}),
     dir: group.dir,
     language: group.language,
-    effective: effectiveValues(group, standard),
+    effective: effectiveValues(group, standard, global),
     ...(listFiles ? { files: group.files.map((f) => f.slice(group.dir.length)) } : {}),
     categories: new Set(scope.only ? [scope.only] : CODE_CATEGORIES),
   };
@@ -64,12 +66,13 @@ export const codeLayer: CheckLayer = {
   async run(ctx: LayerContext) {
     const standard = ctx.resolution?.standard ?? BUNDLED_STANDARDS[BUNDLED_STANDARDS.length - 1];
     if (!standard) return { findings: [] };
+    const global = values(ctx.resolution?.standard ? ctx.resolution.global : standard.global);
     const owned = assignFiles(ctx.resolution?.components ?? [], await scopedFiles(ctx));
     const findings: Finding[] = [];
     for (const group of groupFiles(owned)) {
       const checker: CodeChecker | undefined = CODE_CHECKERS[group.language];
       if (!checker) continue;
-      const target = toTarget(group, ctx.scope, standard);
+      const target = toTarget(group, ctx.scope, standard, global);
       findings.push(
         ...(await checker.check(target, { cwd: ctx.cwd, tools: ctx.tools, readText: (p) => readText(ctx.cwd, p) })),
       );

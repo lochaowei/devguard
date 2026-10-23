@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -109,6 +109,22 @@ describe("devguard check", { timeout: 60_000 }, () => {
     expect(json.findings.map((x) => x.level)).toEqual(["deviation"]);
   });
 
+  it("prints sarif, vscode and claude formats with the same exit code as text", () => {
+    const dir = project();
+    const out = (format: string) => {
+      const r = run(["check", "--cwd", dir, "--format", format]);
+      expect(r.code).toBe(1);
+      return r.out;
+    };
+    expect(out("vscode")).toMatch(/^\.devguard\.yaml:1:1: error: 找不到 \.devguard\.yaml.* \[[^\]]+\]$/m);
+    expect(out("claude")).toMatch(/^devguard：1 個錯誤.*\n- 錯誤 .*找不到 \.devguard\.yaml/);
+    // The missing declaration is not a code finding, so SARIF has no results.
+    const sarif = JSON.parse(out("sarif")) as { version: string; runs: { results: unknown[] }[] };
+    expect(sarif.version).toBe("2.1.0");
+    expect(sarif.runs[0]?.results).toEqual([]);
+    expect(run(["check", "--cwd", deviatingProject(), "--format", "vscode", "--strict"]).code).toBe(1);
+  });
+
   it("exits 2 on usage errors", () => {
     expect(run(["frobnicate"]).code).toBe(2);
     expect(run(["check", "--format", "xml"]).code).toBe(2);
@@ -134,9 +150,61 @@ describe("devguard check", { timeout: 60_000 }, () => {
     expect(r.err).toContain("npm ci");
   });
 
+  it("exits 2 with `uv sync` when the Python tools are not installed", () => {
+    const dir = project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: python}\n");
+    writeFileSync(join(dir, "a.py"), "a = 1\n");
+    const r = run(["check", "--cwd", dir, "--only", "lint", join(dir, "a.py")]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("ruff");
+    expect(r.err).toContain("uv sync");
+  });
+
   it("prints the version and help", () => {
     expect(run(["--version"]).out).toBe("devguard 0.1.0\n");
     expect(run(["--help"]).code).toBe(0);
+  });
+});
+
+describe("devguard draft", { timeout: 60_000 }, () => {
+  /** A project with no declaration whose web/ TypeScript component has a coverage threshold of 60. */
+  function undeclared(): string {
+    const dir = project();
+    const web = join(dir, "web");
+    mkdirSync(join(web, "src"), { recursive: true });
+    writeTsConfigs(web, 60);
+    writeFileSync(join(web, "package.json"), "{}\n");
+    writeFileSync(join(web, "src", "app.ts"), "");
+    return dir;
+  }
+
+  it("is what check suggests when the declaration is missing", () => {
+    expect(run(["check", "--cwd", project()]).out).toContain("devguard draft");
+  });
+
+  it("writes a draft that check rejects until the TODO reasons are filled in", () => {
+    const dir = undeclared();
+    const r = run(["draft", "--cwd", dir]);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain(".devguard.yaml");
+    const text = readFileSync(join(dir, ".devguard.yaml"), "utf8");
+    expect(text).toContain("path: web/");
+    expect(text).toContain("coverage.lines");
+
+    const todo = run(["check", "--cwd", dir, "--format", "json"]);
+    expect(todo.code).toBe(1);
+    expect(todo.out).toContain("declaration/todo-reason");
+
+    writeFileSync(join(dir, ".devguard.yaml"), text.replace(/reason: .*TODO.*/, "reason: legacy tests"));
+    expect(run(["check", "--cwd", dir]).code).toBe(0);
+  });
+
+  it("does not overwrite an existing declaration", () => {
+    const existing = "standard: team@1.0.0\ncomponents: []\n";
+    const dir = project(existing);
+    const r = run(["draft", "--cwd", dir]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain(".devguard.yaml");
+    expect(readFileSync(join(dir, ".devguard.yaml"), "utf8")).toBe(existing);
   });
 });
 

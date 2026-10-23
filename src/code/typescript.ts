@@ -8,6 +8,9 @@ interface EslintMessage {
   severity: number;
   message: string;
   line?: number;
+  column?: number;
+  /** Present when `eslint --fix` can apply the change. */
+  fix?: unknown;
 }
 
 interface EslintFile {
@@ -34,6 +37,8 @@ function eslintFindings(target: CodeTarget, ctx: CodeCheckContext, result: ToolR
         message: m.message,
         file: toRepoPath(ctx.cwd, target.dir, f.filePath),
         line: m.line,
+        column: m.column,
+        ...(m.fix === undefined ? { fix: "依 ESLint 訊息手動修改" } : {}),
       }),
     ),
   );
@@ -83,16 +88,17 @@ async function format(target: CodeTarget, ctx: CodeCheckContext): Promise<Findin
   return findings;
 }
 
-const TSC_FILE_ERROR = /^(.+)\((\d+),\d+\): error (TS\d+): (.*)$/;
+const TSC_FILE_ERROR = /^(.+)\((\d+),(\d+)\): error (TS\d+): (.*)$/;
 const TSC_GLOBAL_ERROR = /^error (TS\d+): (.*)$/;
 
 function tscFinding(target: CodeTarget, ctx: CodeCheckContext, line: string): Finding | undefined {
   const fix = "手動修正型別錯誤";
   const inFile = TSC_FILE_ERROR.exec(line);
   if (inFile) {
-    const [, file = "", lineNo, code = "", message = ""] = inFile;
+    const [, file = "", lineNo, col, code = "", message = ""] = inFile;
     const repoPath = toRepoPath(ctx.cwd, target.dir, file);
-    return codeFinding(target, { rule: `tsc/${code}`, message, file: repoPath, line: Number(lineNo), fix });
+    const at = { file: repoPath, line: Number(lineNo), column: Number(col) };
+    return codeFinding(target, { rule: `tsc/${code}`, message, ...at, fix });
   }
   const global = TSC_GLOBAL_ERROR.exec(line);
   if (global) return codeFinding(target, { rule: `tsc/${global[1] ?? ""}`, message: global[2] ?? "", fix });
@@ -136,6 +142,7 @@ async function biome(target: CodeTarget, ctx: CodeCheckContext, command: "lint" 
           message: m[3] ?? "",
           file,
           line: fields.line === undefined ? undefined : Number(fields.line),
+          column: fields.col === undefined ? undefined : Number(fields.col),
         }),
       ];
     });

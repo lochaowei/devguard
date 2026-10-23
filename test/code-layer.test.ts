@@ -24,7 +24,10 @@ function project(declaration: string): string {
 /** The layers under test: settings/deps/tool-version layers are covered by their own tests. */
 const LAYERS = [declarationLayer, uncoveredFilesLayer, codeLayer];
 
+const API = "standard: team@1.0.0\ncomponents:\n  - {path: api/, language: python}\n";
 const WEB = "standard: team@1.0.0\ncomponents:\n  - {path: web/, language: typescript}\n  - {path: ./, language: go}\n";
+
+const PASSING_OUTPUT: Record<string, string> = { eslint: "[]", "golangci-lint": '{"Issues":[]}' };
 
 /** Every tool passes; records what ran. */
 function passingTools() {
@@ -32,7 +35,8 @@ function passingTools() {
   const tools: ToolRunner = {
     run(req) {
       calls.push(req);
-      return Promise.resolve({ code: 0, stdout: req.tool === "eslint" ? "[]" : "", stderr: "" });
+      const ruffJson = req.tool === "ruff" && req.args?.[0] === "check";
+      return Promise.resolve({ code: 0, stdout: ruffJson ? "[]" : (PASSING_OUTPUT[req.tool] ?? ""), stderr: "" });
     },
   };
   return { tools, calls };
@@ -46,13 +50,14 @@ function check(options: Partial<CheckOptions> & { files: string[] }) {
 }
 
 describe("code checks in devguard check", () => {
-  it("runs lint, format and type checks on each TypeScript component", async () => {
+  it("runs lint, format and type checks on each component", async () => {
     const { tools, calls } = passingTools();
     const r = await check({ tools, files: ["web/src/a.ts", "main.go", "README.md"] });
     expect(summary(calls)).toEqual([
       "web/:eslint --format json --no-warn-ignored .",
       "web/:prettier --list-different .",
       "web/:tsc --noEmit --pretty false",
+      ":golangci-lint run --output.json.path=stdout --show-stats=false --path-mode=abs ./...",
     ]);
     expect(r.findings).toEqual([]);
   });
@@ -80,7 +85,7 @@ describe("code checks in devguard check", () => {
   it("skips components without files", async () => {
     const { tools, calls } = passingTools();
     await check({ tools, files: ["main.go"] });
-    expect(calls).toEqual([]);
+    expect(calls.map((c) => c.tool)).toEqual(["golangci-lint"]);
   });
 
   it("checks only the given files, and type-checks the components they belong to", async () => {
@@ -115,6 +120,32 @@ describe("code checks in devguard check", () => {
     expect(ts?.message).toContain("建議在宣告中補上元件");
     expect(ts?.file).toBe("scripts/x.ts");
     expect(r.findings.some((f) => f.message.includes("Python"))).toBe(true);
+    expect(summary(calls)).toContain(":ruff check --output-format json --no-fix --force-exclude lib/z.py");
+  });
+
+  it("runs Ruff and mypy on a Python component, honouring file arguments and --only", async () => {
+    const declaration = API;
+    const listFiles = () => Promise.resolve(["api/app.py", "api/util.py"]);
+    const run = async (scope: CheckOptions["scope"]) => {
+      const { tools, calls } = passingTools();
+      await runCheck({ cwd: project(declaration), today: TODAY, tools, listFiles, scope }, LAYERS);
+      return summary(calls);
+    };
+    expect(await run({ files: ["api/util.py"], full: false })).toEqual([
+      "api/:ruff check --output-format json --no-fix --force-exclude util.py",
+      "api/:ruff format --diff --force-exclude util.py",
+      "api/:mypy --no-pretty --no-error-summary --show-error-codes --no-color-output .",
+    ]);
+    expect(await run({ only: "format", full: false })).toEqual(["api/:ruff format --diff --force-exclude ."]);
+  });
+
+  it("fails with ToolMissingError (exit 2, uv sync) when a Python tool is not installed", async () => {
+    const declaration = API;
+    const tools: ToolRunner = {
+      run: () => Promise.reject(new ToolMissingError("找不到 ruff：專案環境（.venv）中沒有安裝", "cd api && uv sync")),
+    };
+    const options = { cwd: project(declaration), today: TODAY, tools, listFiles: () => Promise.resolve(["api/a.py"]) };
+    await expect(runCheck(options, LAYERS)).rejects.toMatchObject({ install: "cd api && uv sync" });
   });
 
   it("fails with ToolMissingError (exit 2, npm ci) when a tool is not installed", async () => {
@@ -131,5 +162,33 @@ describe("code checks in devguard check", () => {
     const r = await runCheck({ cwd: dir, today: TODAY, tools, listFiles: () => Promise.resolve(["a.ts"]) }, LAYERS);
     expect(calls.map((c) => c.tool)).toEqual(["eslint", "prettier", "tsc"]);
     expect(rules(r.findings)).toEqual(["error:declaration/missing"]);
+  });
+});
+
+describe("Go code checks in devguard check", () => {
+  it("runs golangci-lint with GOTOOLCHAIN=local and the declared Go mirrors", async () => {
+    const declaration = [
+      "standard: team@1.0.0",
+      "components:",
+      "  - {path: svc/, language: go}",
+      "mirrors:",
+      "  go: https://proxy.other.internal/go/",
+      "",
+    ].join("\n");
+    const { tools, calls } = passingTools();
+    const listFiles = () => Promise.resolve(["svc/main.go", "svc/pkg/a.go"]);
+    const r = await runCheck({ cwd: project(declaration), today: TODAY, tools, listFiles }, LAYERS);
+    expect(r.findings).toEqual([]);
+    expect(calls).toEqual([
+      expect.objectContaining({
+        tool: "golangci-lint",
+        dir: "svc/",
+        env: {
+          GOTOOLCHAIN: "local",
+          GOPROXY: "https://proxy.other.internal/go/",
+          GOSUMDB: "sum.golang.org https://nexus.example.internal/repository/go-sumdb-proxy/",
+        },
+      }),
+    ]);
   });
 });

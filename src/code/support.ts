@@ -52,24 +52,21 @@ export interface CodeFindingInput {
   message: string;
   file?: string;
   line?: number;
+  column?: number;
   /** Defaults to `devguard fix --code <file>` when there is a file. */
   fix?: string;
+  /** Whether `devguard fix --code` resolves it. Defaults to true exactly when the default `fix` applies. */
+  fixable?: boolean;
 }
 
 /** A finding in the code layer, attributed to the target's component. */
 export function codeFinding(target: CodeTarget, input: CodeFindingInput): Finding {
-  const { level = "error", rule, message, file, line } = input;
+  const { level = "error", rule, message, file, line, column } = input;
   const fix = input.fix ?? (file === undefined ? undefined : `devguard fix --code ${file}`);
-  return {
-    level,
-    layer: "code",
-    rule,
-    message,
-    ...(target.component === undefined ? {} : { component: target.component }),
-    ...(file === undefined ? {} : { file }),
-    ...(line === undefined ? {} : { line }),
-    ...(fix === undefined ? {} : { fix }),
-  };
+  const fixable = input.fixable ?? (input.fix === undefined && file !== undefined);
+  const optional = { component: target.component, file, line, column, fix };
+  const present = Object.fromEntries(Object.entries(optional).filter(([, v]) => v !== undefined)) as Partial<Finding>;
+  return { level, layer: "code", rule, message, ...present, fixable };
 }
 
 /** The tool ran but did not produce a usable result (crash, bad configuration). */

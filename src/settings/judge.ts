@@ -32,6 +32,7 @@ export function judgeConfigValue(
   const want = declared?.value ?? item.value;
   const status = compareToDefault({ ...item, value: want as ItemValue }, actual);
   const what = `${label} 為 ${fmt(actual)}`;
+  const observed = { key, value: actual };
   if (status === "stricter") {
     return {
       level: "hint",
@@ -40,6 +41,7 @@ export function judgeConfigValue(
       message: `${what}，比宣告的 ${fmt(want)} 嚴格`,
       ...site,
       fix: `建議把宣告中的 ${key} 同步成 ${fmt(actual)}`,
+      observed,
     };
   }
   if (status === "looser" || status === "different") {
@@ -51,6 +53,7 @@ export function judgeConfigValue(
       message: `${what}，${why}`,
       ...site,
       fix: `devguard fix（把 ${site.file} 的 ${label} 改回宣告的 ${fmt(want)}）`,
+      observed,
     };
   }
   return undefined;
