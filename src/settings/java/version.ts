@@ -16,16 +16,28 @@ function properties(project: XmlEl): Map<string, XmlEl> {
   return new Map((child(project, "properties")?.children ?? []).map((p) => [p.name, p]));
 }
 
-/** `maven.compiler.release`, or `<release>` in maven-compiler-plugin's configuration. */
-function findRelease(project: XmlEl, props: Map<string, XmlEl>): Found | undefined {
-  const prop = props.get("maven.compiler.release");
-  if (prop) return { raw: prop.text, line: prop.line };
+const RELEASE_PROPS = ["maven.compiler.release", "java.version", "maven.compiler.target", "maven.compiler.source"];
+const PLUGIN_TAGS = ["release", "target", "source"];
+
+function compilerConfig(project: XmlEl): XmlEl | undefined {
   const build = child(project, "build");
   const plugin = (build ? descendants(build, "plugin") : []).find(
     (p) => child(p, "artifactId")?.text === "maven-compiler-plugin",
   );
-  const release = plugin && child(child(plugin, "configuration") ?? plugin, "release");
-  return release && { raw: release.text, line: release.line };
+  return plugin && (child(plugin, "configuration") ?? plugin);
+}
+
+/** `maven.compiler.release` (or `<release>` in maven-compiler-plugin), falling back to `java.version` / `target` / `source`. */
+function findRelease(project: XmlEl, props: Map<string, XmlEl>): Found | undefined {
+  const config = compilerConfig(project);
+  const candidates = [
+    props.get("maven.compiler.release"),
+    config && child(config, "release"),
+    ...RELEASE_PROPS.slice(1).map((k) => props.get(k)),
+    ...PLUGIN_TAGS.slice(1).map((t) => config && child(config, t)),
+  ];
+  const hit = candidates.find((el): el is XmlEl => el !== undefined);
+  return hit && { raw: hit.text, line: hit.line };
 }
 
 /** Resolves `${name}` references against the POM's own properties; anything else from outside stays unresolved. */

@@ -68,11 +68,43 @@ function installedIn(packages: Record<string, { version?: unknown }>, dir: strin
   });
 }
 
+const PNPM_PKG = /^  ['"]?\/?((?:@[^/'":\s]+\/)?[^@/'":\s]+)@(\d[^('":\s]*)/gm;
+const YARN_ENTRY =
+  /^["']?((?:@[^@/"',\s]+\/)?[^@/"',\s]+)@(?:npm:)?[^:\n]+:\r?\n\s+version(?::\s+|\s+)["']?([^\s"']+)/gm;
+
+/** Installed packages from a `pnpm-lock.yaml` (v6–v9 `packages` / `snapshots` entries). */
+export function readPnpmLock(text: string): Map<string, string> {
+  const versions = new Map<string, string>();
+  for (const [, name = "", version = ""] of text.matchAll(PNPM_PKG)) {
+    if (name && version) versions.set(name, version);
+  }
+  return versions;
+}
+
+/** Installed packages from a `yarn.lock` (v1 classic and Berry). */
+export function readYarnLock(text: string): Map<string, string> {
+  const versions = new Map<string, string>();
+  for (const [, name = "", version = ""] of text.matchAll(YARN_ENTRY)) {
+    if (name && version) versions.set(name, version);
+  }
+  return versions;
+}
+
 function typescript(dir: string, read: ReadRepoFile): Pinned | undefined {
   for (const base of ancestors(dir)) {
-    const file = base + "package-lock.json";
-    const text = read(file);
-    if (text !== undefined) return { file, versions: readNpmLock(text, dir.slice(base.length)) };
+    for (const name of ["package-lock.json", "npm-shrinkwrap.json"]) {
+      const file = base + name;
+      const text = read(file);
+      if (text !== undefined) return { file, versions: readNpmLock(text, dir.slice(base.length)) };
+    }
+    for (const [name, reader] of [
+      ["pnpm-lock.yaml", readPnpmLock],
+      ["yarn.lock", readYarnLock],
+    ] as const) {
+      const file = base + name;
+      const text = read(file);
+      if (text !== undefined) return { file, versions: reader(text) };
+    }
   }
   return undefined;
 }

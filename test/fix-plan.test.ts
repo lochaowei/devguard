@@ -97,4 +97,12 @@ describe("planChanges / applyPlan", () => {
     const plan = await planChanges(dir, [{ op: "line", file: ".gitattributes", value: "* text=auto eol=lf" }]);
     expect(plan.writes).toHaveLength(0);
   });
+
+  it("diffs CRLF files cleanly without reporting unchanged lines or emitting carriage returns", async () => {
+    const dir = repo({ ".gitattributes": "*.png binary\r\n*.jpg binary\r\n" });
+    const plan = await planChanges(dir, [{ op: "line", file: ".gitattributes", value: "* text=auto eol=lf" }]);
+    const rendered = renderPlan(plan);
+    expect(rendered).toContain(" *.png binary\n *.jpg binary\n+* text=auto eol=lf");
+    expect(rendered).not.toContain("\r");
+  });
 });

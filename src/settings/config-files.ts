@@ -7,7 +7,7 @@ export async function readIfExists(path: string): Promise<string | undefined> {
     return await readFile(path, "utf8");
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
-    if (code === "ENOENT" || code === "ENOTDIR") return undefined;
+    if (code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR") return undefined;
     throw e;
   }
 }

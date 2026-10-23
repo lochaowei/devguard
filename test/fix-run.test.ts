@@ -161,4 +161,25 @@ default = true
     expect(out.join("")).toContain("+* text=auto eol=lf");
     expect(read(dir, ".gitattributes")).toBe("");
   });
+
+  it("reports declaration error and exits 1 when .devguard.yaml is missing", async () => {
+    const dir = repo({});
+    const out: string[] = [];
+    const io: Interaction = { ...YES, write: (t) => out.push(t) };
+    expect(await runFix({ cwd: dir, today: TODAY, io })).toBe(1);
+    expect(out.join("")).toContain("declaration/missing");
+  });
+
+  it("TypeScript: creates tsconfig.json, .prettierrc and biome.json when they are missing", async () => {
+    const tsDir = repo({ ".devguard.yaml": decl("typescript") });
+    await fixesEverything(tsDir);
+    expect(read(tsDir, "tsconfig.json")).toContain('"strict": true');
+    expect(read(tsDir, ".prettierrc")).toContain('"printWidth": 120');
+
+    const biomeDir = repo({
+      ".devguard.yaml": decl("typescript") + "    overrides:\n      lint.tool: biome\n",
+    });
+    await fixesEverything(biomeDir);
+    expect(read(biomeDir, "biome.json")).toContain('"lineWidth": 120');
+  });
 });
