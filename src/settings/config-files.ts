@@ -1,16 +1,6 @@
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-
-/** Reads a text file, or undefined when it does not exist. */
-export async function readIfExists(path: string): Promise<string | undefined> {
-  try {
-    return await readFile(path, "utf8");
-  } catch (e) {
-    const code = (e as NodeJS.ErrnoException).code;
-    if (code === "ENOENT" || code === "ENOTDIR") return undefined;
-    throw e;
-  }
-}
+import { readIfExists } from "../shared/fs.ts";
+import { isRecord } from "../shared/guards.ts";
 
 export interface FoundFile {
   name: string;
@@ -102,9 +92,6 @@ export function objectProperty(text: string, name: string): string | undefined {
 
 /** Signs that a code-form config pulls settings from somewhere this file does not show. */
 export const pullsFromElsewhere = (text: string): boolean => /\bmergeConfig\b|\.\.\.|\bpreset\b|\bextends\b/.test(text);
-
-export const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** Follows a dotted path through nested objects. */
 export function at(v: unknown, ...keys: string[]): unknown {

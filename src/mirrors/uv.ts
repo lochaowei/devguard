@@ -10,6 +10,7 @@ import {
   type MirrorProblem,
   type MirrorSettings,
 } from "./common.ts";
+import { isRecord } from "../shared/guards.ts";
 
 /** The index devguard manages in `[[tool.uv.index]]` (SPEC §10.2); uv reads its credentials from UV_INDEX_NEXUS_*. */
 export const UV_INDEX_NAME = "nexus";
@@ -19,7 +20,6 @@ export const UV_AUTH_VARIABLES = ["UV_INDEX_NEXUS_USERNAME", "UV_INDEX_NEXUS_PAS
 const AUTH_DETAIL = `帳密改由環境變數 ${UV_AUTH_VARIABLES.join(" / ")} 提供`;
 
 type Toml = Record<string, unknown>;
-const isTable = (v: unknown): v is Toml => typeof v === "object" && v !== null && !Array.isArray(v);
 const strings = (v: unknown): string[] =>
   (Array.isArray(v) ? v : [v]).filter((s): s is string => typeof s === "string");
 
@@ -103,8 +103,8 @@ export const checkUv: MirrorChecker = async (component, mirrors, read) => {
   // A pyproject.toml that is not valid TOML is the Python settings check's to report.
   const doc = readToml(await read(file));
   if (!doc) return [];
-  const uv = isTable(doc.tool) && isTable(doc.tool.uv) ? doc.tool.uv : {};
-  const indexes = (Array.isArray(uv.index) ? uv.index : []).filter(isTable);
+  const uv = isRecord(doc.tool) && isRecord(doc.tool.uv) ? doc.tool.uv : {};
+  const indexes = (Array.isArray(uv.index) ? uv.index : []).filter(isRecord);
   const at = indexes.findIndex((x) => x.name === UV_INDEX_NAME);
   const nexus = indexes[at];
   const problems = [

@@ -1,4 +1,3 @@
-import { stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import { callsDevguard, hookCommandLine, type GitHookName } from "../hooks/file.ts";
 import {
@@ -14,19 +13,12 @@ import { hookFilePath, INSTALLED_HOOKS, installedHook, type InstalledHook } from
 import type { Exec } from "../process/exec.ts";
 import type { Finding } from "../report/finding.ts";
 import type { EnvironmentCheck } from "./types.ts";
+import { isDirectory } from "../shared/fs.ts";
 
 const INSTALL = "devguard install";
 
 function problem(rule: string, message: string, fix = INSTALL): Finding {
   return { level: "error", layer: "environment", rule: `environment/${rule}`, message, fix };
-}
-
-async function isDirectory(path: string): Promise<boolean> {
-  try {
-    return (await stat(path)).isDirectory();
-  } catch {
-    return false;
-  }
 }
 
 /**

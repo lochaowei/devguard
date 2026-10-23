@@ -1,11 +1,12 @@
-import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { parse } from "yaml";
 import { editConfigText, parseConfigText } from "../fix/edit.ts";
 import type { ChangePlan, FileWrite } from "../fix/plan.ts";
 import { nodeExec, type Exec } from "../process/exec.ts";
-import { readIfExists } from "../settings/config-files.ts";
 import { hookCommandLine, type GitHookName } from "./file.ts";
+import { readIfExists } from "../shared/fs.ts";
+import { isDirectory } from "../shared/fs.ts";
+import { isRecord } from "../shared/guards.ts";
 
 /** An existing hook framework (GLOSSARY: 既有 hook 框架) devguard injects into instead of writing hook files. */
 export type HookFrameworkName = "pre-commit" | "husky" | "lefthook";
@@ -23,7 +24,6 @@ const mentions = (value: unknown, hook: GitHookName): boolean =>
   typeof value === "string" && value.includes(`hook git-${hook}`);
 
 type Obj = Record<string, unknown>;
-const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 
 function parseYaml(text: string): unknown {
@@ -66,8 +66,8 @@ const preCommit: Injector = {
   file: (framework) => framework.file,
   hasEntry(text, hook) {
     const config = parseYaml(text);
-    const repos = isObj(config) ? list(config.repos) : [];
-    return repos.some((r) => isObj(r) && list(r.hooks).some((h) => isObj(h) && mentions(h.entry, hook)));
+    const repos = isRecord(config) ? list(config.repos) : [];
+    return repos.some((r) => isRecord(r) && list(r.hooks).some((h) => isRecord(h) && mentions(h.entry, hook)));
   },
   inject: (file, text, hook, command) =>
     editConfigText(file, text, [{ op: "add", path: ["repos"], value: preCommitRepo(hook, command) }]),
@@ -95,23 +95,23 @@ const LEFTHOOK_CONFIGS = ["", ".", ".config/"].flatMap((prefix) =>
 /** Whether any job (including jobs inside a group) or command runs devguard for the hook. */
 function lefthookRuns(jobs: unknown, commands: unknown, hook: GitHookName): boolean {
   const inJobs = list(jobs).some(
-    (j) => isObj(j) && (mentions(j.run, hook) || (isObj(j.group) && lefthookRuns(j.group.jobs, undefined, hook))),
+    (j) => isRecord(j) && (mentions(j.run, hook) || (isRecord(j.group) && lefthookRuns(j.group.jobs, undefined, hook))),
   );
-  return inJobs || (isObj(commands) && Object.values(commands).some((c) => isObj(c) && mentions(c.run, hook)));
+  return inJobs || (isRecord(commands) && Object.values(commands).some((c) => isRecord(c) && mentions(c.run, hook)));
 }
 
 const lefthook: Injector = {
   file: (framework) => framework.file,
   hasEntry(text, hook, file) {
     const config = parseConfigText(file, text);
-    const section = isObj(config) ? config[hook] : undefined;
-    return isObj(section) && lefthookRuns(section.jobs, section.commands, hook);
+    const section = isRecord(config) ? config[hook] : undefined;
+    return isRecord(section) && lefthookRuns(section.jobs, section.commands, hook);
   },
   inject(file, text, hook, command) {
     const config = parseConfigText(file, text);
-    const section = isObj(config) ? config[hook] : undefined;
+    const section = isRecord(config) ? config[hook] : undefined;
     const run = devguardEntry(hook, command);
-    if (isObj(section) && isObj(section.commands) && section.jobs === undefined) {
+    if (isRecord(section) && isRecord(section.commands) && section.jobs === undefined) {
       return editConfigText(file, text, [{ op: "set", path: [hook, "commands", "devguard"], value: { run } }]);
     }
     return editConfigText(file, text, [{ op: "add", path: [hook, "jobs"], value: { name: "devguard", run } }]);
@@ -121,14 +121,6 @@ const lefthook: Injector = {
 const INJECTORS: Record<HookFrameworkName, Injector> = { "pre-commit": preCommit, husky, lefthook };
 
 // --- detection and planning -------------------------------------------------------------------------------------
-
-async function isDirectory(path: string): Promise<boolean> {
-  try {
-    return (await stat(path)).isDirectory();
-  } catch {
-    return false;
-  }
-}
 
 /** The hook framework the repo uses, if any. */
 export async function detectFramework(cwd: string): Promise<HookFramework | undefined> {

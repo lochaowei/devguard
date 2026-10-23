@@ -3,9 +3,10 @@ import { findNodeAtLocation, getNodeValue, parseTree, type ParseError } from "js
 import { fixText } from "../fix/category.ts";
 import type { KeyPath, Layout, Repair } from "../fix/repair.ts";
 import type { Finding } from "../report/finding.ts";
-import { isRecord, readIfExists } from "../settings/config-files.ts";
 import { managedWorkspace, VSCODE_FILES, workspaceLayout, type Managed, type VscodeFile } from "../vscode/workspace.ts";
 import type { CheckLayer } from "./types.ts";
+import { readIfExists } from "../shared/fs.ts";
+import { isRecord } from "../shared/guards.ts";
 
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 

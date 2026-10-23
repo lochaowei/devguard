@@ -3,8 +3,10 @@ import { join, resolve } from "node:path";
 import type { Resolution, ResolvedComponent } from "../declaration/resolve.ts";
 import type { Repair } from "../fix/repair.ts";
 import { nodeExec, type Exec } from "../process/exec.ts";
-import { isRecord, parseJsonc, readIfExists } from "../settings/config-files.ts";
+import { parseJsonc } from "../settings/config-files.ts";
 import { EXTENSION_LANGUAGE, type ItemDef, type Standard } from "../standard/types.ts";
+import { readIfExists } from "../shared/fs.ts";
+import { isRecord } from "../shared/guards.ts";
 
 /** The Claude Code files `devguard install` generates and commits (SPEC §7.3). */
 export const CLAUDE_SETTINGS = ".claude/settings.json";

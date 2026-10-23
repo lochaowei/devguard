@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ResolvedComponent } from "../declaration/resolve.ts";
 import { fixText } from "../fix/category.ts";
@@ -6,15 +5,7 @@ import type { Repair } from "../fix/repair.ts";
 import type { Finding } from "../report/finding.ts";
 import { checkGoSettings, GOLANGCI_FILE, GOMOD_FILE } from "../settings/go.ts";
 import type { CheckLayer } from "./types.ts";
-
-async function readOptional(path: string): Promise<string | undefined> {
-  try {
-    return await readFile(path, "utf8");
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw e;
-  }
-}
+import { readIfExists } from "../shared/fs.ts";
 
 function missing(component: ResolvedComponent, name: string, rule: string, fix: string): Finding {
   return {
@@ -41,8 +32,8 @@ function golangciMissing(component: ResolvedComponent): Finding {
 }
 
 async function checkComponent(cwd: string, component: ResolvedComponent): Promise<Finding[]> {
-  const golangci = await readOptional(join(cwd, component.dir, GOLANGCI_FILE));
-  const gomod = await readOptional(join(cwd, component.dir, GOMOD_FILE));
+  const golangci = await readIfExists(join(cwd, component.dir, GOLANGCI_FILE));
+  const gomod = await readIfExists(join(cwd, component.dir, GOMOD_FILE));
   const findings: Finding[] = [];
   if (golangci === undefined) findings.push(golangciMissing(component));
   if (gomod === undefined) findings.push(missing(component, GOMOD_FILE, "settings/gomod-missing", "go mod init"));

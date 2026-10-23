@@ -5,10 +5,9 @@ import type { Finding, Level } from "../report/finding.ts";
 import { compareVersion } from "../standard/registry.ts";
 import { judgeConfigValue, setAt } from "./judge.ts";
 import type { ItemDef } from "../standard/types.ts";
+import { isRecord } from "../shared/guards.ts";
 
 type Table = Record<string, unknown>;
-
-const isTable = (v: unknown): v is Table => typeof v === "object" && v !== null && !Array.isArray(v);
 
 const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
 
@@ -17,8 +16,8 @@ const fmt = (v: unknown): string => JSON.stringify(v);
 /** Reads a nested table, e.g. at(doc, "tool", "ruff", "lint"). */
 function at(doc: Table, ...keys: string[]): Table | undefined {
   let cur: unknown = doc;
-  for (const k of keys) cur = isTable(cur) ? cur[k] : undefined;
-  return isTable(cur) ? cur : undefined;
+  for (const k of keys) cur = isRecord(cur) ? cur[k] : undefined;
+  return isRecord(cur) ? cur : undefined;
 }
 
 /** Ruff's own defaults, used when pyproject.toml leaves a setting out. */

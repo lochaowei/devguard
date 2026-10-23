@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseDeclaration } from "../declaration/parse.ts";
 import { resolveDeclaration } from "../declaration/resolve.ts";
@@ -6,14 +5,10 @@ import { DECLARATION_FILE } from "../declaration/types.ts";
 import { BUNDLED_STANDARDS } from "../standard/registry.ts";
 import type { Standard } from "../standard/types.ts";
 import type { CheckLayer } from "./types.ts";
+import { readIfExists } from "../shared/fs.ts";
 
-export async function readDeclaration(cwd: string): Promise<string | undefined> {
-  try {
-    return await readFile(join(cwd, DECLARATION_FILE), "utf8");
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw e;
-  }
+export function readDeclaration(cwd: string): Promise<string | undefined> {
+  return readIfExists(join(cwd, DECLARATION_FILE));
 }
 
 export interface DeclarationLayerOptions {

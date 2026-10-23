@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { valueInForce, type EffectiveItem, type ResolvedComponent } from "../declaration/resolve.ts";
 import { DECLARATION_FILE } from "../declaration/types.ts";
 import type { Finding } from "../report/finding.ts";
@@ -9,21 +7,12 @@ import { pinnedVersions } from "../versions/pinned.ts";
 import { preCommitRevHints } from "../versions/pre-commit-revs.ts";
 import { inRange } from "../versions/range.ts";
 import type { CheckLayer } from "./types.ts";
+import { repoReaderSync } from "../shared/fs.ts";
 
 /** The version range a component is held to (`valueInForce`), as text. */
 export function rangeInForce(item: ItemDef, effective: EffectiveItem | undefined): string {
   const value = valueInForce(item.value, effective);
   return typeof value === "string" ? value : typeof item.value === "string" ? item.value : "";
-}
-
-function readRepoFile(cwd: string): (path: string) => string | undefined {
-  return (path) => {
-    try {
-      return readFileSync(join(cwd, path), "utf8");
-    } catch {
-      return undefined;
-    }
-  };
 }
 
 interface RangeItem {
@@ -39,7 +28,7 @@ function rangeItems(defs: Readonly<Record<string, ItemDef>>): RangeItem[] {
 
 /** Locked versions of the component's tools against the ranges in force (SPEC §5.2, §8). */
 function checkPinned(c: ResolvedComponent, items: RangeItem[], cwd: string): Finding[] {
-  const pinned = pinnedVersions(c.language, c.dir, readRepoFile(cwd));
+  const pinned = pinnedVersions(c.language, c.dir, repoReaderSync(cwd));
   if (!pinned) return [];
   const findings: Finding[] = [];
   for (const { key, item } of items) {
@@ -108,7 +97,7 @@ export const toolVersionsLayer: CheckLayer = {
     const defs = (c: ResolvedComponent) => rangeItems(standard.languages[c.language]);
     const pinned = resolution.components.flatMap((c) => checkPinned(c, defs(c), cwd));
     const onPath = await checkOnPath(resolution.components, defs, tools);
-    const revs = preCommitRevHints(resolution.components, readRepoFile(cwd));
+    const revs = preCommitRevHints(resolution.components, repoReaderSync(cwd));
     return { findings: [...pinned, ...onPath, ...revs] };
   },
 };

@@ -1,4 +1,5 @@
 import type { Language } from "../standard/types.ts";
+import { lineAt } from "../shared/guards.ts";
 
 /** A direct dependency as written in a manifest. */
 export interface Dependency {
@@ -10,14 +11,6 @@ export interface Dependency {
 }
 
 type Read = (path: string) => Promise<string | undefined>;
-
-/** `dir` and each of its parents up to the repo root: "a/b/" → ["a/b/", "a/", ""]. */
-export function parentDirs(dir: string): string[] {
-  const parts = dir.split("/").filter((p) => p !== "");
-  return parts.map((_, i) => `${parts.slice(0, parts.length - i).join("/")}/`).concat("");
-}
-
-const lineAt = (text: string, index: number) => text.slice(0, index).split("\n").length;
 
 /** PEP 503 normalized name. */
 const pyName = (name: string) => name.toLowerCase().replace(/[-_.]+/g, "-");

@@ -1,8 +1,8 @@
 import { join } from "node:path";
 import { fixText } from "../fix/category.ts";
 import type { Repair } from "../fix/repair.ts";
-import { readIfExists } from "../settings/config-files.ts";
 import type { CheckLayer } from "./types.ts";
+import { readIfExists } from "../shared/fs.ts";
 
 export const GITATTRIBUTES = ".gitattributes";
 /** SPEC §5.1: Prettier and Biome default to LF, and Spotless follows .gitattributes. */

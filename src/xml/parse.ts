@@ -1,4 +1,5 @@
 import { parseXml, XmlElement, XmlError } from "@rgrove/parse-xml";
+import { lineAt } from "../shared/guards.ts";
 
 /** A plain XML element: name, attributes, child elements, its own text, and the 1-based line it starts on. */
 export interface XmlEl {
@@ -10,12 +11,6 @@ export interface XmlEl {
 }
 
 export type XmlParse = { ok: true; root: XmlEl } | { ok: false; line: number; message: string };
-
-function lineAt(text: string, offset: number): number {
-  let line = 1;
-  for (let i = 0; i < offset; i++) if (text.charCodeAt(i) === 10) line++;
-  return line;
-}
 
 function convert(el: XmlElement, source: string): XmlEl {
   return {

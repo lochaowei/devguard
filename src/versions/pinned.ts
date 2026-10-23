@@ -1,4 +1,5 @@
 import type { Language } from "../standard/types.ts";
+import { upwards } from "../repo/paths.ts";
 
 /**
  * Exact versions a component pins through its own dependency manager (SPEC §5.2). Self-contained line readers:
@@ -35,12 +36,6 @@ function python(dir: string, read: ReadRepoFile): Pinned | undefined {
   return undefined;
 }
 
-/** `dir` and each parent directory, nearest first: "a/b/" → ["a/b/", "a/", ""]. */
-function ancestors(dir: string): string[] {
-  const parts = dir.split("/").filter((p) => p !== "");
-  return parts.map((_, i) => parts.slice(0, parts.length - i).join("/") + "/").concat("");
-}
-
 /**
  * Installed packages from an npm lockfile (v2/v3 `packages`), as seen from `sub` (the component directory relative
  * to the lockfile): a copy installed in `sub` wins over the hoisted one at the root.
@@ -69,7 +64,7 @@ function installedIn(packages: Record<string, { version?: unknown }>, dir: strin
 }
 
 function typescript(dir: string, read: ReadRepoFile): Pinned | undefined {
-  for (const base of ancestors(dir)) {
+  for (const base of upwards(dir)) {
     const file = base + "package-lock.json";
     const text = read(file);
     if (text !== undefined) return { file, versions: readNpmLock(text, dir.slice(base.length)) };

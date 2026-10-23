@@ -1,5 +1,3 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { CODE_CHECKERS } from "../code/registry.ts";
 import { CODE_CATEGORIES, type CodeCheckContext, type CodeChecker, type CodeTarget } from "../code/types.ts";
 import type { Finding } from "../report/finding.ts";
@@ -7,6 +5,7 @@ import { assignFiles, type OwnedFile } from "../repo/files.ts";
 import { BUNDLED_STANDARDS } from "../standard/registry.ts";
 import type { Language, Standard } from "../standard/types.ts";
 import { scopedFiles, type CheckScope, type LayerContext, type CheckLayer } from "./types.ts";
+import { repoReader } from "../shared/fs.ts";
 
 interface Group {
   owner: OwnedFile["owner"];
@@ -52,14 +51,6 @@ function toTarget(group: Group, scope: CheckScope, standard: Standard, global: R
   };
 }
 
-async function readText(cwd: string, repoPath: string): Promise<string | undefined> {
-  try {
-    return await readFile(join(cwd, repoPath), "utf8");
-  } catch {
-    return undefined;
-  }
-}
-
 /** One code target with the checker for its language and the repo-relative files in scope that it owns. */
 export interface PlannedTarget {
   checker: CodeChecker;
@@ -81,7 +72,7 @@ export async function codeTargets(ctx: LayerContext): Promise<PlannedTarget[]> {
 
 /** What a CodeChecker sees of the layer context. */
 export function codeCheckContext(ctx: Pick<LayerContext, "cwd" | "tools" | "stagedText">): CodeCheckContext {
-  const base = { cwd: ctx.cwd, tools: ctx.tools, readText: (p: string) => readText(ctx.cwd, p) };
+  const base = { cwd: ctx.cwd, tools: ctx.tools, readText: (p: string) => repoReader(ctx.cwd)(p) };
   return ctx.stagedText ? { ...base, staged: ctx.stagedText } : base;
 }
 

@@ -1,16 +1,16 @@
 import { join } from "node:path";
 import {
   findFirst,
-  isRecord,
   literalProperty,
   objectProperty,
   parseJsonc,
   propertyValueIndex,
   pullsFromElsewhere,
-  readIfExists,
 } from "../config-files.ts";
 import type { KeyPath } from "../../fix/repair.ts";
 import { setAt, type SettingsJudge } from "../judge.ts";
+import { readIfExists } from "../../shared/fs.ts";
+import { isRecord } from "../../shared/guards.ts";
 
 const METRICS = ["lines", "branches", "functions", "statements"] as const;
 

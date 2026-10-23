@@ -1,10 +1,10 @@
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { redactSecrets } from "../report/redact.ts";
-import { readIfExists } from "../settings/config-files.ts";
 import { fileCategory, type FileCategory } from "./category.ts";
 import { editConfigText } from "./edit.ts";
 import type { KeyEdit, Repair } from "./repair.ts";
+import { readIfExists } from "../shared/fs.ts";
 
 export { fileCategory } from "./category.ts";
 

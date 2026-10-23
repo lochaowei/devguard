@@ -3,10 +3,9 @@ import type { Exec } from "../process/exec.ts";
 import type { Finding } from "../report/finding.ts";
 import { workspaceExtensions } from "../vscode/workspace.ts";
 import type { EnvironmentCheck } from "./types.ts";
+import { isEnoent } from "../shared/fs.ts";
 
 const LIST_ARGS = ["--list-extensions", "--show-versions"] as const;
-
-const isEnoent = (e: unknown): boolean => (e as NodeJS.ErrnoException | undefined)?.code === "ENOENT";
 
 /** `publisher.name@version` lines → lower-cased ids. */
 const installedIds = (stdout: string): Set<string> =>

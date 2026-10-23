@@ -13,8 +13,8 @@ import { nodeExec } from "../process/exec.ts";
 import { claudeFeedback } from "../report/claude.ts";
 import type { Finding } from "../report/finding.ts";
 import { exitCodeFor, problemsOnly } from "../report/render.ts";
-import { isRecord } from "../settings/config-files.ts";
 import type { HookContext } from "./pre-commit.ts";
+import { isRecord } from "../shared/guards.ts";
 
 /** The hook's JSON input from stdin (Claude Code passes it to every command hook). */
 async function hookInput(ctx: HookContext): Promise<Record<string, unknown>> {

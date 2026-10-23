@@ -16,6 +16,7 @@ import type { Finding } from "./report/finding.ts";
 import { listRepoFiles } from "./repo/files.ts";
 import { BUNDLED_STANDARDS } from "./standard/registry.ts";
 import { EXTENSION_LANGUAGE, LANGUAGES, type Language, type Standard } from "./standard/types.ts";
+import { upwards } from "./repo/paths.ts";
 
 /** The settings checks whose readers the draft reuses: their findings carry the values read from config files. */
 const SETTINGS_LAYERS: readonly CheckLayer[] = [
@@ -47,16 +48,6 @@ function languageOf(file: string): Language | undefined {
   return dot <= 0 ? undefined : EXTENSION_LANGUAGE[name.slice(dot).toLowerCase()];
 }
 
-/** Ancestor directories of `dir`, nearest first, ending with the root "". */
-function ancestors(dir: string): string[] {
-  const out = [dir];
-  for (let d = dir; d !== "";) {
-    d = dirOf(d.slice(0, -1));
-    out.push(d);
-  }
-  return out;
-}
-
 /**
  * Components inferred from the repo's files (SPEC §4.1, §4.3): each source file belongs to the nearest directory
  * holding a build or tool file of its language, or to the root. Java modules nested in a Java build are one component.
@@ -68,7 +59,7 @@ export function inferComponents(files: readonly string[]): DraftComponent[] {
   for (const file of paths) {
     const language = languageOf(file);
     if (!language) continue;
-    const marked = ancestors(dirOf(file)).filter((d) => MARKERS[language].some((m) => present.has(d + m)));
+    const marked = upwards(dirOf(file)).filter((d) => MARKERS[language].some((m) => present.has(d + m)));
     // A multi-module Java build is built from its outermost build file.
     const dir = (language === "java" ? marked.at(-1) : marked[0]) ?? "";
     found.set(`${dir}|${language}`, { dir, language });

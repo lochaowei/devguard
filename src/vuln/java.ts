@@ -1,9 +1,10 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { IgnoredVuln } from "../standard/types.ts";
 import { readMavenPlugins } from "../versions/pinned.ts";
 import { isRecord, mirrorOf, noMirror, parseJson, scanFailed, scanFinding, str } from "./support.ts";
 import type { Vuln, VulnScanner, VulnSeverity } from "./types.ts";
+import { readIfExists } from "../shared/fs.ts";
 
 const xmlText = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -71,14 +72,6 @@ function reportedVulns(report: unknown): Vuln[] | undefined {
   });
 }
 
-async function readText(path: string): Promise<string | undefined> {
-  try {
-    return await readFile(path, "utf8");
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * The Dependency-Check Maven plugin version devguard runs when the pom does not pin one: the plugin is never invoked
  * unversioned, which would let Maven pick (and download) whatever is newest (SPEC §5.2). Placeholder until the team
@@ -124,7 +117,7 @@ export const javaScanner: VulnScanner = {
       args: [
         "-B",
         "-ntp",
-        `org.owasp:dependency-check-maven:${pluginVersion(await readText(join(ctx.cwd, target.dir, "pom.xml")))}:check`,
+        `org.owasp:dependency-check-maven:${pluginVersion(await readIfExists(join(ctx.cwd, target.dir, "pom.xml")))}:check`,
         "-Dformat=JSON",
         `-Dodc.outputDirectory=${ctx.workDir}`,
         `-DsuppressionFile=${suppression}`,
@@ -137,7 +130,8 @@ export const javaScanner: VulnScanner = {
         "-DhostedSuppressionsEnabled=false",
       ],
     });
-    const report = result.code === 0 ? await readText(join(ctx.workDir, "dependency-check-report.json")) : undefined;
+    const report =
+      result.code === 0 ? await readIfExists(join(ctx.workDir, "dependency-check-report.json")) : undefined;
     const vulns = report === undefined ? undefined : reportedVulns(parseJson(report));
     if (vulns === undefined)
       return { vulns: [], findings: [scanFailed(target, "mvnw dependency-check:check", result)] };

@@ -1,7 +1,9 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { posix, win32 } from "node:path";
 import type { Language } from "../standard/types.ts";
 import { nodeExec, type Command, type Exec } from "../process/exec.ts";
+import { goEnv } from "./go-env.ts";
+import { isEnoent, readIfExistsSync } from "../shared/fs.ts";
 
 export interface ToolRequest {
   language: Language;
@@ -145,19 +147,17 @@ function onPath(name: string, env: Env): string | undefined {
   return undefined;
 }
 
-/** GOPROXY=off: running a check must never download modules. */
-const GO_ENV = { GOTOOLCHAIN: "local", GOPROXY: "off" };
-
 function go(req: ToolRequest, cwd: string, env: Env): Resolved {
   const args = req.args ?? [];
-  const goEnv = { ...req.env, ...GO_ENV };
+  // GOPROXY=off: running a check must never download modules.
+  const offline = { ...req.env, ...goEnv({ offline: true }) };
   // `go` itself, for module commands such as `go mod tidy -diff`.
-  if (req.tool === "go") return { ok: true, command: { file: "go", args: [...args], cwd, env: goEnv } };
+  if (req.tool === "go") return { ok: true, command: { file: "go", args: [...args], cwd, env: offline } };
   if (req.tool === "golangci-lint") {
     // Exception in SPEC §5.2: not a go.mod tool, but a binary from the internal Scoop bucket.
     const exe = onPath(req.tool, env);
     if (!exe) return { ok: false, message: "找不到 golangci-lint", install: "scoop install golangci-lint" };
-    return { ok: true, command: { file: exe, args: [...args], cwd, env: { ...req.env, GOTOOLCHAIN: "local" } } };
+    return { ok: true, command: { file: exe, args: [...args], cwd, env: { ...req.env, ...goEnv() } } };
   }
   const goMod = env.readText(env.path.join(cwd, "go.mod"));
   const declared = goModTools(goMod ?? "").some((t) => t === req.tool || t.endsWith(`/${req.tool}`));
@@ -169,7 +169,7 @@ function go(req: ToolRequest, cwd: string, env: Env): Resolved {
       install: inDir(req.dir, `go get -tool <${req.tool} 的套件路徑>`),
     };
   }
-  return { ok: true, command: { file: "go", args: ["tool", req.tool, ...args], cwd, env: goEnv } };
+  return { ok: true, command: { file: "go", args: ["tool", req.tool, ...args], cwd, env: offline } };
 }
 
 function java(req: ToolRequest, cwd: string, env: Env): Resolved {
@@ -192,18 +192,6 @@ const RESOLVERS: Readonly<Record<Language, (req: ToolRequest, cwd: string, env: 
   java,
 };
 
-function isEnoent(e: unknown): boolean {
-  return (e as { code?: unknown } | null)?.code === "ENOENT";
-}
-
-function readTextOrUndefined(path: string): string | undefined {
-  try {
-    return readFileSync(path, "utf8");
-  } catch {
-    return undefined;
-  }
-}
-
 /** The package manager of a language, pointed at the mirror through its own environment variables. */
 function packageManager(req: PackageRequest, cwd: string, env: Env): Resolved {
   const args = [...req.args];
@@ -216,9 +204,8 @@ function packageManager(req: PackageRequest, cwd: string, env: Env): Resolved {
       return { ok: true, command: { file: npm, args, cwd, env: { npm_config_registry: req.mirror } } };
     }
     case "go": {
-      const goEnv: Record<string, string> = { GOTOOLCHAIN: "local", GOPROXY: req.mirror };
-      if (req.sumdb) goEnv.GOSUMDB = `sum.golang.org ${req.sumdb}`;
-      return { ok: true, command: { file: "go", args, cwd, env: goEnv } };
+      const env = goEnv({ proxy: req.mirror, ...(req.sumdb ? { sumdb: req.sumdb } : {}) });
+      return { ok: true, command: { file: "go", args, cwd, env } };
     }
     case "java":
       throw new Error("Java 的建置檔只印出修改內容，不由 CLI 執行套件管理指令");
@@ -232,7 +219,7 @@ export function createToolRunner(deps: ToolRunnerDeps): Required<ToolRunner> {
     path: windows ? win32 : posix,
     windows,
     exists: deps.exists ?? existsSync,
-    readText: deps.readText ?? readTextOrUndefined,
+    readText: deps.readText ?? readIfExistsSync,
     pathEnv: deps.pathEnv ?? process.env.PATH ?? "",
   };
   const exec = deps.exec ?? nodeExec;

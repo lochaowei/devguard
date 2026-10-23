@@ -4,6 +4,7 @@ import { LANGUAGE_LABEL, LANGUAGES, type ItemDef, type Language, type Standard }
 import { compareToDefault, type Status } from "./compare.ts";
 import { displayDir, normalizeDir } from "./path.ts";
 import type { Declaration, RawOverride } from "./types.ts";
+import { isRecord } from "../shared/guards.ts";
 
 export interface EffectiveItem {
   value: unknown;
@@ -44,8 +45,6 @@ export interface Resolution {
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const fmt = (v: unknown): string => (Array.isArray(v) ? `[${v.map(fmt).join(", ")}]` : JSON.stringify(v));
-
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 interface Unwrapped {
   value: unknown;

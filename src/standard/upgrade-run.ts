@@ -1,5 +1,3 @@
-import { join } from "node:path";
-import { readFileSync } from "node:fs";
 import { FIX_LAYERS, runCheck, type CheckOptions, type CheckResult } from "../check.ts";
 import { parseDeclaration } from "../declaration/parse.ts";
 import { normalizeDir } from "../declaration/path.ts";
@@ -18,6 +16,7 @@ import { inRange, parseRange } from "../versions/range.ts";
 import { BUNDLED_STANDARDS, compareVersion, findStandard, parseStandardId } from "./registry.ts";
 import { LANGUAGE_LABEL, type ItemDef, type Language, type Standard } from "./types.ts";
 import { diffStandards, newerVersions, type ItemChange } from "./upgrade.ts";
+import { repoReaderSync } from "../shared/fs.ts";
 
 export interface UpgradeOptions extends CheckOptions {
   /** `devguard standard upgrade [目標版本]`; defaults to the newest bundled version of the declared standard. */
@@ -144,16 +143,6 @@ function redundantOverrides(t: Target, before: CheckResult, after: CheckResult):
   return found;
 }
 
-function readRepoFile(cwd: string): (path: string) => string | undefined {
-  return (path) => {
-    try {
-      return readFileSync(join(cwd, path), "utf8");
-    } catch {
-      return undefined;
-    }
-  };
-}
-
 /** One versionRange item of one component: what has to change for it. */
 function toolChangesOf(
   c: ResolvedComponent,
@@ -176,7 +165,7 @@ function toolChangesOf(
 
 function toolChanges(cwd: string, t: Target, after: CheckResult): ToolChange[] {
   return (after.resolution?.components ?? []).flatMap((c) => {
-    const pinned = pinnedVersions(c.language, c.dir, readRepoFile(cwd));
+    const pinned = pinnedVersions(c.language, c.dir, repoReaderSync(cwd));
     return Object.entries(t.to.languages[c.language])
       .filter(([, item]) => item.kind === "versionRange")
       .flatMap(([key, item]) => toolChangesOf(c, key, item, t.from, pinned));

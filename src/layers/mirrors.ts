@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { checkMirrors, type MirrorSettings } from "../mirrors/project.ts";
-import { readIfExists } from "../settings/config-files.ts";
 import type { CheckLayer } from "./types.ts";
+import { readIfExists } from "../shared/fs.ts";
 
 const text = (v: unknown): string => (typeof v === "string" ? v : "");
 

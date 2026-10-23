@@ -2,10 +2,9 @@ import type { Finding } from "../report/finding.ts";
 import { SEVERITIES, type IgnoredVuln } from "../standard/types.ts";
 import { scanFinding } from "./support.ts";
 import type { Vuln, VulnSeverity, VulnTarget } from "./types.ts";
+import { isRecord } from "../shared/guards.ts";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 /**
  * The `deps.ignoredVulns` entries in force: id, a real reason and an until that has not passed (SPEC §4.2). Any other

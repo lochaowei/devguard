@@ -5,8 +5,8 @@ import { GRADLE_AUTH_VARIABLES, isGradle, MAVEN_AUTH_VARIABLES } from "../mirror
 import { NPM_AUTH_VARIABLE, npmrcVariables } from "../mirrors/npm.ts";
 import { UV_AUTH_VARIABLES } from "../mirrors/uv.ts";
 import type { Finding } from "../report/finding.ts";
-import { readIfExists } from "../settings/config-files.ts";
 import type { EnvironmentCheck, EnvironmentContext } from "./types.ts";
+import { readIfExists } from "../shared/fs.ts";
 
 type Env = EnvironmentContext["env"];
 

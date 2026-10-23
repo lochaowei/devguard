@@ -1,4 +1,5 @@
 import { redact, sameUrl } from "../mirrors/common.ts";
+import { goSumdb } from "../tools/go-env.ts";
 import type { Finding } from "../report/finding.ts";
 import type { EnvironmentCheck, EnvironmentContext } from "./types.ts";
 
@@ -44,7 +45,7 @@ export const goMirrorsCheck: EnvironmentCheck = {
     const values = await readGoEnv(ctx);
     if (!values) return [];
     const proxy = mirror(ctx, "mirrors.go");
-    const sumdb = `sum.golang.org ${mirror(ctx, "mirrors.gosumdb")}`;
+    const sumdb = goSumdb(mirror(ctx, "mirrors.gosumdb"));
     const setSumdb = `go env -w GOSUMDB="${sumdb}"`;
     const findings: Finding[] = [];
     const goproxy = values.GOPROXY ?? "";

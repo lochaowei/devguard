@@ -2,8 +2,7 @@ import type { Finding, Level } from "../report/finding.ts";
 import type { ToolResult } from "../tools/runner.ts";
 import type { VulnTarget } from "./types.ts";
 
-export const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
+export { isRecord } from "../shared/guards.ts";
 
 export const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
 

@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { FIX_LAYERS, type CheckOptions } from "../check.ts";
 import { CLAUDE_CODE_LAYER_ID, createClaudeCodeLayer } from "../layers/claude-code.ts";
@@ -17,6 +16,7 @@ import {
   type HookFileStatus,
 } from "./file.ts";
 import { detectFramework, hooksDisabled, hooksPathConflict, planFrameworkHooks, readHooksPath } from "./frameworks.ts";
+import { readIfExists } from "../shared/fs.ts";
 
 /** The hooks `devguard install` writes (SPEC §7.4). */
 export const INSTALLED_HOOKS: readonly GitHookName[] = ["pre-commit", "pre-push"];
@@ -34,14 +34,6 @@ function shown(cwd: string, path: string): string {
   return normalizePath(rel.startsWith("..") || isAbsolute(rel) ? path : rel);
 }
 
-async function readOrUndefined(path: string): Promise<string | undefined> {
-  try {
-    return await readFile(path, "utf8");
-  } catch {
-    return undefined;
-  }
-}
-
 export interface InstalledHook {
   /** Absolute path of the hook file. */
   path: string;
@@ -53,7 +45,7 @@ export interface InstalledHook {
 /** Whether a hook is installed: missing, someone else's, or devguard's with an intact checksum (for doctor, §7.4). */
 export async function installedHook(cwd: string, hook: GitHookName, exec: Exec = nodeExec): Promise<InstalledHook> {
   const path = await hookFilePath(cwd, hook, exec);
-  const text = await readOrUndefined(path);
+  const text = await readIfExists(path);
   return text === undefined ? { path, status: { kind: "missing" } } : { path, status: inspectHookFile(text), text };
 }
 
@@ -69,7 +61,7 @@ export async function planHooks(
   const plan: ChangePlan = { writes: [], printed: [] };
   for (const hook of hooks) {
     const path = await hookFilePath(cwd, hook, options.exec);
-    const before = (await readOrUndefined(path)) ?? "";
+    const before = (await readIfExists(path)) ?? "";
     const after = renderHookFile(hook, options);
     const file = shown(cwd, path);
     if (before !== "" && inspectHookFile(before).kind === "foreign") {
