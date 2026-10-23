@@ -1,3 +1,4 @@
+import { pathToolHint } from "../distribution.ts";
 import { valueInForce, type EffectiveItem, type ResolvedComponent } from "../declaration/resolve.ts";
 import { DECLARATION_FILE } from "../declaration/types.ts";
 import type { Finding } from "../report/finding.ts";
@@ -81,7 +82,7 @@ async function checkOnPath(
             ? `無法從 ${tool} --version 的輸出讀出版本，無法確認是否在 ${range} 內`
             : `PATH 上的 ${tool} 是 ${version}，不在允許的版本範圍 ${range} 內`,
         component: c.name,
-        fix: `scoop update ${tool}`,
+        fix: pathToolHint(tool, range),
       });
     }
   }

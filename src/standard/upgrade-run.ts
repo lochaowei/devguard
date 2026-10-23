@@ -1,3 +1,4 @@
+import { pathToolHint } from "../distribution.ts";
 import { FIX_LAYERS, runCheck, type CheckOptions, type CheckResult } from "../check.ts";
 import { parseDeclaration } from "../declaration/parse.ts";
 import { normalizeDir } from "../declaration/path.ts";
@@ -194,11 +195,11 @@ const MANAGERS: Readonly<Record<Managed, { command: readonly string[]; mirror: s
     },
   };
 
-/** Changes no package manager can make: PATH tools (Scoop) and Java build files. */
+/** Changes no package manager can make: PATH tools and Java build files. */
 function manualCommand(change: ToolChange): PlannedCommand {
   const how =
     change.version === undefined
-      ? `scoop update ${change.name}`
+      ? pathToolHint(change.name, change.range)
       : `請在 ${change.file ?? "建置檔"} 把 ${change.name} 改成 ${change.range} 內的版本`;
   return { display: `${how}（請自行執行）` };
 }

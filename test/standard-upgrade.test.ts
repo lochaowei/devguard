@@ -235,7 +235,7 @@ describe("devguard standard upgrade (SPEC §5.5)", () => {
       "cd web && npm install --save-dev eslint@>=11 <12（鏡像：https://nexus.example.internal/repository/npm-proxy/）",
     );
     expect(out).toContain("cd svc && go get -tool mvdan.cc/gofumpt@v0.10.0（");
-    expect(out).toContain("scoop update golangci-lint（請自行執行）");
+    expect(out).toMatch(/把版本在 \S+ 內的 golangci-lint binary 放進 PATH（請自行執行）/);
     expect(out).toContain("請在 api/pom.xml 把 maven-pmd-plugin 改成 >=3.27,<4 內的版本");
   });
 });

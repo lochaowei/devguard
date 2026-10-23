@@ -169,10 +169,10 @@ describe("tool runner: Go", () => {
     ]);
   });
 
-  it("asks to install golangci-lint from the internal Scoop bucket when it is not on PATH", async () => {
+  it("asks to put golangci-lint on PATH when it is missing", async () => {
     const { runner } = fakeRunner({}, { pathEnv: undefined });
     expect((await missing(runner.run(req({ language: "go", tool: "golangci-lint" })))).install).toBe(
-      "scoop install golangci-lint",
+      "把預設標準指定版本的 golangci-lint binary 放進 PATH",
     );
   });
 

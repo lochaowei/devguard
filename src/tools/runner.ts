@@ -1,3 +1,4 @@
+import { pathToolHint } from "../distribution.ts";
 import { existsSync } from "node:fs";
 import { posix, win32 } from "node:path";
 import type { Language } from "../standard/types.ts";
@@ -77,7 +78,7 @@ export interface ToolRunnerDeps {
   exists?: (path: string) => boolean;
   /** File contents, or undefined when the file does not exist. */
   readText?: (path: string) => string | undefined;
-  /** PATH, for tools that come from the internal Scoop bucket rather than the project. */
+  /** PATH, for tools the developer installs rather than the project (golangci-lint, launchers). */
   pathEnv?: string;
 }
 
@@ -91,7 +92,7 @@ interface Env {
   pathEnv: string;
 }
 
-/** Programs the CLI starts by name; when missing, they come from the internal Scoop bucket. */
+/** Programs the CLI starts by name, with the install hint shown when they are missing. */
 const LAUNCHERS: Readonly<Record<string, string>> = { uv: "scoop install uv", go: "scoop install go" };
 
 function inDir(dir: string, command: string): string {
@@ -168,9 +169,9 @@ function go(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
   // `go` itself, for module commands such as `go mod tidy -diff`.
   if (req.tool === "go") return { ok: true, command: { file: "go", args: [...args], cwd, env: offline } };
   if (req.tool === "golangci-lint") {
-    // Exception in SPEC §5.2: not a go.mod tool, but a binary from the internal Scoop bucket.
+    // Exception in SPEC §5.2: not a go.mod tool, but a binary the developer puts on PATH.
     const exe = onPath(req.tool, env);
-    if (!exe) return { ok: false, message: "找不到 golangci-lint", install: "scoop install golangci-lint" };
+    if (!exe) return { ok: false, message: "找不到 golangci-lint", install: pathToolHint("golangci-lint") };
     return { ok: true, command: { file: exe, args: [...args], cwd, env: { ...req.env, ...goEnv() } } };
   }
   const goMod = env.readText(env.path.join(cwd, "go.mod"));

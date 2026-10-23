@@ -148,11 +148,11 @@ describe("golangci-lint from PATH (SPEC §5.2 exception)", () => {
     expect(tools.calls).toEqual([{ language: "go", tool: "golangci-lint", dir: "svc/", args: ["--version"] }]);
   });
 
-  it("reports a version outside the range and suggests scoop update", async () => {
+  it("reports a version outside the range and asks for a binary in the range on PATH", async () => {
     const r = await check({ ".devguard.yaml": GO }, fakeTools("golangci-lint has version v2.11.4 built with go1.25"));
     expect(rules(r.findings)).toEqual(["error:tool-version/golangci-lint", "error:tool-version/golangci-lint"]);
     expect(r.findings[0]?.message).toContain("2.11.4");
-    expect(r.findings[0]?.fix).toBe("scoop update golangci-lint");
+    expect(r.findings[0]?.fix).toBe("把版本在 >=2.12,<3 內的 golangci-lint binary 放進 PATH");
     expect(r.findings[0]?.layer).toBe("environment");
   });
 

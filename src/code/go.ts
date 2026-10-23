@@ -89,7 +89,7 @@ async function formatStaged(target: CodeTarget, ctx: CodeCheckContext, file: str
 }
 
 /**
- * golangci-lint v2 (linters and formatters such as gofumpt / goimports) from the internal Scoop bucket
+ * golangci-lint v2 (linters and formatters such as gofumpt / goimports) from PATH
  * (SPEC §5.2, §6.2). One run covers lint, format and type errors; issues are sorted into categories afterwards.
  * Staged files (pre-commit) get their format checked through stdin instead.
  */

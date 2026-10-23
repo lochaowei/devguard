@@ -45,7 +45,7 @@ const typescriptTools: Record<string, ItemDef> = {
 };
 
 const goTools: Record<string, ItemDef> = {
-  // SPEC §5.2 exception: an exact binary from the internal Scoop bucket, checked on PATH. ≥2.12 for gomodguard_v2.
+  // SPEC §5.2 exception: an exact binary the developer puts on PATH, version checked by the CLI. ≥2.12 for gomodguard_v2.
   "tools.golangci-lint": { ...placeholderRange("golangci-lint", ">=2.12,<3", []), onPath: true },
   "tools.gofumpt": placeholderRange("gofumpt", ">=0.9,<1", ["mvdan.cc/gofumpt"]),
   "tools.goimports": placeholderRange("goimports", ">=0.38,<1", ["golang.org/x/tools/cmd/goimports"]),
