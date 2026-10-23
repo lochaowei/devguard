@@ -12,7 +12,7 @@
 
 ## 目前狀態
 
-**v0.1.0：SPEC 的指令都已實作**（`check`、`doctor`、`fix`、`install`、`hook`、`draft`、`standard upgrade`）。尚未完成的是發佈：Bun 打包的 exe 還沒在實機上建置驗證（#27），簽章與內部 Scoop bucket 也還沒建立（#28）。見下方[路線圖](#路線圖)與[已知限制](#已知限制)。
+**v0.1.0：SPEC 的指令都已實作**（`check`、`doctor`、`fix`、`install`、`hook`、`draft`、`standard upgrade`）。以 Bun 打包成單一 exe，透過 GitHub Release 發佈（見[安裝](#安裝)）。見下方[路線圖](#路線圖)與[已知限制](#已知限制)。
 
 - **專案宣告與草稿**：解析並檢查 `.devguard.yaml`（9 種標準項目類型、覆寫與偏離規則、到期日檢查、未涵蓋程式檔提示），以及依既有設定產生宣告草稿（`devguard draft`，含 Gradle、pnpm、yarn、Poetry、Biome、Jest、pyright 等工具選擇）。
 - **四語言設定檢查與一致性檢查**：Python（`pyproject.toml`、`ruff.toml`、`pyrightconfig.json`）、Go（`.golangci.yml` / `.golangci.yaml`、`go.mod`）、TypeScript（`tsconfig.json`、ESLint、Prettier、Biome、Vitest / Jest、`package.json`）、Java（`pom.xml`、`build.gradle(.kts)`、`checkstyle.xml`、PMD ruleset、`lombok.config`）與共通 `.gitattributes`（`* text=auto eol=lf`）。monorepo 的子元件沿用上層目錄的共用設定檔。
@@ -42,7 +42,17 @@ devguard fix        # 預覽並修正不合規的設定檔
 devguard doctor     # check 加上環境檢查：擴充套件、hook、Claude Code、鏡像帳密
 ```
 
-正式發佈時，devguard 會用 Bun 打包成單一 `devguard.exe`，透過公司內部的 Scoop bucket 安裝（SPEC §3.1）。
+### 安裝
+
+從 [GitHub Releases](https://github.com/lochaowei/devguard/releases/latest) 下載 `devguard-windows-x64.exe`（arm64 機器用 `devguard-windows-arm64.exe`），改名為 `devguard.exe` 並放進 PATH。可用同一個 release 中的 `SHA256SUMS.txt` 核對檔案。更新時下載新版取代即可。exe 不需要 Node，也沒有簽章（SPEC §3.1）。
+
+### 發佈新版本
+
+1. 修改 `package.json` 的 `version`，提交並合併到 `main`。
+2. 推送相同版本的 tag：`git tag v0.2.0 && git push origin v0.2.0`。
+3. [release workflow](.github/workflows/release.yml) 會在 Windows runner 上執行測試、建置兩個 exe、跑 smoke test，再建立 GitHub Release 並附上 exe 與 `SHA256SUMS.txt`。tag 與 `package.json` 版本不同時會失敗。
+
+本機建置：`npm run build:exe`（需要 Bun ≥1.2.23），產物在 `dist/`；`npm run smoke:exe` 在 PATH 中沒有 Node 的情況下驗證 exe。
 
 ## 專案宣告 `.devguard.yaml`
 
@@ -259,8 +269,8 @@ GLOSSARY.md              用語定義
 - [x] 弱點掃描（§5.3，#25）
 - [x] `devguard standard upgrade` 與棄用版本（§5.5，#26）
 - [x] 實際專案測試（KEI-6、KEI-7）
-- [ ] Bun 打包單一 exe 與 smoke test（§3.1，#27：腳本已完成，Bun 尚未在實機上建置驗證）
-- [ ] 簽章與內部 Scoop bucket 發佈（§3.1，#28）
+- [x] Bun 打包單一 exe、smoke test 與 T1 / T2 實機測試（§3.1、§13，#27）
+- [x] 以 GitHub Release 發佈 exe（§3.1；原本規劃的簽章與內部 Scoop bucket 已取消，#28）
 
 ### 已知限制
 

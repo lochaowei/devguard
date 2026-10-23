@@ -1,3 +1,4 @@
+import { CLI_INSTALL_HINT } from "../src/distribution.ts";
 import { describe, expect, it } from "vitest";
 import { resolveText, rules } from "./helpers.ts";
 
@@ -119,7 +120,7 @@ describe("resolveDeclaration — other rules", () => {
   it.each([
     ["team@1", "standard/malformed", undefined],
     ["acme@1.0.0", "standard/unknown-name", undefined],
-    ["team@9.0.0", "standard/newer-than-cli", "scoop update devguard"],
+    ["team@9.0.0", "standard/newer-than-cli", `更新 devguard：${CLI_INSTALL_HINT}`],
     ["team@0.1.0", "standard/no-longer-bundled", "devguard standard upgrade"],
   ])("standard %s → %s", (id, rule, fix) => {
     const r = resolveText(`standard: ${id}\ncomponents: []\n`);

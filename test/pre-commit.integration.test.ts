@@ -113,7 +113,7 @@ describe("pre-commit hook in a real git commit (SPEC §7.4)", { timeout: 180_000
     git("add", "clean.ts");
     const r = commit("no cli");
     expect(r.code).not.toBe(0);
-    expect(r.output).toContain("scoop install devguard");
+    expect(r.output).toContain("github.com/lochaowei/devguard/releases");
     expect(r.output).toContain("--no-verify");
   });
 });

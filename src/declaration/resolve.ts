@@ -1,3 +1,4 @@
+import { CLI_INSTALL_HINT } from "../distribution.ts";
 import type { Finding, Level } from "../report/finding.ts";
 import { BUNDLED_STANDARDS, findStandard } from "../standard/registry.ts";
 import { LANGUAGE_LABEL, LANGUAGES, type ItemDef, type Language, type Standard } from "../standard/types.ts";
@@ -189,7 +190,7 @@ function checkStandardVersion(
     const fixes = {
       malformed: undefined,
       "unknown-name": undefined,
-      "newer-than-cli": "scoop update devguard",
+      "newer-than-cli": `更新 devguard：${CLI_INSTALL_HINT}`,
       "no-longer-bundled": "devguard standard upgrade",
     };
     r.add("error", `standard/${found.reason}`, messages[found.reason], { ...at, fix: fixes[found.reason] });

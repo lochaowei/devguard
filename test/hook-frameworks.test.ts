@@ -89,7 +89,7 @@ describe("install into an existing hook framework (SPEC §7.4)", () => {
     expect(lines[0]).toBe("npx lint-staged");
     expect(lines.slice(1)).toHaveLength(1);
     expect(lines[1]).toContain('devguard hook git-pre-commit "$@"');
-    expect(lines[1]).toContain("scoop install devguard");
+    expect(lines[1]).toContain("github.com/lochaowei/devguard/releases");
     expect(existsSync(join(dir, ".husky/_/pre-commit"))).toBe(false);
   });
 

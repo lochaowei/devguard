@@ -112,5 +112,5 @@ src/
 | #24 | 內部鏡像設定與帳密檢查 | §10 | ✅ 已完成（`feat/spec-implementation`） |
 | #25 | 進階：弱點掃描 | §5.3 | ✅ 已完成（`feat/spec-implementation`） |
 | #26 | `devguard standard upgrade` 與棄用版本 | §5.5 | ✅ 已完成（`feat/spec-implementation`） |
-| #27 | Bun 打包單一 `.exe`、smoke test 與 T2 探測腳本 | §3.1、§13 | 🚧 腳本與測試已完成，Bun 尚未在實機上建置驗證 |
-| #28 | 簽章與內部 Scoop bucket 發佈 | §3.1、§12 | 👤 待人工與內部環境處理（`ready-for-human`） |
+| #27 | Bun 打包單一 `.exe`、smoke test 與 T2 探測腳本 | §3.1、§13 | ✅ Bun 1.4.4 實機建置；smoke test、T1、T2 通過 |
+| #28 | 簽章與內部 Scoop bucket 發佈 | §3.1、§12 | 🚫 已取消：改以 GitHub Release 發佈 exe（`wontfix`） |

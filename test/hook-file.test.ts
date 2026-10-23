@@ -16,7 +16,7 @@ describe("git hook file (SPEC §7.4)", () => {
       .split("\n")
       .find((l) => l.startsWith("command -v"));
     expect(line).toMatch(/^command -v devguard >\/dev\/null 2>&1 \|\| \{.*exit 1; \}/);
-    expect(line).toContain("scoop install devguard");
+    expect(line).toContain("github.com/lochaowei/devguard/releases");
     expect(line).toContain("--no-verify");
   });
 

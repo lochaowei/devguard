@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { CLI_INSTALL_HINT } from "../distribution.ts";
 import { withGeneratedHeader } from "../fix/plan.ts";
 
 /** The git hooks devguard installs; each calls `devguard hook git-<name>` (SPEC §3.2, §7.4). */
@@ -8,9 +9,6 @@ export interface HookFileOptions {
   /** How the hook starts the CLI. Defaults to `devguard`; tests use `node "<repo>/src/cli.ts"`. */
   command?: string;
 }
-
-/** Where to get the CLI when the hook cannot find it (SPEC §3.1). */
-export const CLI_INSTALL_COMMAND = "scoop install devguard";
 
 const MARKER = /^# devguard-hook (\S+) sha256=([0-9a-f]{64})$/m;
 
@@ -27,7 +25,7 @@ export function hookCommandLine(hook: GitHookName, command = "devguard", { exec 
   const program = command.trim().split(/\s+/)[0] ?? command;
   const missing =
     `devguard：找不到 CLI（${program}），已擋下這次 git ${hook === "pre-commit" ? "commit" : "push"}。` +
-    `安裝：${CLI_INSTALL_COMMAND}；要暫時略過檢查可加上 --no-verify`;
+    `安裝：${CLI_INSTALL_HINT}；要暫時略過檢查可加上 --no-verify`;
   return (
     `command -v ${program} >/dev/null 2>&1 || { echo '${missing}' >&2; exit 1; }; ` +
     `${exec ? "exec " : ""}${command} hook git-${hook} "$@"`

@@ -64,12 +64,15 @@
 
 - **語言**：TypeScript。CLI 本身也遵守 §6.3 的 TypeScript 預設標準。
 - **打包**：用 Bun `--compile` 打包成單一 `.exe`（windows-x64、windows-arm64），這是唯一的發佈形式。
-  - Bun 必須 **≥1.2.23**。這個版本起，嵌入的資料放在獨立的 PE section，簽章後 exe 不會損壞（PR #22960）。
-  - 在 **Windows runner 上建置**，因為交叉編譯時無法設定 `--windows-icon` 與版本資訊。
-  - 編譯完成後用 signtool 簽章，接著執行 `signtool verify /pa`，再跑一次 `devguard --version` 確認可以正常執行。
-  - 目前沒有找到 Bun 編譯的 exe 被防毒誤判的回報，但 Bun 在 Windows 上仍有幾個尚未修正的子程序 bug（#32011、#40846、#43660），見 §13。
-- **分發**：Scoop bucket 是一個放在公司內部 git 伺服器的 repo，裡面的 manifest 指向 Nexus raw repository（`mirrors.tools`）中的 exe。開發者執行 `scoop install devguard` 安裝、`scoop update devguard` 更新，不需要管理員權限。Scoop 產生的 shim 是真正的 `.exe`，Claude Code 的 exec form hook 可以直接呼叫。
-- 同一個 bucket 也提供預設標準指定版本的 **golangci-lint** binary。
+  - Bun 必須 **≥1.2.23**（已在 1.4.4 驗證，見 §13 T1、T2）。
+  - 在 **Windows runner 上建置**，因為交叉編譯時無法設定 `--windows-icon` 與版本資訊。windows-arm64 在 x64 主機上交叉編譯時，Bun 會從外網下載 arm64 runtime，所以在無法連外的環境必須改在 arm64 的 Windows 上建置。
+  - 建置後執行 smoke test：在 PATH 中沒有 Node 的情況下跑 `devguard --version` 與 `devguard check`。
+  - exe **不簽章**（原本規劃的 signtool 簽章已取消，見 #28）。
+- **分發**：以 **GitHub Release** 發佈建置好的 exe。推送 `v<版本>` tag 時，`.github/workflows/release.yml` 在 Windows runner 上執行測試、建置兩個 exe、跑 smoke test，並把 `devguard-windows-x64.exe`、`devguard-windows-arm64.exe` 與 `SHA256SUMS.txt` 附加到 release。tag 必須和 `package.json` 的版本相同。
+  - 開發者下載 exe、改名為 `devguard.exe` 並放進 PATH；更新時用新版取代。CLI 找不到或版本過舊時，訊息會指向 release 頁面。
+  - 放在 PATH 上的是真正的 `.exe`，Claude Code 的 exec form hook 可以直接呼叫。
+  - 原本規劃的內部 Scoop bucket 與 Nexus raw repository 已取消（#28）。
+- **golangci-lint** 仍是 §5.2 的例外：使用預設標準指定版本的 binary，由開發者放到 PATH，CLI 從 PATH 呼叫並核對版本。
 - **預設標準內建在 CLI 中**（見 §5.5），所以 CLI 不需要連網就能解析專案宣告。
 
 來源：[CLI 實作語言與 Windows 分發選項研究](.scratch/coding-standards-guard/research/01-cli-runtime-options.md)、[CLI 實作語言與分發方式決策](.scratch/coding-standards-guard/issues/05-cli-runtime-decision.md)、[內部鏡像設定檢查](.scratch/coding-standards-guard/issues/16-internal-mirror-config.md)
@@ -191,7 +194,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
   - TypeScript：`devDependencies` 加上 lockfile
   - Go：`go.mod` 的 `tool`
   - Java：`pom.xml` / `build.gradle` 中的 plugin 版本
-- **golangci-lint 例外**：不放進 `go.mod` 的 `tool`。由內部 Scoop bucket 提供指定版本的 binary，CLI 從 PATH 呼叫並核對版本。
+- **golangci-lint 例外**：不放進 `go.mod` 的 `tool`。使用指定版本的 binary，由開發者放到 PATH，CLI 從 PATH 呼叫並核對版本。
 - CLI 執行工具的方式：
   - Python：`uv run <tool>`
   - TypeScript：`node_modules/.bin/<tool>`
@@ -239,7 +242,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
   - **patch**：只修改說明。
 - **專案宣告寫確切版本**。
   - 有 minor 或 patch 更新時，doctor 建議升級。
-  - 宣告的版本比 CLI 內建的新：**錯誤**，提示執行 `scoop update devguard`。
+  - 宣告的版本比 CLI 內建的新：**錯誤**，提示從 GitHub Release 下載新版 devguard（§3.1）。
   - 宣告的版本已經不在 CLI 中：**錯誤**，提示升級標準。
 - **`devguard standard upgrade`**：預設只預覽，內容包括：
   - 標準項目的差異
@@ -570,7 +573,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 1. 以真實的 Nexus 網址取代 §10.1 的 dummy 網址。
 2. §7.2 推薦的 VS Code 擴充套件，都能在公司內部 marketplace 取得。
-3. 內部 git 伺服器上建立 Scoop bucket repo，Nexus 上建立 raw repository，放置 CLI 與 golangci-lint。
+3. 開發者能從 GitHub Release 下載 devguard 的 exe（§3.1），並取得預設標準指定版本的 golangci-lint binary。
 4. 在 Nexus 上建立 `mirrors.gosumdb` raw proxy（指向 `https://sum.golang.org`，關閉 Strict Content Type Validation）。
 5. 訂出 `team@1.0.0` 中各工具的確切版本範圍，以及 golangci-lint 的指定版本。
 6. 開發者的機器上有 Git for Windows（git hook 的 sh 依賴它）。
@@ -591,13 +594,18 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 **已決定**：Python 的覆蓋率改由 CLI 解析 `coverage json`，行與分支各自檢查是否達到 80%，與其他語言一致（§6.1）。
 
-**待實機測試（實作初期進行）**
+**已完成的實機測試（2026-10-24）**
+
+| # | 項目 | 結果 |
+|---|---|---|
+| T1 | `@decimalturn/toml-patch` 在 Bun 編譯後的 exe 中的 round-trip 測試：註解、空行、`[[tool.uv.index]]` | ✅ Bun 1.4.4 exe 中通過：註解、行尾註解、空行與 `[[tool.uv.index]]` 都保留（#17） |
+| T2 | Bun 在 Windows 上尚未修正的子程序 bug（#32011、#40846、#43660），對執行 `.cmd`、stdin 管線、hook 的影響 | ✅ Bun 1.4.4 exe 中 7 項 probe 全部通過，與 Node 相同（#27） |
+| T3 | 在團隊實際使用的 Claude Code 版本上，驗證 `onFailure`、exec form、`stop_hook_active` 的行為 | ✅ Claude Code 2.1.309 與規格一致；另加入 `doctor --exit-zero` 給 skill 使用（#23） |
+
+**待實機測試**
 
 | # | 項目 | 失敗時的退路 |
 |---|---|---|
-| T1 | `@decimalturn/toml-patch` 在 Bun 編譯後的 exe 中的 round-trip 測試：註解、空行、`[[tool.uv.index]]` | `pyproject.toml` 改為「只印片段」 |
-| T2 | Bun 在 Windows 上尚未修正的子程序 bug（#32011、#40846、#43660），對執行 `.cmd`、stdin 管線、hook 的影響 | 針對受影響的呼叫改用替代寫法，或等待修正 |
-| T3 | 在團隊實際使用的 Claude Code 版本上，驗證 `onFailure`、exec form、`stop_hook_active` 的行為 | 調整 `claude.minVersion` |
 | T4 | `code --install-extension` 在公司內部 marketplace 下的行為 | doctor 的提示改為只附上 marketplace 連結 |
 | T5 | 沒有 Firewall 授權時，Nexus 對 npm audit bulk 端點的回應 | 維持「無法使用時給提示」 |
 | T6 | 評估 osv-scanner 離線模式（讀取 Nexus raw 上的 `all.zip`），是否能用一個工具取代 npm audit 與 pip-audit | 維持 §5.3 現有的做法 |
