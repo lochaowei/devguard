@@ -13,6 +13,8 @@ export interface Finding {
   component?: string;
   file?: string;
   line?: number;
+  /** 1-based column, when the tool reports one. */
+  column?: number;
   /** How to resolve it: a command, or what to edit by hand. */
   fix?: string;
   /**
@@ -20,6 +22,8 @@ export interface Finding {
    * the value read. Lets `devguard draft` turn existing settings into overrides (SPEC §4.3).
    */
   observed?: { key: string; value: unknown };
+  /** Whether `devguard fix` can resolve it. When absent, inferred from `fix` (see `isFixable`). */
+  fixable?: boolean;
 }
 
 export const LEVEL_ORDER: readonly Level[] = ["error", "deviation", "hint"];
@@ -29,3 +33,13 @@ export const LEVEL_LABEL: Record<Level, string> = {
   deviation: "偏離",
   hint: "提示",
 };
+
+/** Whether `devguard fix` (or `fix --code`) resolves the finding (SPEC §11 text format). */
+export function isFixable(f: Finding): boolean {
+  return f.fixable ?? f.fix?.startsWith("devguard fix") ?? false;
+}
+
+/** The message on a single line, for line-oriented formats. */
+export function oneLine(message: string): string {
+  return message.replace(/\s*\r?\n\s*/g, " ").trim();
+}

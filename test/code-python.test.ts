@@ -78,6 +78,7 @@ describe("python checker: Ruff lint", () => {
         file: "api/src/app.py",
         line: 1,
         fix: "devguard fix --code api/src/app.py",
+        fixable: true,
       },
       expect.objectContaining({ level: "error", rule: "ruff/syntax-error", file: "api/src/broken.py", line: 4 }),
     ]);
@@ -136,6 +137,7 @@ describe("python checker: Ruff format", () => {
         file: "api/src/app.py",
         line: 6,
         fix: "devguard fix --code api/src/app.py",
+        fixable: true,
       },
       expect.objectContaining({ rule: "ruff/format", file: "api/b.py", line: 2 }),
     ]);
@@ -182,6 +184,7 @@ describe("python checker: mypy", () => {
         file: "api/src/app.py",
         line: 3,
         fix: "手動修正型別錯誤",
+        fixable: false,
       },
       expect.objectContaining({ rule: "mypy/no-untyped-def", file: "api/src/util.py", line: 12 }),
       expect.objectContaining({
@@ -242,6 +245,7 @@ describe("python checker: pyright", () => {
         file: "api/src/app.py",
         line: 3,
         fix: "手動修正型別錯誤",
+        fixable: false,
       },
       expect.objectContaining({ level: "hint", rule: "pyright/warning", file: "api/src/app.py", line: 1 }),
     ]);

@@ -45,7 +45,14 @@ describe("typescript checker: ESLint", () => {
       {
         filePath: abs("web", "src", "a.ts"),
         messages: [
-          { ruleId: "no-unused-vars", severity: 2, message: "'x' is unused.", line: 3, column: 7 },
+          {
+            ruleId: "no-unused-vars",
+            severity: 2,
+            message: "'x' is unused.",
+            line: 3,
+            column: 7,
+            fix: { range: [10, 20], text: "" },
+          },
           { ruleId: "eqeqeq", severity: 1, message: "Expected '==='.", line: 5, column: 1 },
           { ruleId: null, severity: 2, message: "Parsing error: ';' expected.", line: 9, column: 2 },
         ],
@@ -66,9 +73,18 @@ describe("typescript checker: ESLint", () => {
         component: "web/ (TypeScript)",
         file: "web/src/a.ts",
         line: 3,
+        column: 7,
         fix: "devguard fix --code web/src/a.ts",
+        fixable: true,
       },
-      expect.objectContaining({ level: "hint", rule: "eslint/eqeqeq", file: "web/src/a.ts", line: 5 }),
+      expect.objectContaining({
+        level: "hint",
+        rule: "eslint/eqeqeq",
+        file: "web/src/a.ts",
+        line: 5,
+        fix: "依 ESLint 訊息手動修改",
+        fixable: false,
+      }),
       expect.objectContaining({ level: "error", rule: "eslint/parse-error", file: "web/src/a.ts", line: 9 }),
     ]);
   });
@@ -130,7 +146,9 @@ describe("typescript checker: tsc", () => {
         component: "web/ (TypeScript)",
         file: "web/src/a.ts",
         line: 3,
+        column: 7,
         fix: "手動修正型別錯誤",
+        fixable: false,
       },
       expect.objectContaining({ rule: "tsc/TS2345", file: "web/src/b.ts", line: 10 }),
     ]);
@@ -167,7 +185,7 @@ describe("typescript checker: Biome", () => {
           ? {
               code: 1,
               stdout:
-                "::error title=lint/suspicious/noDebugger,file=src/a.ts,line=4,endLine=4,col=1,endColumn=9::This is an unexpected use of the debugger statement.\n" +
+                "::error title=lint/suspicious/noDebugger,file=src/a.ts,line=4,endLine=4,col=3,endColumn=11::This is an unexpected use of the debugger statement.\n" +
                 "::warning title=lint/style/useConst,file=src/b.ts,line=2,endLine=2,col=1,endColumn=4::Use const.\n",
             }
           : {
@@ -187,6 +205,7 @@ describe("typescript checker: Biome", () => {
         rule: "biome/lint/suspicious/noDebugger",
         file: "web/src/a.ts",
         line: 4,
+        column: 3,
       }),
       expect.objectContaining({ level: "hint", rule: "biome/lint/style/useConst", file: "web/src/b.ts", line: 2 }),
       expect.objectContaining({ level: "error", rule: "biome/format", file: "web/src/c.ts", line: 1 }),
@@ -221,6 +240,7 @@ describe("typescript checker: Prettier", () => {
         file: "web/src/a.ts",
         line: 2,
         fix: "devguard fix --code web/src/a.ts",
+        fixable: true,
       },
     ]);
   });

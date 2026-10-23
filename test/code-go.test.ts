@@ -71,6 +71,7 @@ describe("go checker: golangci-lint", () => {
         file: "svc/main.go",
         line: 12,
         fix: "devguard fix --code svc/main.go",
+        fixable: true,
       },
       expect.objectContaining({ level: "hint", rule: "golangci-lint/revive", file: "svc/pkg/a.go", line: 3 }),
     ]);
