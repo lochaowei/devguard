@@ -5,6 +5,7 @@ import { depsLayer } from "./layers/deps.ts";
 import { gitattributesLayer } from "./layers/gitattributes.ts";
 import { pythonSettingsLayer } from "./layers/python-settings.ts";
 import { goSettingsLayer } from "./layers/settings-go.ts";
+import { mirrorsLayer } from "./layers/mirrors.ts";
 import { javaSettingsLayer } from "./layers/settings-java.ts";
 import { testsLayer } from "./layers/tests.ts";
 import { typescriptSettingsLayer } from "./layers/settings-typescript.ts";
@@ -33,6 +34,7 @@ export const CHECK_LAYERS: readonly CheckLayer[] = [
   typescriptSettingsLayer,
   toolVersionsLayer,
   gitattributesLayer,
+  mirrorsLayer,
   // Layers above check the setup; code checks run last.
   codeLayer,
   // Tests and coverage run only with --full.
@@ -50,6 +52,7 @@ export const FIX_LAYERS: readonly CheckLayer[] = [
   javaSettingsLayer,
   typescriptSettingsLayer,
   gitattributesLayer,
+  mirrorsLayer,
 ];
 
 export interface CheckOptions {

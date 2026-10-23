@@ -42,6 +42,7 @@ describe("runCheck", () => {
       "settings-typescript",
       "tool-versions",
       "gitattributes",
+      "mirrors",
       "code",
       "tests",
     ]);

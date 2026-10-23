@@ -1,4 +1,7 @@
 standard: team@1.0.0
+mirrors:
+  # devguard itself is developed outside the company network.
+  npm: https://registry.npmjs.org/
 components:
   - path: ./
     language: typescript
