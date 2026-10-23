@@ -134,6 +134,15 @@ describe("devguard check", { timeout: 60_000 }, () => {
     expect(r.err).toContain("npm ci");
   });
 
+  it("exits 2 with `uv sync` when the Python tools are not installed", () => {
+    const dir = project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: python}\n");
+    writeFileSync(join(dir, "a.py"), "a = 1\n");
+    const r = run(["check", "--cwd", dir, "--only", "lint", join(dir, "a.py")]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("ruff");
+    expect(r.err).toContain("uv sync");
+  });
+
   it("prints the version and help", () => {
     expect(run(["--version"]).out).toBe("devguard 0.1.0\n");
     expect(run(["--help"]).code).toBe(0);
