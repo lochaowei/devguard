@@ -110,7 +110,7 @@ export function rulesText(component: ResolvedComponent, standard: Standard): str
     "paths:",
     ...rulesPaths(component).map((p) => `  - "${p}"`),
     "---",
-    `# ${component.name} 的開發規範（${standard.id}）`,
+    `# ${component.name} 的標準（${standard.id}）`,
     "",
     "修改這個元件的檔案時遵守以下標準。完成修改後執行 `devguard check` 確認；" +
       "格式與可自動修正的 lint 用 `devguard fix --code <檔案>` 修正。",
@@ -136,11 +136,11 @@ export function rulesText(component: ResolvedComponent, standard: Standard): str
 /** `/standards-doctor`: only the developer can call it; the CLI may run under Bash or PowerShell (SPEC §7.3). */
 export const DOCTOR_SKILL_TEXT = `---
 name: standards-doctor
-description: 執行 devguard doctor，說明專案開發規範的檢查結果，經開發者同意後修正
+description: 執行 devguard doctor，說明專案標準的檢查結果，經開發者同意後修正
 disable-model-invocation: true
 allowed-tools: Bash(devguard *), PowerShell(devguard *)
 ---
-# 開發規範診斷
+# 標準診斷
 
 以下是 \`devguard doctor --format claude\` 的結果：
 
