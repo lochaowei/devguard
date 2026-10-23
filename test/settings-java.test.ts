@@ -343,3 +343,31 @@ describe("Java version", () => {
     expect(rules(findings)).toEqual(["hint:java/build-file-missing"]);
   });
 });
+
+describe("Lombok-generated code is left out of coverage (SPEC §6.4)", () => {
+  const LOMBOK =
+    "<dependencies><dependency><groupId>org.projectlombok</groupId>" +
+    "<artifactId>lombok</artifactId></dependency></dependencies>";
+  const withLombok = { ...GOOD, "pom.xml": pom(undefined, LOMBOK) };
+
+  it("reports a Lombok build without lombok.addLombokGeneratedAnnotation = true, and fix adds the line", async () => {
+    const findings = await check(withLombok);
+    expect(rules(findings)).toEqual(["error:java/lombok-generated-annotation"]);
+    expect(findings[0]).toMatchObject({ file: "lombok.config" });
+    expect(findings[0]?.fix).toMatch(/^devguard fix/);
+    expect(findings[0]?.repairs).toEqual([
+      { op: "line", file: "lombok.config", value: "lombok.addLombokGeneratedAnnotation = true" },
+    ]);
+    const off = await check({ ...withLombok, "lombok.config": "lombok.addLombokGeneratedAnnotation = false\n" });
+    expect(rules(off)).toEqual(["error:java/lombok-generated-annotation"]);
+  });
+
+  it("accepts the setting in the component's lombok.config or one above it; builds without Lombok need none", async () => {
+    const config = "config.stopBubbling = true\nlombok.addLombokGeneratedAnnotation=true\n";
+    expect(await check({ ...withLombok, "lombok.config": config })).toEqual([]);
+    const nested = "standard: team@1.0.0\ncomponents:\n  - path: svc/\n    language: java\n";
+    const files = Object.fromEntries(Object.entries(withLombok).map(([k, v]) => [`svc/${k}`, v]));
+    expect(await check({ ...files, "lombok.config": config }, nested)).toEqual([]);
+    expect(await check(GOOD)).toEqual([]);
+  });
+});

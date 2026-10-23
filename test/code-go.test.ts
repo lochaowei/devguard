@@ -179,3 +179,48 @@ describe("go checker: categories", () => {
     expect(calls).toHaveLength(1);
   });
 });
+
+describe("go checker: staged files (SPEC §7.4)", () => {
+  /** `run` reports a gofumpt and an errcheck issue in main.go on disk; `fmt --stdin` collapses "func  f". */
+  function tools() {
+    const calls: ToolRequest[] = [];
+    const runner: ToolRunner = {
+      run(req) {
+        calls.push(req);
+        if (req.args?.[0] === "fmt") {
+          const formatted = (req.stdin ?? "").replace("func  f", "func f");
+          return Promise.resolve({ code: 0, stdout: formatted, stderr: "" });
+        }
+        const stdout = output(
+          issue("gofumpt", abs("svc", "main.go"), 1, "File is not properly formatted"),
+          issue("errcheck", abs("svc", "main.go"), 4, "Error return value is not checked"),
+        );
+        return Promise.resolve({ code: 1, stdout, stderr: "" });
+      },
+    };
+    return { runner, calls };
+  }
+
+  const stagedCheck = (runner: ToolRunner, staged: Record<string, string>) =>
+    goChecker.check(target({ files: ["main.go"] }), {
+      cwd: CWD,
+      tools: runner,
+      readText: () => Promise.resolve(undefined),
+      staged: (path) => Promise.resolve(staged[path]),
+    });
+
+  it("checks the staged version's format through `golangci-lint fmt --stdin`, not the working tree's", async () => {
+    const { runner, calls } = tools();
+    const clean = await stagedCheck(runner, { "svc/main.go": "package x\n" });
+    expect(clean.map((f) => f.rule)).toEqual(["golangci-lint/errcheck"]);
+    const fmt = calls.find((c) => c.args?.[0] === "fmt");
+    expect(fmt).toMatchObject({ tool: "golangci-lint", dir: "svc/", args: ["fmt", "--stdin"], stdin: "package x\n" });
+    expect(fmt?.env?.GOTOOLCHAIN).toBe("local");
+
+    const messy = await stagedCheck(tools().runner, { "svc/main.go": "package x\n\nfunc  f() {}\n" });
+    expect(messy.map((f) => [f.rule, f.file, f.line])).toEqual([
+      ["golangci-lint/errcheck", "svc/main.go", 4],
+      ["golangci-lint/fmt", "svc/main.go", 3],
+    ]);
+  });
+});

@@ -44,6 +44,44 @@ async function check(files: Record<string, string>, tools: ToolRunner = fakeTool
   return runCheck({ cwd: project(files), today: TODAY, tools }, [declarationLayer, toolVersionsLayer]);
 }
 
+describe("pre-commit framework revs (SPEC §8)", () => {
+  const config = (rev: string) =>
+    [
+      "repos:",
+      "  - repo: https://github.com/astral-sh/ruff-pre-commit",
+      `    rev: ${rev}`,
+      "    hooks: [{id: ruff}]",
+      "  - repo: https://github.com/example/unknown",
+      "    rev: v9.9.9",
+      "    hooks: [{id: x}]",
+      "  - repo: local",
+      "    hooks: [{id: devguard, name: devguard, entry: devguard hook git-pre-commit, language: unsupported}]",
+      "",
+    ].join("\n");
+
+  it("hints when another tool's hook rev differs from the version the project locks", async () => {
+    const r = await check({
+      ".devguard.yaml": PYTHON,
+      "uv.lock": uvLock("0.17.2"),
+      ".pre-commit-config.yaml": config("v0.17.0"),
+    });
+    expect(rules(r.findings)).toEqual(["hint:tool-version/pre-commit-rev"]);
+    expect(r.findings[0]).toMatchObject({ layer: "consistency", file: ".pre-commit-config.yaml" });
+    expect(r.findings[0]?.message).toContain("0.17.2");
+    expect(r.findings[0]?.message).toContain("v0.17.0");
+  });
+
+  it("is quiet when the rev matches (with or without a leading v) or nothing is locked", async () => {
+    for (const rev of ["v0.17.2", "0.17.2"]) {
+      const files = { ".devguard.yaml": PYTHON, "uv.lock": uvLock("0.17.2"), ".pre-commit-config.yaml": config(rev) };
+      expect((await check(files)).findings).toEqual([]);
+    }
+    expect((await check({ ".devguard.yaml": PYTHON, ".pre-commit-config.yaml": config("v0.1.0") })).findings).toEqual(
+      [],
+    );
+  });
+});
+
 describe("tool version consistency (SPEC §8)", () => {
   it("reports a locked version outside the standard's range as an error", async () => {
     const r = await check({ ".devguard.yaml": PYTHON, "uv.lock": uvLock("0.19.0") });

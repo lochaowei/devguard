@@ -4,6 +4,7 @@ import { checkWrapper } from "../settings/java/build.ts";
 import { checkCheckstyle } from "../settings/java/checkstyle.ts";
 import type { JavaTarget } from "../settings/java/common.ts";
 import { checkPmd } from "../settings/java/pmd.ts";
+import { checkLombok } from "../settings/java/lombok.ts";
 import { checkJavaVersion } from "../settings/java/version.ts";
 import type { CheckLayer } from "./types.ts";
 
@@ -25,6 +26,7 @@ export const javaSettingsLayer: CheckLayer = {
         ...(await checkJavaVersion(t)),
         ...(await checkCheckstyle(t)),
         ...(await checkPmd(t)),
+        ...(await checkLombok(t)),
       );
     }
     return { findings };

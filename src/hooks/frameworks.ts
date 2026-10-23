@@ -1,7 +1,7 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { parse } from "yaml";
-import { editConfigText } from "../fix/edit.ts";
+import { editConfigText, parseConfigText } from "../fix/edit.ts";
 import type { ChangePlan, FileWrite } from "../fix/plan.ts";
 import { nodeExec, type Exec } from "../process/exec.ts";
 import { readIfExists } from "../settings/config-files.ts";
@@ -37,7 +37,7 @@ function parseYaml(text: string): unknown {
 /** How devguard is wired into one framework: which file holds a hook's entry, whether it is there, how to add it. */
 interface Injector {
   file(framework: HookFramework, hook: GitHookName): string;
-  hasEntry(text: string, hook: GitHookName): boolean;
+  hasEntry(text: string, hook: GitHookName, file: string): boolean;
   inject(file: string, text: string, hook: GitHookName, command: string): string;
   /** File mode to set after writing (a hook script). */
   mode?: number;
@@ -87,15 +87,10 @@ const husky: Injector = {
 
 // --- lefthook ---------------------------------------------------------------------------------------------------
 
-/** The YAML config files lefthook reads, in its own order of preference. */
-const LEFTHOOK_CONFIGS = [
-  "lefthook.yml",
-  ".lefthook.yml",
-  "lefthook.yaml",
-  ".lefthook.yaml",
-  ".config/lefthook.yml",
-  ".config/lefthook.yaml",
-];
+/** The config files lefthook reads (YAML, TOML, JSON / JSONC), in its own order of preference. */
+const LEFTHOOK_CONFIGS = ["", ".", ".config/"].flatMap((prefix) =>
+  ["yml", "yaml", "toml", "json", "jsonc"].map((ext) => `${prefix}lefthook.${ext}`),
+);
 
 /** Whether any job (including jobs inside a group) or command runs devguard for the hook. */
 function lefthookRuns(jobs: unknown, commands: unknown, hook: GitHookName): boolean {
@@ -107,13 +102,13 @@ function lefthookRuns(jobs: unknown, commands: unknown, hook: GitHookName): bool
 
 const lefthook: Injector = {
   file: (framework) => framework.file,
-  hasEntry(text, hook) {
-    const config = parseYaml(text);
+  hasEntry(text, hook, file) {
+    const config = parseConfigText(file, text);
     const section = isObj(config) ? config[hook] : undefined;
     return isObj(section) && lefthookRuns(section.jobs, section.commands, hook);
   },
   inject(file, text, hook, command) {
-    const config = parseYaml(text);
+    const config = parseConfigText(file, text);
     const section = isObj(config) ? config[hook] : undefined;
     const run = devguardEntry(hook, command);
     if (isObj(section) && isObj(section.commands) && section.jobs === undefined) {
@@ -161,7 +156,7 @@ export async function frameworkEntry(cwd: string, hook: GitHookName): Promise<Fr
   const injector = INJECTORS[framework.name];
   const file = injector.file(framework, hook);
   const text = (await readIfExists(join(cwd, file))) ?? "";
-  return { framework: framework.name, file, present: injector.hasEntry(text, hook) };
+  return { framework: framework.name, file, present: injector.hasEntry(text, hook, file) };
 }
 
 export interface HooksPath {
@@ -237,7 +232,7 @@ export async function planFrameworkHooks(
     const pending = writes.get(file);
     const before = pending?.before ?? (await readIfExists(join(cwd, file))) ?? "";
     const current = pending?.after ?? before;
-    if (injector.hasEntry(current, hook)) continue;
+    if (injector.hasEntry(current, hook, file)) continue;
     const after = injector.inject(file, current, hook, command);
     const mode = injector.mode === undefined ? {} : { mode: injector.mode };
     writes.set(file, { file, category: "managed", before, after, ...mode });

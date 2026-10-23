@@ -6,6 +6,7 @@ import type { Finding } from "../report/finding.ts";
 import type { ItemDef } from "../standard/types.ts";
 import type { ToolRunner } from "../tools/runner.ts";
 import { pinnedVersions } from "../versions/pinned.ts";
+import { preCommitRevHints } from "../versions/pre-commit-revs.ts";
 import { inRange } from "../versions/range.ts";
 import type { CheckLayer } from "./types.ts";
 
@@ -113,6 +114,7 @@ export const toolVersionsLayer: CheckLayer = {
     const defs = (c: ResolvedComponent) => rangeItems(standard.languages[c.language]);
     const pinned = resolution.components.flatMap((c) => checkPinned(c, defs(c), cwd));
     const onPath = await checkOnPath(resolution.components, defs, tools);
-    return { findings: [...pinned, ...onPath] };
+    const revs = preCommitRevHints(resolution.components, readRepoFile(cwd));
+    return { findings: [...pinned, ...onPath, ...revs] };
   },
 };

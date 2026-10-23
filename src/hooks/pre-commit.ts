@@ -1,4 +1,4 @@
-import { runCheck, type CheckOptions } from "../check.ts";
+import { runCheck, type CheckOptions, type CheckResult } from "../check.ts";
 import { CODE_CHECKERS } from "../code/registry.ts";
 import { CODE_CATEGORIES } from "../code/types.ts";
 import type { ResolvedComponent } from "../declaration/resolve.ts";
@@ -28,7 +28,7 @@ interface StagedEntry {
   path: string;
 }
 
-async function git(ctx: HookContext, args: string[]): Promise<string> {
+async function git(ctx: Pick<HookContext, "cwd" | "exec">, args: string[]): Promise<string> {
   const r = await (ctx.exec ?? nodeExec)({ file: "git", args, cwd: ctx.cwd });
   if (r.code !== 0) throw new Error(`git ${args.join(" ")} 失敗：${r.stderr.trim()}`);
   return r.stdout;
@@ -37,7 +37,7 @@ async function git(ctx: HookContext, args: string[]): Promise<string> {
 const nulList = (out: string) => out.split("\0").filter((p) => p !== "");
 
 /** `git diff --cached --name-status -z`: status and path of each staged change (renames as delete + add). */
-async function stagedEntries(ctx: HookContext): Promise<StagedEntry[]> {
+async function stagedEntries(ctx: Pick<HookContext, "cwd" | "exec">): Promise<StagedEntry[]> {
   const parts = nulList(await git(ctx, ["diff", "--cached", "--name-status", "-z", "--no-renames"]));
   const entries: StagedEntry[] = [];
   for (let i = 0; i + 1 < parts.length; i += 2) entries.push({ status: parts[i] ?? "", path: parts[i + 1] ?? "" });
@@ -69,15 +69,23 @@ function fixLine(findings: readonly Finding[]): string {
   return files.length === 0 ? "" : `修正程式碼：devguard fix --code ${files.join(" ")}\n`;
 }
 
+export interface StagedCheck {
+  result: CheckResult;
+  /** Set when a partially staged file is checked in its working-tree version by some tools (SPEC §7.4). */
+  warning?: string;
+}
+
 /**
- * `devguard hook git-pre-commit` (SPEC §7.4, §7.1): lint and format the staged files, type-check their components,
- * and run the dependency rules only when a dependency file is staged. Formatters and single-file linters read the
- * staged version (`git show :<path>`) through stdin; nothing is stashed or restored. Only checks, never fixes; on
- * failure prints the `devguard fix --code` command. Returns the exit code (non-zero blocks the commit).
+ * The staged files' checks, shared by the pre-commit hook and `devguard check --staged` (SPEC §3.2, §7.1, §7.4):
+ * lint and format the staged files, type-check their components, and run the dependency rules only when a dependency
+ * file is staged. Formatters and single-file linters read the staged version (`git show :<path>`) through stdin;
+ * nothing is stashed or restored. Undefined when nothing is staged.
  */
-export async function runPreCommit(ctx: HookContext): Promise<number> {
+export async function checkStaged(
+  ctx: Omit<HookContext, "write" | "stdout" | "stdin">,
+): Promise<StagedCheck | undefined> {
   const entries = await stagedEntries(ctx);
-  if (entries.length === 0) return 0;
+  if (entries.length === 0) return undefined;
   const files = entries.filter((e) => e.status !== "D").map((e) => e.path);
   const staged = new Set(files);
   const layers: CheckLayer[] = [declarationLayer];
@@ -86,7 +94,6 @@ export async function runPreCommit(ctx: HookContext): Promise<number> {
   const result = await runCheck(
     {
       ...ctx,
-      missingTools: "report",
       scope: { files, full: false },
       listFiles: () => Promise.resolve(files),
       stagedText: async (path) => (staged.has(path) ? git(ctx, ["show", `:${path}`]) : undefined),
@@ -96,12 +103,22 @@ export async function runPreCommit(ctx: HookContext): Promise<number> {
   const unstaged = new Set(nulList(await git(ctx, ["diff", "--name-only", "-z"])));
   const partial = files.filter((f) => unstaged.has(f));
   const tools = workingTreeTools(result.resolution?.components ?? [], partial);
-  if (tools.length > 0) {
-    ctx.write(
-      `注意：${partial.join("、")} 有未 staged 的修改。lint 與格式檢查用的是 staged 版本，` +
-        `但 ${tools.join("、")} 沒有 stdin 模式，檢查的是工作目錄版本。\n`,
-    );
-  }
+  if (tools.length === 0) return { result };
+  const warning =
+    `注意：${partial.join("、")} 有未 staged 的修改。lint 與格式檢查用的是 staged 版本，` +
+    `但 ${tools.join("、")} 沒有 stdin 模式，檢查的是工作目錄版本。\n`;
+  return { result, warning };
+}
+
+/**
+ * `devguard hook git-pre-commit` (SPEC §7.4, §7.1): the staged files' checks (`checkStaged`). Only checks, never
+ * fixes; on failure prints the `devguard fix --code` command. Returns the exit code (non-zero blocks the commit).
+ */
+export async function runPreCommit(ctx: HookContext): Promise<number> {
+  const staged = await checkStaged({ ...ctx, missingTools: "report" });
+  if (!staged) return 0;
+  const { result, warning } = staged;
+  if (warning) ctx.write(warning);
   const code = exitCodeFor(result.findings, false);
   if (result.findings.length > 0) ctx.write(renderText(result));
   if (code !== 0) ctx.write(fixLine(result.findings));

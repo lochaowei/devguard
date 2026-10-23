@@ -1,6 +1,7 @@
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Finding } from "../report/finding.ts";
+import { mavenReportDirs } from "../settings/java/modules.ts";
 import { parseXmlText } from "../xml/parse.ts";
 import {
   judgeCoverage,
@@ -65,8 +66,11 @@ async function buildOf(target: TestTarget, ctx: TestContext): Promise<Build> {
 
 const COUNTERS: Readonly<Record<string, CoverageMetric>> = { LINE: "lines", BRANCH: "branches" };
 
+/** A JaCoCo counter: covered out of total. */
+type Counted = Extract<Measured, { total: number }>;
+
 /** LINE and BRANCH at BUNDLE level: the counters directly under <report> (SPEC §6.4). */
-function bundleCounters(text: string | undefined): Measured[] | undefined {
+function bundleCounters(text: string | undefined): Counted[] | undefined {
   const parsed = text === undefined ? undefined : parseXmlText(text);
   if (!parsed?.ok || parsed.root.name !== "report") return undefined;
   return parsed.root.children.flatMap((el) => {
@@ -78,20 +82,35 @@ function bundleCounters(text: string | undefined): Measured[] | undefined {
   });
 }
 
+/** The counters of every report that was written, added up per metric; undefined when none was. */
+function addUp(reports: readonly (Counted[] | undefined)[]): Counted[] | undefined {
+  const written = reports.filter((r) => r !== undefined);
+  if (written.length === 0) return undefined;
+  const totals = new Map<CoverageMetric, Counted>();
+  for (const m of written.flat()) {
+    const sum = totals.get(m.metric);
+    totals.set(m.metric, sum ? { ...sum, covered: sum.covered + m.covered, total: sum.total + m.total } : { ...m });
+  }
+  return [...totals.values()];
+}
+
 /** JUnit 5 through the project's build wrapper, with JaCoCo LINE and BRANCH held to `coverage.lines`. */
 export const javaTests: TestChecker = {
   language: "java",
   async check(target: TestTarget, ctx: TestContext): Promise<Finding[]> {
     const build = await buildOf(target, ctx);
-    const report = join(ctx.cwd, target.dir, build.report);
+    // A multi-module Maven build writes one report per module; their BUNDLE counters add up.
+    const dirs =
+      build === MAVEN ? await mavenReportDirs((p) => readReport(join(ctx.cwd, p)), target.dir) : [target.dir];
+    const reports = dirs.map((d) => join(ctx.cwd, d, build.report));
     // A report from an earlier build must not pass for this one.
-    await rm(report, { force: true });
+    for (const report of reports) await rm(report, { force: true });
     const result = await ctx.tools.run({ language: "java", tool: build.wrapper, dir: target.dir, args: build.args });
     const { failed, names } = build.failures(result.stdout);
     if (result.code !== 0 && !failed) return [testToolFailed(target, build.command, result)];
     const findings: Finding[] = [];
     if (failed) findings.push(testsFailed(target, build.command, names));
-    const measured = bundleCounters(await readReport(report));
+    const measured = addUp(await Promise.all(reports.map(async (r) => bundleCounters(await readReport(r)))));
     if (measured === undefined) findings.push(reportMissing(target, target.dir + build.report, build.setup));
     else findings.push(...judgeCoverage(target, measured));
     return findings;

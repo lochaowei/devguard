@@ -1,12 +1,12 @@
 import { parse as parseToml, patch as patchToml, stringify as stringifyToml } from "@decimalturn/toml-patch";
-import { applyEdits, modify, parse as parseJsoncTree, type FormattingOptions } from "jsonc-parser";
-import { isScalar, isSeq, parseDocument, type Document, type YAMLSeq } from "yaml";
+import { applyEdits, modify, parse as parseJsoncTree, type FormattingOptions, type ParseError } from "jsonc-parser";
+import { isScalar, isSeq, parse as parseYaml, parseDocument, type Document, type YAMLSeq } from "yaml";
 import type { KeyEdit, KeyPath } from "./repair.ts";
 
 /** How a structured shared file is read and written. */
 export type EditFormat = "toml" | "jsonc" | "yaml" | "lines" | "ini";
 
-const LINE_FILES = new Set([".gitattributes", ".gitignore"]);
+const LINE_FILES = new Set([".gitattributes", ".gitignore", "lombok.config"]);
 
 const baseName = (file: string): string => file.slice(file.lastIndexOf("/") + 1);
 
@@ -229,4 +229,29 @@ export function editConfigText(file: string, text: string, edits: readonly KeyEd
   const format = editFormat(file, text);
   if (!format) throw new Error(`${file} 不是 CLI 能修改的結構化設定檔`);
   return EDITORS[format](text, edits);
+}
+
+/**
+ * A structured config file's content as plain data, with the same libraries that edit it (TOML, JSONC, YAML);
+ * undefined when it is not one of those or does not parse. "" parses to an empty object.
+ */
+export function parseConfigText(file: string, text: string): unknown {
+  if (text.trim() === "") return {};
+  try {
+    switch (editFormat(file, text)) {
+      case "toml":
+        return parseToml(text) as unknown;
+      case "jsonc": {
+        const errors: ParseError[] = [];
+        const value = parseJsoncTree(text, errors, { allowTrailingComma: true }) as unknown;
+        return errors.length === 0 ? value : undefined;
+      }
+      case "yaml":
+        return parseYaml(text) as unknown;
+      default:
+        return undefined;
+    }
+  } catch {
+    return undefined;
+  }
 }

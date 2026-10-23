@@ -1,5 +1,6 @@
 import type { Finding, Level } from "../report/finding.ts";
 import { descendants, parseXmlText, type XmlEl } from "../xml/parse.ts";
+import { mavenReportDirs } from "../settings/java/modules.ts";
 import { codeFinding, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
 
@@ -136,10 +137,15 @@ async function lint(target: CodeTarget, ctx: CodeCheckContext, build: Build): Pr
     ],
   });
   if (result.code !== 0) return [toolFailed(target, "mvnw", result)];
-  return [
-    ...(await readReport(target, ctx, "Checkstyle", `${target.dir}target/checkstyle-result.xml`, checkstyleFindings)),
-    ...(await readReport(target, ctx, "PMD", `${target.dir}target/pmd.xml`, pmdFindings)),
-  ];
+  // A multi-module build writes the reports in each module's target/ (SPEC §6.4).
+  const findings: Finding[] = [];
+  for (const dir of await mavenReportDirs(ctx.readText, target.dir)) {
+    findings.push(
+      ...(await readReport(target, ctx, "Checkstyle", `${dir}target/checkstyle-result.xml`, checkstyleFindings)),
+      ...(await readReport(target, ctx, "PMD", `${dir}target/pmd.xml`, pmdFindings)),
+    );
+  }
+  return findings;
 }
 
 const SPOTLESS_HEADER = "The following files had format violations:";

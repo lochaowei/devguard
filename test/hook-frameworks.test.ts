@@ -179,6 +179,28 @@ describe("frameworkEntry: whether the framework calls devguard (for doctor)", ()
     expect(await frameworkEntry(dir, "pre-push")).toEqual({ framework: "lefthook", file, present: true });
   });
 
+  it.each([
+    [
+      "lefthook.toml",
+      '[pre-commit]\n# keep\nparallel = true\n\n[[pre-commit.jobs]]\nname = "lint"\nrun = "npm run lint"\n',
+    ],
+    [".lefthook.json", '{\n  // keep\n  "pre-commit": { "jobs": [{ "name": "lint", "run": "npm run lint" }] }\n}\n'],
+    [".config/lefthook.toml", ""],
+  ])("lefthook in %s: detected, injected once, comments kept", async (file, config) => {
+    const dir = repo({ ".devguard.yaml": DECL, [file]: config });
+    expect(await frameworkEntry(dir, "pre-commit")).toEqual({ framework: "lefthook", file, present: false });
+    await runInstall({ cwd: dir, today: TODAY, io: io() });
+    expect(await frameworkEntry(dir, "pre-commit")).toEqual({ framework: "lefthook", file, present: true });
+    expect(await frameworkEntry(dir, "pre-push")).toEqual({ framework: "lefthook", file, present: true });
+    const text = read(dir, file);
+    if (config.includes("keep")) expect(text).toContain("keep");
+    expect(text).toContain("devguard hook git-pre-commit");
+    expect(existsSync(join(dir, ".git/hooks/pre-commit"))).toBe(false);
+    const again = io();
+    await runInstall({ cwd: dir, today: TODAY, io: again });
+    expect(read(dir, file)).toBe(text);
+  });
+
   it("husky: looks in the hook's own script", async () => {
     const dir = repo({ ".husky/pre-commit": "devguard hook git-pre-commit\n" });
     expect(await frameworkEntry(dir, "pre-commit")).toEqual({

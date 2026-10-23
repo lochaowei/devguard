@@ -1,7 +1,7 @@
 import { posix } from "node:path";
 import type { Finding } from "../report/finding.ts";
 import type { ToolResult } from "../tools/runner.ts";
-import { codeFinding, runBatched, toolFailed, toRepoPath } from "./support.ts";
+import { codeFinding, firstDifferentLine, runBatched, splitStaged, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeCategory, CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
 
 interface GolangciIssue {
@@ -26,6 +26,8 @@ function parseIssues(stdout: string): GolangciIssue[] | undefined {
 
 /** golangci-lint v2 reports its formatters' problems as issues too, under the formatter's name. */
 const FORMATTERS = new Set(["gofumpt", "goimports", "gofmt", "gci", "golines", "swaggo"]);
+
+const isFormatRule = (rule: string) => FORMATTERS.has(rule.replace(/^golangci-lint\//, ""));
 
 function categoryOf(linter: string): CodeCategory {
   if (FORMATTERS.has(linter)) return "format";
@@ -78,12 +80,26 @@ function packageDirs(files: readonly string[] | undefined): string[] | undefined
 }
 
 /**
+ * The staged version through `golangci-lint fmt --stdin`, which applies the configured formatters (gofumpt,
+ * goimports) and prints the result; any difference is a format finding (SPEC §7.4).
+ */
+async function formatStaged(target: CodeTarget, ctx: CodeCheckContext, file: string, text: string): Promise<Finding[]> {
+  const request = { language: "go", tool: "golangci-lint", dir: target.dir, env: goEnv(target) } as const;
+  const result = await ctx.tools.run({ ...request, args: ["fmt", "--stdin"], stdin: text });
+  if (result.code !== 0) return [toolFailed(target, "golangci-lint fmt", result)];
+  if (result.stdout === text) return [];
+  const at = { file: toRepoPath(ctx.cwd, target.dir, file), line: firstDifferentLine(text, result.stdout) };
+  return [codeFinding(target, { rule: "golangci-lint/fmt", message: "格式不符合 gofumpt / goimports", ...at })];
+}
+
+/**
  * golangci-lint v2 (linters and formatters such as gofumpt / goimports) from the internal Scoop bucket
  * (SPEC §5.2, §6.2). One run covers lint, format and type errors; issues are sorted into categories afterwards.
+ * Staged files (pre-commit) get their format checked through stdin instead.
  */
 export const goChecker: CodeChecker = {
   language: "go",
-  // golangci-lint loads whole packages from disk; it has no stdin mode for `run`.
+  // golangci-lint `run` loads whole packages from disk; only `fmt` reads stdin.
   workingTreeTools: () => ["golangci-lint"],
   async check(target, ctx) {
     const packages = packageDirs(target.files);
@@ -93,9 +109,17 @@ export const goChecker: CodeChecker = {
     const results = await runBatched(ctx.tools, request, args, packages ?? ["./..."]);
     const findings = results.flatMap((r) => issueFindings(target, ctx, r));
     if (target.files === undefined) return findings;
-    // Other files of the same packages are not what was asked for.
+    const staged = target.categories.has("format")
+      ? (await splitStaged(target, ctx)).staged.filter((s) => s.file.endsWith(".go"))
+      : [];
+    const stagedPaths = new Set(staged.map((s) => toRepoPath(ctx.cwd, target.dir, s.file)));
+    // Other files of the same packages are not what was asked for; a staged file's format is judged from stdin.
     const asked = new Set(target.files.map((f) => toRepoPath(ctx.cwd, target.dir, f)));
-    return findings.filter((f) => f.file === undefined || asked.has(f.file));
+    const kept = findings.filter(
+      (f) => f.file === undefined || (asked.has(f.file) && !(stagedPaths.has(f.file) && isFormatRule(f.rule))),
+    );
+    for (const { file, text } of staged) kept.push(...(await formatStaged(target, ctx, file, text)));
+    return kept;
   },
   /** `run --fix` applies the linters' suggested fixes and the configured formatters (gofumpt, goimports...). */
   fixSteps(target) {

@@ -52,6 +52,32 @@ function check(t: CodeTarget, tools: ToolRunner, texts: Record<string, string> =
 const only = (...c: CodeCategory[]) => new Set<CodeCategory>(c);
 const MAVEN = { "svc/pom.xml": "<project/>" };
 
+describe("java checker: Maven multi-module lint", () => {
+  it("reads each module's reports, not only the aggregator's", async () => {
+    const { tools, calls } = fakeWrapper();
+    const texts = {
+      "svc/pom.xml":
+        "<project><packaging>pom</packaging><modules><module>core</module><module>web</module></modules></project>",
+      "svc/core/pom.xml": "<project/>",
+      "svc/web/pom.xml": "<project><packaging>pom</packaging><modules><module>api</module></modules></project>",
+      "svc/web/api/pom.xml": "<project/>",
+      "svc/core/target/checkstyle-result.xml": sample("checkstyle-result.xml").replaceAll("svc", "svc/core"),
+      "svc/core/target/pmd.xml": '<pmd version="7"/>',
+      "svc/web/api/target/checkstyle-result.xml": '<checkstyle version="10"/>',
+      "svc/web/api/target/pmd.xml": sample("pmd.xml").replaceAll("svc", "svc/web/api"),
+    };
+    const findings = await check(target({ categories: only("lint") }), tools, texts);
+    expect(calls).toHaveLength(1);
+    expect(findings.some((f) => f.rule === "code/tool-failed")).toBe(false);
+    const files = [...new Set(findings.map((f) => f.file))];
+    expect(files.every((f) => f?.startsWith("svc/core/") === true || f?.startsWith("svc/web/api/") === true)).toBe(
+      true,
+    );
+    expect(files.some((f) => f?.startsWith("svc/core/") === true)).toBe(true);
+    expect(files.some((f) => f?.startsWith("svc/web/api/") === true)).toBe(true);
+  });
+});
+
 describe("java checker: Maven lint", () => {
   it("runs Checkstyle and PMD through the wrapper and reports their violations with file and line", async () => {
     const { tools, calls } = fakeWrapper();
