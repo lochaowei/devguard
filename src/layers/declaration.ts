@@ -28,6 +28,7 @@ export function createDeclarationLayer(options: DeclarationLayerOptions = {}): C
   const bundled = options.bundled ?? BUNDLED_STANDARDS;
   return {
     id: "declaration",
+    fixable: true,
     async run({ cwd, today }) {
       const text = await readDeclaration(cwd);
       if (text === undefined) {

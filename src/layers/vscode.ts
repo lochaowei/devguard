@@ -205,6 +205,8 @@ export function createVscodeLayer(options: VscodeLayerOptions): CheckLayer {
 }
 
 /** For `check`: holds a workspace that has been set up to the standard. */
-export const vscodeLayer: CheckLayer = createVscodeLayer({ generate: false });
+export const vscodeFixLayer: CheckLayer = { ...createVscodeLayer({ generate: true }), fixable: true };
+
+/** `check` holds only a workspace that has been set up to the standard; `fix` also generates a missing one. */
+export const vscodeLayer: CheckLayer = { ...createVscodeLayer({ generate: false }), fixable: vscodeFixLayer };
 /** For `fix` and `install`: also generates the workspace files that are not there yet. */
-export const vscodeFixLayer: CheckLayer = createVscodeLayer({ generate: true });

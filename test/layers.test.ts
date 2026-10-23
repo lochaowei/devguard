@@ -2,7 +2,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { CHECK_LAYERS, runCheck, type CheckLayer } from "../src/check.ts";
+import { CHECK_LAYERS, FIX_LAYERS, runCheck, type CheckLayer } from "../src/check.ts";
+import { vscodeFixLayer, vscodeLayer } from "../src/layers/vscode.ts";
 import type { ToolRunner } from "../src/tools/runner.ts";
 import { GO_CLEAN_FILES, rules, TODAY } from "./helpers.ts";
 
@@ -25,6 +26,24 @@ const GO = "standard: team@1.0.0\ncomponents:\n  - {path: ./, language: go}\n";
 const goTools: ToolRunner = {
   run: () => Promise.resolve({ code: 0, stdout: "golangci-lint has version 2.12.1", stderr: "" }),
 };
+
+describe("fix layers (SPEC §9)", () => {
+  it("are the fixable check layers, in check order, with VS Code's generating variant", () => {
+    expect(FIX_LAYERS.map((l) => l.id)).toEqual([
+      "declaration",
+      "settings-python",
+      "settings-go",
+      "settings-java",
+      "settings-typescript",
+      "gitattributes",
+      "mirrors",
+      "claude-code",
+      "vscode",
+    ]);
+    expect(FIX_LAYERS).toContain(vscodeFixLayer);
+    expect(FIX_LAYERS).not.toContain(vscodeLayer);
+  });
+});
 
 describe("runCheck", () => {
   it("runs the declaration layer by default", async () => {

@@ -22,6 +22,7 @@ async function checkComponent(root: string, judge: SettingsJudge): Promise<void>
 /** Settings check for TypeScript components: tool config files vs the declared standard (SPEC §6.3, §8). */
 export const typescriptSettingsLayer: CheckLayer = {
   id: "settings-typescript",
+  fixable: true,
   async run({ cwd, resolution }) {
     const standard = resolution?.standard;
     if (!standard) return { findings: [] };

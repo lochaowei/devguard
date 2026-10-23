@@ -52,6 +52,7 @@ async function checkComponent(cwd: string, component: ResolvedComponent): Promis
 /** Settings check for Go components: `.golangci.yml` and `go.mod` against the effective standard (SPEC §6.2). */
 export const goSettingsLayer: CheckLayer = {
   id: "settings-go",
+  fixable: true,
   async run({ cwd, resolution }) {
     const components = resolution?.components.filter((c) => c.language === "go") ?? [];
     const findings = await Promise.all(components.map((c) => checkComponent(cwd, c)));

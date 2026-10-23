@@ -15,6 +15,17 @@ export interface EffectiveItem {
   until?: string;
 }
 
+/**
+ * The value an item holds the component to: the declared one, unless it is invalid or a widening without a valid
+ * reason (the declaration layer reports those), in which case the standard's own value. The one rule for every layer
+ * that acts on a declared value (coverage threshold, tool version range, vulnerability threshold).
+ */
+export function valueInForce(standardValue: unknown, item: EffectiveItem | undefined): unknown {
+  if (!item || item.status === "invalid") return standardValue;
+  if (item.status === "looser" && item.accepted !== true) return standardValue;
+  return item.value;
+}
+
 export interface ResolvedComponent {
   /** Normalized directory, "" for the repo root. */
   dir: string;

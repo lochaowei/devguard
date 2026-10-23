@@ -44,6 +44,7 @@ async function checkComponent(cwd: string, component: ResolvedComponent, defs: D
 /** Settings check for Python components: the tool settings in each component's pyproject.toml (SPEC §6.1, §8). */
 export const pythonSettingsLayer: CheckLayer = {
   id: "settings-python",
+  fixable: true,
   async run({ cwd, resolution }) {
     const findings: Finding[] = [];
     if (!resolution?.standard) return { findings };

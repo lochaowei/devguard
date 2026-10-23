@@ -1,24 +1,13 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { EffectiveItem, ResolvedComponent } from "../declaration/resolve.ts";
+import { valueInForce, type ResolvedComponent } from "../declaration/resolve.ts";
 import type { Finding } from "../report/finding.ts";
 import { assignFiles } from "../repo/files.ts";
-import type { Standard } from "../standard/types.ts";
 import { ignoredInForce, judgeVulns } from "../vuln/judge.ts";
 import { VULN_SCANNERS } from "../vuln/registry.ts";
 import type { VulnTarget } from "../vuln/types.ts";
 import { scopedFiles, type CheckLayer, type LayerContext } from "./types.ts";
-
-/**
- * The value an item holds the component to: the declared one when it is not looser or is an accepted deviation,
- * otherwise the standard's (the declaration layer already reports the unjustified widening).
- */
-function inForce(standard: Standard, component: ResolvedComponent, key: string): unknown {
-  const item: EffectiveItem | undefined = component.effective[key];
-  const ok = item?.status === "same" || item?.status === "stricter" || item?.accepted === true;
-  return ok ? item.value : standard.languages[component.language][key]?.value;
-}
 
 function toTarget(ctx: LayerContext, component: ResolvedComponent): VulnTarget {
   const global = Object.fromEntries(Object.entries(ctx.resolution?.global ?? {}).map(([k, i]) => [k, i.value]));
@@ -58,7 +47,10 @@ export const vulnLayer: CheckLayer = {
       const workDir = await mkdtemp(join(tmpdir(), "devguard-vuln-"));
       try {
         const result = await scanner.scan(target, { cwd: ctx.cwd, tools: ctx.tools, workDir });
-        const failOn = inForce(standard, component, "deps.vulnFailOn");
+        const failOn = valueInForce(
+          standard.languages[component.language]["deps.vulnFailOn"]?.value,
+          component.effective["deps.vulnFailOn"],
+        );
         findings.push(...result.findings, ...judgeVulns(target, result.vulns, String(failOn)));
       } finally {
         await rm(workDir, { recursive: true, force: true });

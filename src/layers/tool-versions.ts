@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { EffectiveItem, ResolvedComponent } from "../declaration/resolve.ts";
+import { valueInForce, type EffectiveItem, type ResolvedComponent } from "../declaration/resolve.ts";
 import { DECLARATION_FILE } from "../declaration/types.ts";
 import type { Finding } from "../report/finding.ts";
 import type { ItemDef } from "../standard/types.ts";
@@ -10,16 +10,10 @@ import { preCommitRevHints } from "../versions/pre-commit-revs.ts";
 import { inRange } from "../versions/range.ts";
 import type { CheckLayer } from "./types.ts";
 
-/**
- * The range a component is held to: its override when that is not looser or is an accepted deviation, otherwise the
- * standard's own range (the declaration layer already reports the unjustified widening).
- */
+/** The version range a component is held to (`valueInForce`), as text. */
 export function rangeInForce(item: ItemDef, effective: EffectiveItem | undefined): string {
-  const standard = typeof item.value === "string" ? item.value : "";
-  const value = effective?.value;
-  if (typeof value !== "string") return standard;
-  const ok = effective?.status === "same" || effective?.status === "stricter" || effective?.accepted === true;
-  return ok ? value : standard;
+  const value = valueInForce(item.value, effective);
+  return typeof value === "string" ? value : typeof item.value === "string" ? item.value : "";
 }
 
 function readRepoFile(cwd: string): (path: string) => string | undefined {

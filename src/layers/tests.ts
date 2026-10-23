@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { EffectiveItem, ResolvedComponent } from "../declaration/resolve.ts";
+import { valueInForce, type ResolvedComponent } from "../declaration/resolve.ts";
 import type { Finding } from "../report/finding.ts";
 import { assignFiles } from "../repo/files.ts";
 import type { Standard } from "../standard/types.ts";
@@ -9,18 +9,11 @@ import { TEST_CHECKERS } from "../testing/registry.ts";
 import type { TestTarget } from "../testing/types.ts";
 import { scopedFiles, type CheckLayer, type LayerContext } from "./types.ts";
 
-/**
- * The coverage threshold a component is held to: its declared value when that is not looser or is an accepted
- * deviation, otherwise the standard's (the declaration layer already reports the unjustified widening).
- */
+/** The coverage threshold a component is held to (`valueInForce`), and whether it is an accepted deviation. */
 function thresholdInForce(standard: Standard, component: ResolvedComponent): { threshold: number; deviation: boolean } {
-  const def = standard.languages[component.language]["coverage.lines"]?.value;
-  const fallback = typeof def === "number" ? def : 0;
-  const item: EffectiveItem | undefined = component.effective["coverage.lines"];
-  if (typeof item?.value !== "number") return { threshold: fallback, deviation: false };
-  if (item.accepted === true) return { threshold: item.value, deviation: true };
-  const ok = item.status === "same" || item.status === "stricter";
-  return { threshold: ok ? item.value : fallback, deviation: false };
+  const item = component.effective["coverage.lines"];
+  const value = valueInForce(standard.languages[component.language]["coverage.lines"]?.value, item);
+  return { threshold: typeof value === "number" ? value : 0, deviation: item?.accepted === true };
 }
 
 function toTarget(standard: Standard, component: ResolvedComponent): TestTarget {

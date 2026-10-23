@@ -20,6 +20,7 @@ export const CLAUDE_CODE_LAYER_ID = "claude-code";
 export function createClaudeCodeLayer(options: ClaudeCodeLayerOptions = {}): CheckLayer {
   return {
     id: CLAUDE_CODE_LAYER_ID,
+    fixable: true,
     async run({ cwd, resolution }) {
       if (!resolution?.standard) return { findings: [] };
       if (!options.create && !(await hasClaudeSetup(cwd))) return { findings: [] };

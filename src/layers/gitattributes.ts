@@ -13,6 +13,7 @@ const normalize = (line: string): string => line.trim().replace(/\s+/g, " ");
 /** Repo-wide settings check: `.gitattributes` must contain `* text=auto eol=lf` (SPEC §5.1). */
 export const gitattributesLayer: CheckLayer = {
   id: "gitattributes",
+  fixable: true,
   async run({ cwd, resolution }) {
     if (!resolution?.standard) return { findings: [] };
     const text = await readIfExists(join(cwd, GITATTRIBUTES));

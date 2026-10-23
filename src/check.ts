@@ -11,9 +11,9 @@ import { javaSettingsLayer } from "./layers/settings-java.ts";
 import { testsLayer } from "./layers/tests.ts";
 import { typescriptSettingsLayer } from "./layers/settings-typescript.ts";
 import { toolVersionsLayer } from "./layers/tool-versions.ts";
-import type { CheckLayer, CheckScope, LayerContext, LayerResult } from "./layers/types.ts";
+import { fixLayers, type CheckLayer, type CheckScope, type LayerContext, type LayerResult } from "./layers/types.ts";
 import { uncoveredFilesLayer } from "./layers/uncovered.ts";
-import { vscodeFixLayer, vscodeLayer } from "./layers/vscode.ts";
+import { vscodeLayer } from "./layers/vscode.ts";
 import { vulnLayer } from "./layers/vuln.ts";
 import type { Finding } from "./report/finding.ts";
 import type { ReportInput } from "./report/render.ts";
@@ -26,7 +26,7 @@ export interface CheckResult extends ReportInput {
   resolution?: Resolution;
 }
 
-/** The layers of `devguard check`, in order. A new layer only needs to be added here. */
+/** The layers of `devguard check`, in order. A new layer only needs to be added here (with `fixable` if `fix` repairs it). */
 export const CHECK_LAYERS: readonly CheckLayer[] = [
   declarationLayer,
   uncoveredFilesLayer,
@@ -47,21 +47,8 @@ export const CHECK_LAYERS: readonly CheckLayer[] = [
   vulnLayer,
 ];
 
-/**
- * The layers `devguard fix` runs to find what to repair: the config checks, without the ones that run the project's
- * tools (dependencies, tool versions). A settings layer whose findings carry repairs belongs here too.
- */
-export const FIX_LAYERS: readonly CheckLayer[] = [
-  declarationLayer,
-  pythonSettingsLayer,
-  goSettingsLayer,
-  javaSettingsLayer,
-  typescriptSettingsLayer,
-  gitattributesLayer,
-  mirrorsLayer,
-  claudeCodeLayer,
-  vscodeFixLayer,
-];
+/** The layers `devguard fix` runs to find what to repair: the fixable ones of CHECK_LAYERS (`CheckLayer.fixable`). */
+export const FIX_LAYERS: readonly CheckLayer[] = fixLayers(CHECK_LAYERS);
 
 export interface CheckOptions {
   cwd: string;

@@ -18,6 +18,7 @@ export function mirrorSettings(global: Readonly<Record<string, { value: unknown 
 /** Project-level mirror settings (SPEC §10.2, §10.3): uv, npm, Maven and Gradle point only at the internal mirrors. */
 export const mirrorsLayer: CheckLayer = {
   id: "mirrors",
+  fixable: true,
   async run({ cwd, resolution }) {
     if (!resolution?.standard) return { findings: [] };
     const findings = await checkMirrors(resolution.components, mirrorSettings(resolution.global), (file) =>
