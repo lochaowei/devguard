@@ -79,9 +79,9 @@
 | 指令 | 用途 |
 |---|---|
 | `devguard install` | 在專案中產生各防線的設定（`.vscode/`、`.claude/`、git hook、工具設定檔、鏡像設定），並安裝 pre-commit 與 pre-push hook |
-| `devguard check [檔案…] [--staged] [--full] [--only <類別>] [--format text\|json\|sarif\|vscode\|claude] [--strict]` | 執行設定、一致性與程式碼檢查，不含環境檢查。供 CI 與 git hook 使用。`--staged` 只檢查 staged 的檔案，內容與 pre-commit hook 相同 |
+| `devguard check [檔案…] [--staged] [--full] [--only <類別>] [--format text\|json\|sarif\|vscode\|claude] [--strict] [--verbose]` | 執行設定、一致性與程式碼檢查，不含環境檢查。指定檔案時只對這些檔案跑程式碼檢查。供 CI 與 git hook 使用。`--staged` 只檢查 staged 的檔案，內容與 pre-commit hook 相同 |
 | `devguard doctor [--quiet] [--exit-zero] [--format …]` | `check` 加上環境檢查（擴充套件、hook 是否安裝、Claude Code、鏡像、帳密變數是否存在）。`--exit-zero`：有問題時也以 0 結束，給 `/standards-doctor` skill 嵌入結果用（§7.3） |
-| `devguard draft` | 沒有 `.devguard.yaml` 時產生宣告草稿（§4.3），不覆寫既有檔案 |
+| `devguard draft` | 專案尚無 `.devguard.yaml` 時，依偵測到的元件與既有工具設定產生宣告草稿（§4.3），不覆寫既有檔案 |
 | `devguard fix [--yes]` | 修正**設定**（§9） |
 | `devguard fix --code [files] [--yes]` | 修正**程式碼**：格式化與可自動修正的 lint |
 | `devguard standard upgrade [目標版本] [--apply]` | 預覽或套用標準升級（§5.5） |

@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { findFirst, literalProperty, parseJsonc, type FoundFile } from "../config-files.ts";
+import { findFirst, literalProperty, parseJsonc, searchDirs, type FoundFile } from "../config-files.ts";
 import { setAt, type SettingsJudge } from "../judge.ts";
 import { readIfExists } from "../../shared/fs.ts";
 import { isRecord } from "../../shared/guards.ts";
@@ -50,36 +50,44 @@ function parseData(found: FoundFile): Record<string, unknown> | undefined {
 }
 
 function readFound(found: FoundFile): Read {
-  const { name, text } = found;
+  const { name, file, text } = found;
   const isCode = /\.[cm]?[jt]s$/.test(name);
   if (isCode || name.endsWith(".toml")) {
     const options: Record<string, unknown> = {};
     for (const { option } of SETTINGS) options[option] = literalProperty(text, option, isCode ? ":" : "=");
-    return { file: name, options, complete: false };
+    return { file, options, complete: false };
   }
   const options = parseData(found);
-  return { file: name, options: options ?? {}, complete: options !== undefined };
+  return { file, options: options ?? {}, complete: options !== undefined };
 }
 
-async function readConfig(root: string): Promise<Read | undefined> {
-  const pkg = parseJsonc((await readIfExists(join(root, "package.json"))) ?? "");
-  if (isRecord(pkg) && pkg.prettier !== undefined) {
-    const own = pkg.prettier;
-    return { file: "package.json", options: isRecord(own) ? own : {}, complete: isRecord(own) };
+async function readConfig(root: string, subDir: string): Promise<Read | undefined> {
+  for (const { fsDir, relDir } of searchDirs(root, subDir)) {
+    const pkg = parseJsonc((await readIfExists(join(fsDir, "package.json"))) ?? "");
+    if (isRecord(pkg) && pkg.prettier !== undefined) {
+      const own = pkg.prettier;
+      return { file: `${relDir}package.json`, options: isRecord(own) ? own : {}, complete: isRecord(own) };
+    }
+    const found = await findFirst(fsDir, CONFIG_FILES);
+    if (found) return readFound({ ...found, file: relDir + found.name });
   }
-  const found = await findFirst(root, CONFIG_FILES);
-  return found && readFound(found);
+  return undefined;
 }
 
 /** `format.printWidth` / `format.endOfLine` against the Prettier config (style items: judged by the declared value). */
 export async function checkPrettier(root: string, judge: SettingsJudge): Promise<void> {
-  const config = await readConfig(root);
+  const config = await readConfig(root, judge.dir);
   if (!config) {
-    judge.missingFile(judge.path(".prettierrc"), " Prettier 設定檔");
+    const file = judge.path(".prettierrc");
+    const repairs = SETTINGS.flatMap(({ key, option }) => {
+      const want = judge.declared(key);
+      return want === undefined ? [] : setAt(file, [option])(want);
+    });
+    judge.missingFile(file, " Prettier 設定檔", repairs);
     return;
   }
-  const file = judge.path(config.file);
-  const base = config.file === "package.json" ? ["prettier"] : [];
+  const { file } = config;
+  const base = file.endsWith("package.json") ? ["prettier"] : [];
   for (const { key, option, fallback } of SETTINGS) {
     const value = config.options[option];
     const repair = setAt(file, [...base, option]);

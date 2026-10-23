@@ -318,6 +318,17 @@ describe("Java version", () => {
     expect(await check({ ...GOOD, "pom.xml": viaRelease })).toEqual([]);
   });
 
+  it("falls back to java.version or maven.compiler.target/source when maven.compiler.release is absent", async () => {
+    expect(await check({ ...GOOD, "pom.xml": pom("<java.version>21</java.version>") })).toEqual([]);
+    expect(rules(await check({ ...GOOD, "pom.xml": pom("<java.version>11</java.version>") }))).toEqual([
+      "error:settings/looser",
+    ]);
+    const targetPlugin =
+      "<build><plugins><plugin><artifactId>maven-compiler-plugin</artifactId>" +
+      "<configuration><target>11</target></configuration></plugin></plugins></build>";
+    expect(rules(await check({ ...GOOD, "pom.xml": pom("", targetPlugin) }))).toEqual(["error:settings/looser"]);
+  });
+
   it("only hints when the version may come from a parent POM or cannot be resolved", async () => {
     const parent = "<parent><groupId>g</groupId><artifactId>a</artifactId><version>1</version></parent>";
     const inherited = await check({ ...GOOD, "pom.xml": pom("", parent) });

@@ -1,18 +1,34 @@
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { parse as parseJsoncTree, type ParseError } from "jsonc-parser";
 import { readIfExists } from "../shared/fs.ts";
 import { isRecord } from "../shared/guards.ts";
 
 export interface FoundFile {
   name: string;
+  file: string;
   text: string;
 }
 
-/** The first of `names` that exists in `dir`, in order. */
-export async function findFirst(dir: string, names: readonly string[]): Promise<FoundFile | undefined> {
-  for (const name of names) {
-    const text = await readIfExists(join(dir, name));
-    if (text !== undefined) return { name, text };
+/** Each `(fsDir, relDir)` from `(dir, subDir)` up to the repo root (`subDir === ""`), nearest first. */
+export function searchDirs(dir: string, subDir = ""): { fsDir: string; relDir: string }[] {
+  const parts = subDir.split("/").filter((p) => p !== "");
+  const out: { fsDir: string; relDir: string }[] = [];
+  let cur = dir;
+  for (let i = parts.length; i >= 0; i--) {
+    const relDir = i === 0 ? "" : `${parts.slice(0, i).join("/")}/`;
+    out.push({ fsDir: cur, relDir });
+    cur = dirname(cur);
+  }
+  return out;
+}
+
+/** The first of `names` that exists in `dir` (or an ancestor up to the repo root when `subDir` is given), in order. */
+export async function findFirst(dir: string, names: readonly string[], subDir = ""): Promise<FoundFile | undefined> {
+  for (const { fsDir, relDir } of searchDirs(dir, subDir)) {
+    for (const name of names) {
+      const text = await readIfExists(join(fsDir, name));
+      if (text !== undefined) return { name, file: relDir + name, text };
+    }
   }
   return undefined;
 }

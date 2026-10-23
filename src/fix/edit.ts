@@ -74,6 +74,15 @@ function separator(out: string): string {
   return out.endsWith("\n") ? "\n" : "\n\n";
 }
 
+function hasTomlTable(text: string, doc: Obj, table: KeyPath, name: string): boolean {
+  if (text.trim() === "") return false;
+  if (table.length === 0) return true;
+  if (!isObj(getIn(doc, table))) return false;
+  if (table.some((k) => typeof k === "number")) return true;
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^\\s*\\[\\s*${escaped}\\s*\\]`, "m").test(text);
+}
+
 /**
  * Tables added to arrays that do not exist yet ([[tool.uv.index]]), by array name: appended as `[[...]]` blocks,
  * since toml-patch would write them inline.
@@ -105,16 +114,17 @@ function editToml(text: string, edits: readonly KeyEdit[]): string {
     const name = table.map(bareKey).join(".");
     const section = sections.get(name);
     const value = valueAfter(e, getIn(doc, e.path) ?? section?.[key]);
-    if (value !== undefined && !isObj(getIn(doc, table))) sections.set(name, { ...section, [key]: value });
+    if (value !== undefined && !hasTomlTable(text, doc, table, name)) sections.set(name, { ...section, [key]: value });
     else setIn(doc, e.path, value);
   }
   const blocks = [
-    ...[...sections].map(([name, values]) => ({ head: `[${name}]`, values })),
-    ...[...arrayTables].flatMap(([name, items]) => items.map((values) => ({ head: `[[${name}]]`, values }))),
+    // Top-level keys of an empty file (a new ruff.toml) have no section header.
+    ...[...sections].map(([name, values]) => ({ head: name ? `[${name}]\n` : "", values })),
+    ...[...arrayTables].flatMap(([name, items]) => items.map((values) => ({ head: `[[${name}]]\n`, values }))),
   ];
   let out = empty ? "" : patchToml(text, doc, TOML_FORMAT);
   for (const { head, values } of blocks) {
-    out += `${separator(out)}${head}\n${stringifyToml(values, TOML_FORMAT).trimEnd()}\n`;
+    out += `${separator(out)}${head}${stringifyToml(values, TOML_FORMAT).trimEnd()}\n`;
   }
   return out;
 }
@@ -180,7 +190,7 @@ function editYaml(text: string, edits: readonly KeyEdit[]): string {
     else if (isSeq(node)) editSeq(doc, node, e);
     else doc.setIn(e.path, doc.createNode(listAfter(e, undefined)));
   }
-  return doc.toString();
+  return doc.toString({ lineWidth: 0 });
 }
 
 function editLines(text: string, edits: readonly KeyEdit[]): string {
@@ -228,7 +238,7 @@ const EDITORS: Record<EditFormat, (text: string, edits: readonly KeyEdit[]) => s
 export function editConfigText(file: string, text: string, edits: readonly KeyEdit[]): string {
   const format = editFormat(file, text);
   if (!format) throw new Error(`${file} 不是 CLI 能修改的結構化設定檔`);
-  return EDITORS[format](text, edits);
+  return EDITORS[format](text.replace(/\r\n/g, "\n"), edits);
 }
 
 /**

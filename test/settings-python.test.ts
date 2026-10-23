@@ -321,4 +321,38 @@ describe("python settings layer", () => {
       expect.objectContaining({ level: "error", rule: "settings/ruff-rules-missing" }),
     ]);
   });
+
+  it("reads standalone ruff.toml and pyrightconfig.json when pyproject.toml omits those sections", async () => {
+    const decl = withOverrides("typecheck.tool: pyright");
+    const pyproject = '[project]\nname = "app"\nrequires-python = ">=3.11"\n[tool.coverage.run]\nbranch = true\n';
+    const ruffToml = [
+      "line-length = 120",
+      'target-version = "py311"',
+      "[lint]",
+      'select = ["E", "W", "F", "I", "B", "UP", "C90", "SIM", "N", "S", "TID"]',
+      "[lint.mccabe]",
+      "max-complexity = 10",
+      "[lint.per-file-ignores]",
+      '"**/tests/**" = ["S101"]',
+    ].join("\n");
+    const pyrightJson = '{ "typeCheckingMode": "strict", "pythonVersion": "3.11" }';
+    expect(
+      await check({
+        ".devguard.yaml": decl,
+        "pyproject.toml": pyproject,
+        "ruff.toml": ruffToml,
+        "pyrightconfig.json": pyrightJson,
+      }),
+    ).toEqual([]);
+    const looser = await check({
+      ".devguard.yaml": decl,
+      "pyproject.toml": pyproject,
+      "ruff.toml": ruffToml.replace("max-complexity = 10", "max-complexity = 20"),
+      "pyrightconfig.json": '{ "typeCheckingMode": "basic", "pythonVersion": "3.11" }',
+    });
+    expect(looser.map((f) => `${f.rule}:${f.file ?? ""}`).sort()).toEqual([
+      "settings/looser:pyrightconfig.json",
+      "settings/looser:ruff.toml",
+    ]);
+  });
 });

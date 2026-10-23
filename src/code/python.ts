@@ -57,23 +57,30 @@ async function formatStaged(target: CodeTarget, ctx: CodeCheckContext, file: str
 }
 
 const HUNK_HEADER = /^@@ -(\d+)/;
+const DIFF_FILE = /^--- ([^\r\n]+)\r?\n\+\+\+ [^\r\n]+$/gm;
+
+function firstChangedInBlock(block: string): number | undefined {
+  let line = 0;
+  for (const text of block.split(/\r?\n/)) {
+    const hunk = HUNK_HEADER.exec(text);
+    if (hunk) line = Number(hunk[1]);
+    else if (text.startsWith(" ")) line += 1;
+    else if (text.startsWith("-") || text.startsWith("+")) return line;
+  }
+  return undefined;
+}
 
 /** The first changed line of each file in a unified diff, keyed by the path in its `---` header. */
 function firstChangedLines(diff: string): Map<string, number> {
   const lines = new Map<string, number>();
-  let file: string | undefined;
-  let line = 0;
-  for (const text of diff.split(/\r?\n/)) {
-    if (text.startsWith("--- ")) {
-      file = text.slice(4).trim();
-      continue;
-    }
-    if (file === undefined || text.startsWith("+++ ") || lines.has(file)) continue;
-    const hunk = HUNK_HEADER.exec(text);
-    if (hunk) line = Number(hunk[1]);
-    else if (text.startsWith(" ")) line += 1;
-    else if (text.startsWith("-") || text.startsWith("+")) lines.set(file, line);
-  }
+  const headers = [...diff.matchAll(DIFF_FILE)];
+  headers.forEach((m, i) => {
+    const file = (m[1] ?? "").trim();
+    const start = m.index + m[0].length;
+    const end = headers[i + 1]?.index ?? diff.length;
+    const line = firstChangedInBlock(diff.slice(start, end));
+    if (file && !lines.has(file) && line !== undefined) lines.set(file, line);
+  });
   return lines;
 }
 

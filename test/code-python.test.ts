@@ -175,6 +175,20 @@ describe("python checker: Ruff format", () => {
     const findings = await check(target({ categories: only("format") }), tools);
     expect(findings.map((f) => f.rule)).toEqual(["code/tool-failed"]);
   });
+
+  it("does not treat a removed '-- ...' line inside a diff hunk as a file header", async () => {
+    const stdout = [
+      "--- src/app.py",
+      "+++ src/app.py",
+      "@@ -10,3 +10,3 @@",
+      "-- legacy comment",
+      "+# legacy comment",
+      "",
+    ].join("\n");
+    const { tools } = fakeTools({ "ruff format": { code: 1, stdout } });
+    const findings = await check(target({ categories: only("format") }), tools);
+    expect(findings).toEqual([expect.objectContaining({ rule: "ruff/format", file: "api/src/app.py", line: 10 })]);
+  });
 });
 
 describe("python checker: mypy", () => {

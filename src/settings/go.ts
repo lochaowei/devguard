@@ -7,14 +7,17 @@ import type { Finding, Level } from "../report/finding.ts";
 import { judgeConfigValue, setAt } from "./judge.ts";
 
 export const GOLANGCI_FILE = ".golangci.yml";
+export const GOLANGCI_FILES = [".golangci.yml", ".golangci.yaml"] as const;
 export const GOMOD_FILE = "go.mod";
 
 /** Linters golangci-lint v2 enables with `linters.default: standard` (the default). */
 const V2_STANDARD = ["errcheck", "govet", "ineffassign", "staticcheck", "unused"];
 
 export interface GoSettingsFiles {
-  /** Text of `.golangci.yml`; undefined when the file does not exist. */
+  /** Text of `.golangci.yml` (or `.golangci.yaml`); undefined when the file does not exist. */
   golangci?: string;
+  /** Repo-relative path of the golangci config file; defaults to `component.dir + GOLANGCI_FILE`. */
+  golangciFile?: string;
   /** Text of `go.mod`; undefined when the file does not exist. */
   gomod?: string;
 }
@@ -278,7 +281,8 @@ function checkGoMod(r: GoReport, file: string, text: string): void {
 /** Compares a Go component's `.golangci.yml` and `go.mod` with its effective standard (SPEC §6.2, §8). */
 export function checkGoSettings(component: ResolvedComponent, files: GoSettingsFiles): Finding[] {
   const r = new GoReport(component);
-  if (files.golangci !== undefined) checkGolangci(r, component.dir + GOLANGCI_FILE, files.golangci);
+  if (files.golangci !== undefined)
+    checkGolangci(r, files.golangciFile ?? component.dir + GOLANGCI_FILE, files.golangci);
   if (files.gomod !== undefined) checkGoMod(r, component.dir + GOMOD_FILE, files.gomod);
   return r.findings;
 }

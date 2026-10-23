@@ -42,10 +42,10 @@ describe("goSettingsLayer", () => {
     expect(CHECK_LAYERS).toContain(goSettingsLayer);
   });
 
-  it("checks each Go component's own .golangci.yml and go.mod", async () => {
+  it("checks each Go component's own .golangci.yml and go.mod, or inherits a root .golangci.yaml", async () => {
     const cwd = project({
       ".devguard.yaml": DECL,
-      "backend/.golangci.yml": GOLANGCI,
+      ".golangci.yaml": GOLANGCI,
       "backend/go.mod": "module x\n\ngo 1.24\n",
     });
     const r = await run(cwd);

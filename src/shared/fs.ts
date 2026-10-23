@@ -4,7 +4,8 @@ import { join } from "node:path";
 
 const missing = (e: unknown): boolean => {
   const code = (e as NodeJS.ErrnoException | null)?.code;
-  return code === "ENOENT" || code === "ENOTDIR";
+  // EISDIR: a directory where a file was looked for (a package directory among tsconfig `extends` candidates).
+  return code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR";
 };
 
 /** A text file's content, or undefined when it does not exist; any other error is thrown. */

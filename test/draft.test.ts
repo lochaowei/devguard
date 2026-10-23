@@ -152,4 +152,36 @@ describe("draftDeclaration: other languages", () => {
       reason: expect.stringMatching(/^TODO/) as unknown,
     });
   });
+
+  it("infers non-default tool choices from Gradle, pnpm, yarn, poetry, Biome, Jest, and Pyright files", async () => {
+    const d = await draft({
+      "gradle-app/build.gradle.kts": "",
+      "gradle-app/src/main/java/App.java": "",
+      "pnpm-web/package.json": "{}",
+      "pnpm-web/pnpm-lock.yaml": "lockfileVersion: '9.0'\n",
+      "pnpm-web/biome.json": '{ "formatter": { "lineWidth": 100 } }',
+      "pnpm-web/jest.config.js": "module.exports = {};",
+      "pnpm-web/src/index.ts": "",
+      "yarn-web/package.json": "{}",
+      "yarn-web/yarn.lock": "",
+      "yarn-web/src/index.ts": "",
+      "py-svc/pyproject.toml": "[project]\nname = 'svc'\n",
+      "py-svc/poetry.lock": "",
+      "py-svc/pyrightconfig.json": '{ "typeCheckingMode": "basic" }',
+      "py-svc/app.py": "",
+    });
+    const byPath = Object.fromEntries(d.components.map((c) => [c.path, c.overrides]));
+    expect(byPath["gradle-app/"]).toEqual({ "build.tool": "gradle" });
+    expect(byPath["pnpm-web/"]).toMatchObject({
+      "deps.manager": "pnpm",
+      "lint.tool": "biome",
+      "test.tool": "jest",
+      "format.printWidth": 100,
+    });
+    expect(byPath["yarn-web/"]).toEqual({ "deps.manager": "yarn" });
+    expect(byPath["py-svc/"]).toMatchObject({
+      "deps.manager": "poetry",
+      "typecheck.tool": "pyright",
+    });
+  });
 });

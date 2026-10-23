@@ -127,6 +127,11 @@ export class SettingsJudge {
     return eff && eff.status !== "invalid" ? eff.value : undefined;
   }
 
+  /** Normalized directory of this component (`""` or ending in `"/"`). */
+  get dir(): string {
+    return this.component.dir;
+  }
+
   /** Path of a file in this component's directory, repo-relative. */
   path(name: string): string {
     return this.component.dir + name;
@@ -169,8 +174,16 @@ export class SettingsJudge {
   }
 
   /** The tool's config file is not there at all. */
-  missingFile(file: string, what: string): void {
-    this.add({ level: "error", rule: "settings/missing-file", message: `找不到${what}`, file, fix: `建立 ${file}` });
+  missingFile(file: string, what: string, repairs: readonly Repair[] = []): void {
+    const fix = fixText(`建立 ${file}`, repairs);
+    this.add({
+      level: "error",
+      rule: "settings/missing-file",
+      message: `找不到${what}`,
+      file,
+      fix,
+      ...(repairs.length > 0 ? { repairs: [...repairs] } : {}),
+    });
   }
 
   /** Part of a config that cannot be read reliably (code-form config, shared presets): say so instead of guessing. */

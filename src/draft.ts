@@ -84,13 +84,70 @@ export interface Draft {
 
 type Override = unknown;
 
-/** Resolves the inferred components with no overrides: every item at the standard's default. */
-function defaultResolution(components: readonly DraftComponent[], standard: Standard, today: string): Resolution {
+const ESLINT_CONFIGS = ["js", "mjs", "cjs", "ts", "mts", "cts"].map((e) => `eslint.config.${e}`);
+const VITEST_CONFIGS = ["js", "mjs", "cjs", "ts", "mts", "cts"].map((e) => `vitest.config.${e}`);
+const JEST_CONFIGS = ["js", "mjs", "cjs", "ts", "mts", "cts", "json"].map((e) => `jest.config.${e}`);
+
+interface FileProbe {
+  nearest: (win: readonly string[], lose?: readonly string[]) => boolean;
+}
+
+const CHOICE_RULES: Readonly<Record<Language, (p: FileProbe) => [boolean, string, string][]>> = {
+  python: (p) => [
+    [p.nearest(["poetry.lock"], ["uv.lock"]), "deps.manager", "poetry"],
+    [p.nearest(["pyrightconfig.json"]), "typecheck.tool", "pyright"],
+  ],
+  go: () => [],
+  typescript: (p) => [
+    [p.nearest(["biome.json", "biome.jsonc"], ESLINT_CONFIGS), "lint.tool", "biome"],
+    [p.nearest(JEST_CONFIGS, VITEST_CONFIGS), "test.tool", "jest"],
+    [p.nearest(["pnpm-lock.yaml"], ["package-lock.json", "npm-shrinkwrap.json"]), "deps.manager", "pnpm"],
+    [p.nearest(["yarn.lock"], ["package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml"]), "deps.manager", "yarn"],
+  ],
+  java: (p) => [[p.nearest(["build.gradle", "build.gradle.kts"], ["pom.xml"]), "build.tool", "gradle"]],
+};
+
+function nearestChoice(
+  dir: string,
+  present: ReadonlySet<string>,
+  win: readonly string[],
+  lose: readonly string[] = [],
+): boolean {
+  for (const d of upwards(dir)) {
+    if (lose.some((n) => present.has(d + n))) return false;
+    if (win.some((n) => present.has(d + n))) return true;
+  }
+  return false;
+}
+
+/** Infers non-default tool choices (`build.tool`, `deps.manager`, `lint.tool`, etc.) from the component's files. */
+function inferToolChoices(c: DraftComponent, present: ReadonlySet<string>): Record<string, string> {
+  const probe: FileProbe = {
+    nearest: (win, lose) => nearestChoice(c.dir, present, win, lose),
+  };
+  return Object.fromEntries(
+    CHOICE_RULES[c.language](probe)
+      .filter(([match]) => match)
+      .map(([, key, value]) => [key, value]),
+  );
+}
+
+/** Resolves the inferred components with tool-choice overrides and every other item at the standard's default. */
+function defaultResolution(
+  components: readonly DraftComponent[],
+  standard: Standard,
+  today: string,
+  present: ReadonlySet<string>,
+): Resolution {
   return resolveDeclaration(
     {
       file: DECLARATION_FILE,
       standard: standard.id,
-      components: components.map((c) => ({ path: displayDir(c.dir), language: c.language, overrides: [] })),
+      components: components.map((c) => ({
+        path: displayDir(c.dir),
+        language: c.language,
+        overrides: Object.entries(inferToolChoices(c, present)).map(([key, raw]) => ({ key, raw })),
+      })),
       globalOverrides: [],
     },
     today,
@@ -119,8 +176,9 @@ export async function draftDeclaration(options: DraftOptions): Promise<Draft> {
   const { cwd, today, files } = options;
   const standard = BUNDLED_STANDARDS[BUNDLED_STANDARDS.length - 1];
   if (!standard) throw new Error("no bundled standard");
+  const present = new Set(files.map(normalizePath));
   const components = inferComponents(files);
-  const resolution = defaultResolution(components, standard, today);
+  const resolution = defaultResolution(components, standard, today, present);
   const seed: CheckLayer = { id: "draft", run: () => Promise.resolve({ findings: [], resolution }) };
   const { findings } = await runCheck({ cwd, today, listFiles: () => Promise.resolve([...files]) }, [
     seed,
@@ -129,11 +187,14 @@ export async function draftDeclaration(options: DraftOptions): Promise<Draft> {
   const doc = {
     standard: standard.id,
     components: resolution.components.map((c) => {
-      const overrides = overridesFrom(
-        findings.filter((f) => f.component === c.name),
-        standard,
-        c.language,
-      );
+      const overrides: Record<string, Override> = {
+        ...inferToolChoices(c, present),
+        ...overridesFrom(
+          findings.filter((f) => f.component === c.name),
+          standard,
+          c.language,
+        ),
+      };
       return {
         path: displayDir(c.dir),
         language: c.language,

@@ -30,10 +30,12 @@ export function readPackageTables(text: string): Map<string, string> {
 }
 
 function python(dir: string, read: ReadRepoFile): Pinned | undefined {
-  for (const name of ["uv.lock", "poetry.lock"]) {
-    const file = dir + name;
-    const text = read(file);
-    if (text !== undefined) return { file, versions: readPackageTables(text) };
+  for (const base of upwards(dir)) {
+    for (const name of ["uv.lock", "poetry.lock"]) {
+      const file = base + name;
+      const text = read(file);
+      if (text !== undefined) return { file, versions: readPackageTables(text) };
+    }
   }
   return undefined;
 }
@@ -65,11 +67,71 @@ function installedIn(packages: Record<string, { version?: unknown }>, dir: strin
   });
 }
 
+/** A `packages` / `snapshots` key of pnpm-lock.yaml: `name@1.2.3`, `/name@1.2.3` (v6) or `name@1.2.3(peer@4)` (v9). */
+const PNPM_KEY = /^\/?((?:@[^/@]+\/)?[^/@]+)@(\d[^(]*)/;
+
+const DEPENDENCY_FIELDS = ["dependencies", "devDependencies", "optionalDependencies"];
+
+/** The direct dependencies of one pnpm workspace importer; `link:` / `workspace:` versions are not installs. */
+function pnpmImporter(importers: unknown, id: string): [string, string][] {
+  const importer: unknown = isRecord(importers) ? importers[id] : undefined;
+  if (!isRecord(importer)) return [];
+  return DEPENDENCY_FIELDS.flatMap((field) => {
+    const deps = importer[field];
+    return Object.entries(isRecord(deps) ? deps : {}).flatMap(([name, spec]): [string, string][] => {
+      const version: unknown = isRecord(spec) ? spec.version : spec;
+      const exact = typeof version === "string" ? /^\d[^(]*/.exec(version)?.[0] : undefined;
+      return exact ? [[name, exact]] : [];
+    });
+  });
+}
+
+/**
+ * Installed packages from a `pnpm-lock.yaml` (v6–v9), as seen from `sub` (the component directory relative to the
+ * lockfile): every `packages` / `snapshots` entry, then the root importer's direct dependencies, then `sub`'s.
+ */
+export function readPnpmLock(text: string, sub = ""): Map<string, string> {
+  const doc = parseConfigText("pnpm-lock.yaml", text);
+  if (!isRecord(doc)) return new Map();
+  const packages = [doc.packages, doc.snapshots].flatMap((table) =>
+    Object.keys(isRecord(table) ? table : {}).flatMap((key): [string, string][] => {
+      const m = PNPM_KEY.exec(key);
+      return m?.[1] && m[2] ? [[m[1], m[2]]] : [];
+    }),
+  );
+  const importer = sub.replace(/\/$/, "");
+  return new Map([
+    ...packages,
+    ...pnpmImporter(doc.importers, "."),
+    ...(importer ? pnpmImporter(doc.importers, importer) : []),
+  ]);
+}
+
+const YARN_ENTRY =
+  /^["']?((?:@[^@/"',\s]+\/)?[^@/"',\s]+)@(?:npm:)?[^:\n]+:\r?\n\s+version(?::\s+|\s+)["']?([^\s"']+)/gm;
+
+/** Installed packages from a `yarn.lock` (v1 classic, which is not YAML, and Berry), read by line. */
+export function readYarnLock(text: string): Map<string, string> {
+  const versions = new Map<string, string>();
+  for (const [, name = "", version = ""] of text.matchAll(YARN_ENTRY)) {
+    if (name && version) versions.set(name, version);
+  }
+  return versions;
+}
+
+/** The lockfile a TypeScript component's packages are installed from: npm, pnpm or yarn, up to the workspace root. */
 function typescript(dir: string, read: ReadRepoFile): Pinned | undefined {
   for (const base of upwards(dir)) {
-    const file = base + "package-lock.json";
-    const text = read(file);
-    if (text !== undefined) return { file, versions: readNpmLock(text, dir.slice(base.length)) };
+    const sub = dir.slice(base.length);
+    for (const name of ["package-lock.json", "npm-shrinkwrap.json"]) {
+      const file = base + name;
+      const text = read(file);
+      if (text !== undefined) return { file, versions: readNpmLock(text, sub) };
+    }
+    const pnpm = read(base + "pnpm-lock.yaml");
+    if (pnpm !== undefined) return { file: base + "pnpm-lock.yaml", versions: readPnpmLock(pnpm, sub) };
+    const yarn = read(base + "yarn.lock");
+    if (yarn !== undefined) return { file: base + "yarn.lock", versions: readYarnLock(yarn) };
   }
   return undefined;
 }
