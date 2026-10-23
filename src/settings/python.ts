@@ -8,6 +8,23 @@ import type { ItemDef } from "../standard/types.ts";
 
 type Table = Record<string, unknown>;
 
+export interface ExternalToolConfig {
+  file: string;
+  prefix?: KeyPath;
+  table: Table;
+}
+
+export interface PythonExtraConfigs {
+  ruff?: ExternalToolConfig;
+  pyright?: ExternalToolConfig;
+}
+
+interface ToolSection {
+  file: string;
+  prefix: KeyPath;
+  table: Table;
+}
+
 const isTable = (v: unknown): v is Table => typeof v === "object" && v !== null && !Array.isArray(v);
 
 const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
@@ -46,15 +63,25 @@ interface Bar {
 }
 
 class Report {
-  readonly findings: Finding[] = [];
+  readonly findings: Finding[];
   private readonly component: ResolvedComponent;
   private readonly defs: Readonly<Record<string, ItemDef>>;
   readonly file: string;
 
-  constructor(component: ResolvedComponent, defs: Readonly<Record<string, ItemDef>>, file: string) {
+  constructor(
+    component: ResolvedComponent,
+    defs: Readonly<Record<string, ItemDef>>,
+    file: string,
+    findings: Finding[] = [],
+  ) {
     this.component = component;
     this.defs = defs;
     this.file = file;
+    this.findings = findings;
+  }
+
+  forFile(file: string): Report {
+    return file === this.file ? this : new Report(this.component, this.defs, file, this.findings);
   }
 
   /** The value the component's effective standard asks for. */
@@ -148,10 +175,10 @@ interface RuffRules {
 }
 
 /** extend-select is folded into lint.select, with the declared groups it still lacks. Returns whether it was used. */
-function checkExtendSelect(r: Report, ruff: Table, lint: Table, rules: RuffRules): boolean {
+function checkExtendSelect(r: Report, ruff: Table, lint: Table, prefix: KeyPath, rules: RuffRules): boolean {
   const places = [
-    { table: lint, path: [...RUFF, "lint", "extend-select"] },
-    { table: ruff, path: [...RUFF, "extend-select"] },
+    { table: lint, path: [...prefix, "lint", "extend-select"] },
+    { table: ruff, path: [...prefix, "extend-select"] },
   ].filter((p) => "extend-select" in p.table);
   if (places.length === 0) return false;
   const extended = places.flatMap((p) => p.table["extend-select"]).filter((v) => typeof v === "string");
@@ -169,15 +196,15 @@ function checkExtendSelect(r: Report, ruff: Table, lint: Table, rules: RuffRules
   return true;
 }
 
-function checkRuffRules(r: Report, ruff: Table, lint: Table): void {
-  const selectPath = "select" in lint || !("select" in ruff) ? [...RUFF, "lint", "select"] : [...RUFF, "select"];
+function checkRuffRules(r: Report, ruff: Table, lint: Table, prefix: KeyPath): void {
+  const selectPath = "select" in lint || !("select" in ruff) ? [...prefix, "lint", "select"] : [...prefix, "select"];
   const raw = lint.select ?? ruff.select;
   const select = isStringArray(raw) ? raw : [];
   const declared = r.want("lint.rules");
   const groups = isStringArray(declared) ? declared : [];
   const addAll = (values: string[]): Repair[] =>
     values.map((value) => ({ op: "add", file: r.file, path: selectPath, value }));
-  const extended = checkExtendSelect(r, ruff, lint, { select, addAll, groups });
+  const extended = checkExtendSelect(r, ruff, lint, prefix, { select, addAll, groups });
   if (raw === undefined && extended) return;
   const missing = groups.filter((g) => !select.some((s) => covers(s, g)));
   if (missing.length > 0) {
@@ -253,12 +280,12 @@ function checkRequiresPython(r: Report, doc: Table): { floor?: string; bar?: Bar
   return { floor };
 }
 
-function checkPythonVersion(r: Report, doc: Table, ruff: Table | undefined): void {
-  const { floor, bar } = checkRequiresPython(r, doc);
-  const target = ruff?.["target-version"];
-  const targetPath = [...RUFF, "target-version"];
-  if (ruff && target !== undefined) {
-    r.compare(
+function checkRuffVersion(r: Report, ruff: ToolSection, floor: string | undefined, bar: Bar | undefined): void {
+  const ruffReport = r.forFile(ruff.file);
+  const target = ruff.table["target-version"];
+  const targetPath = [...ruff.prefix, "target-version"];
+  if (target !== undefined) {
+    ruffReport.compare(
       {
         name: "Ruff target-version",
         key: MIN_VERSION,
@@ -268,44 +295,78 @@ function checkPythonVersion(r: Report, doc: Table, ruff: Table | undefined): voi
       },
       bar,
     );
-  } else if (ruff && floor === undefined) {
+  } else if (floor === undefined) {
     const value = toRuffTarget(r.want(MIN_VERSION));
-    r.fixable(
+    ruffReport.fixable(
       "target-version-missing",
       "Ruff 沒有設定 target-version，專案也沒有 requires-python 可供推定",
       `設定 Ruff target-version = ${fmt(value)}`,
-      [r.set(targetPath, value)],
+      [ruffReport.set(targetPath, value)],
     );
   }
-  const mypy = at(doc, "tool", "mypy")?.python_version;
-  const mypyPath = ["tool", "mypy", "python_version"];
-  if (mypy !== undefined)
-    r.compare({ name: "mypy python_version", key: MIN_VERSION, value: mypy, path: mypyPath }, bar);
-  const pyright = at(doc, "tool", "pyright")?.pythonVersion;
-  const pyrightPath = ["tool", "pyright", "pythonVersion"];
-  if (pyright !== undefined)
-    r.compare({ name: "pyright pythonVersion", key: MIN_VERSION, value: pyright, path: pyrightPath }, bar);
 }
 
-/** mypy's `strict = true`, or pyright's `typeCheckingMode = "strict"`, whichever the declaration picks. */
-function checkTypecheck(r: Report, doc: Table): void {
-  const pyright = r.want("typecheck.tool") === "pyright";
-  const section = pyright ? "pyright" : "mypy";
-  const path = pyright ? ["tool", "pyright", "typeCheckingMode"] : ["tool", "mypy", "strict"];
-  const strictValue = pyright ? "strict" : true;
-  const table = at(doc, "tool", section);
-  if (!table) {
+function checkPythonVersion(r: Report, doc: Table, ruff?: ToolSection, pyright?: ToolSection): void {
+  const { floor, bar } = checkRequiresPython(r, doc);
+  if (ruff) checkRuffVersion(r, ruff, floor, bar);
+  const mypy = at(doc, "tool", "mypy")?.python_version;
+  if (mypy !== undefined)
+    r.compare(
+      { name: "mypy python_version", key: MIN_VERSION, value: mypy, path: ["tool", "mypy", "python_version"] },
+      bar,
+    );
+  const pyrightVer = pyright?.table.pythonVersion;
+  if (pyright && pyrightVer !== undefined) {
+    r.forFile(pyright.file).compare(
+      {
+        name: "pyright pythonVersion",
+        key: MIN_VERSION,
+        value: pyrightVer,
+        path: [...pyright.prefix, "pythonVersion"],
+      },
+      bar,
+    );
+  }
+}
+
+function checkPyrightStrict(r: Report, found?: ToolSection): void {
+  if (!found) {
+    const path = ["tool", "pyright", "typeCheckingMode"];
     r.fixable(
       "typecheck-missing",
-      `pyproject.toml 沒有 [tool.${section}] 設定`,
-      `新增 [tool.${section}] ${String(path[2])} = ${fmt(strictValue)}`,
-      [r.set(path, strictValue)],
+      "pyproject.toml 沒有 [tool.pyright] 設定",
+      `新增 [tool.pyright] typeCheckingMode = "strict"`,
+      [r.set(path, "strict")],
     );
     return;
   }
-  const strict = pyright ? table.typeCheckingMode === "strict" : table.strict === true;
-  const name = pyright ? `pyright typeCheckingMode ${fmt(table.typeCheckingMode ?? null)}` : "mypy strict";
-  r.compare({ name, key: "typecheck.strict", value: strict, path, toFile: () => strictValue });
+  const mode = found.table.typeCheckingMode;
+  const name = `pyright typeCheckingMode ${fmt(mode ?? null)}`;
+  const path = [...found.prefix, "typeCheckingMode"];
+  r.forFile(found.file).compare({
+    name,
+    key: "typecheck.strict",
+    value: mode === "strict",
+    path,
+    toFile: () => "strict",
+  });
+}
+
+/** mypy's `strict = true`, or pyright's `typeCheckingMode = "strict"`, whichever the declaration picks. */
+function checkTypecheck(r: Report, doc: Table, pyrightSection?: ToolSection): void {
+  if (r.want("typecheck.tool") === "pyright") {
+    checkPyrightStrict(r, pyrightSection);
+    return;
+  }
+  const mypy = at(doc, "tool", "mypy");
+  const path = ["tool", "mypy", "strict"];
+  if (!mypy) {
+    r.fixable("typecheck-missing", "pyproject.toml 沒有 [tool.mypy] 設定", "新增 [tool.mypy] strict = true", [
+      r.set(path, true),
+    ]);
+    return;
+  }
+  r.compare({ name: "mypy strict", key: "typecheck.strict", value: mypy.strict === true, path, toFile: () => true });
 }
 
 function checkCoverage(r: Report, doc: Table): void {
@@ -318,14 +379,16 @@ function checkCoverage(r: Report, doc: Table): void {
   );
 }
 
-function checkRuff(r: Report, ruff: Table): void {
+function checkRuff(r: Report, section: ToolSection): void {
+  const { table: ruff, prefix } = section;
+  const target = r.forFile(section.file);
   const lint = at(ruff, "lint") ?? {};
-  checkRuffRules(r, ruff, lint);
+  checkRuffRules(target, ruff, lint, prefix);
   const mccabeTable = at(lint, "mccabe") ? "lint" : at(ruff, "mccabe") ? undefined : "lint";
   const mccabe = at(lint, "mccabe") ?? at(ruff, "mccabe") ?? {};
-  const mccabePath = [...RUFF, ...(mccabeTable ? [mccabeTable] : []), "mccabe", "max-complexity"];
-  r.compare(ruffSetting(mccabe, "max-complexity", "complexity.cyclomatic", mccabePath));
-  r.compare(ruffSetting(ruff, "line-length", "format.lineLength", [...RUFF, "line-length"]));
+  const mccabePath = [...prefix, ...(mccabeTable ? [mccabeTable] : []), "mccabe", "max-complexity"];
+  target.compare(ruffSetting(mccabe, "max-complexity", "complexity.cyclomatic", mccabePath));
+  target.compare(ruffSetting(ruff, "line-length", "format.lineLength", [...prefix, "line-length"]));
 }
 
 /** The [tool.ruff] settings the standard asks for, written out when the section is missing. */
@@ -339,6 +402,22 @@ function newRuff(r: Report, doc: Table): Repair[] {
   ];
 }
 
+function resolveSections(
+  doc: Table,
+  file: string,
+  extra?: PythonExtraConfigs,
+): { ruff?: ToolSection; pyright?: ToolSection } {
+  const inTomlRuff = at(doc, "tool", "ruff");
+  const ruff = inTomlRuff
+    ? { file, prefix: RUFF, table: inTomlRuff }
+    : extra?.ruff && { file: extra.ruff.file, prefix: extra.ruff.prefix ?? [], table: extra.ruff.table };
+  const inTomlPyright = at(doc, "tool", "pyright");
+  const pyright = inTomlPyright
+    ? { file, prefix: ["tool", "pyright"], table: inTomlPyright }
+    : extra?.pyright && { file: extra.pyright.file, prefix: extra.pyright.prefix ?? [], table: extra.pyright.table };
+  return { ruff, pyright };
+}
+
 /**
  * Compares a parsed pyproject.toml with a Python component's effective standard (SPEC §6.1, §8).
  * A setting looser than the declaration is an error; a stricter one is a hint.
@@ -349,13 +428,14 @@ export function checkPyproject(
   defs: Readonly<Record<string, ItemDef>>,
   doc: Table,
   file: string,
+  extra?: PythonExtraConfigs,
 ): Finding[] {
   const r = new Report(component, defs, file);
-  const ruff = at(doc, "tool", "ruff");
+  const { ruff, pyright } = resolveSections(doc, file, extra);
   if (ruff) checkRuff(r, ruff);
   else r.fixable("ruff-missing", "pyproject.toml 沒有 [tool.ruff] 設定", "新增 [tool.ruff]", newRuff(r, doc));
-  checkPythonVersion(r, doc, ruff);
-  checkTypecheck(r, doc);
+  checkPythonVersion(r, doc, ruff, pyright);
+  checkTypecheck(r, doc, pyright);
   checkCoverage(r, doc);
   return r.findings;
 }

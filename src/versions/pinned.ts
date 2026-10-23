@@ -27,10 +27,12 @@ export function readPackageTables(text: string): Map<string, string> {
 }
 
 function python(dir: string, read: ReadRepoFile): Pinned | undefined {
-  for (const name of ["uv.lock", "poetry.lock"]) {
-    const file = dir + name;
-    const text = read(file);
-    if (text !== undefined) return { file, versions: readPackageTables(text) };
+  for (const base of ancestors(dir)) {
+    for (const name of ["uv.lock", "poetry.lock"]) {
+      const file = base + name;
+      const text = read(file);
+      if (text !== undefined) return { file, versions: readPackageTables(text) };
+    }
   }
   return undefined;
 }
@@ -69,16 +71,27 @@ function installedIn(packages: Record<string, { version?: unknown }>, dir: strin
 }
 
 const PNPM_PKG = /^  ['"]?\/?((?:@[^/'":\s]+\/)?[^@/'":\s]+)@(\d[^('":\s]*)/gm;
+const PNPM_IMPORTER_DEP =
+  /^ {6}['"]?((?:@[^/'":\s]+\/)?[^/'":\s]+)['"]?:[ \t]*(?:(?:\r?\n {8}\S[^\r\n]*)*?\r?\n {8}version:[ \t]*)?['"]?(\d[^('"\s]*)/gm;
 const YARN_ENTRY =
   /^["']?((?:@[^@/"',\s]+\/)?[^@/"',\s]+)@(?:npm:)?[^:\n]+:\r?\n\s+version(?::\s+|\s+)["']?([^\s"']+)/gm;
 
-/** Installed packages from a `pnpm-lock.yaml` (v6–v9 `packages` / `snapshots` entries). */
-export function readPnpmLock(text: string): Map<string, string> {
-  const versions = new Map<string, string>();
-  for (const [, name = "", version = ""] of text.matchAll(PNPM_PKG)) {
-    if (name && version) versions.set(name, version);
-  }
-  return versions;
+function pnpmImporter(text: string, id: string): [string, string][] {
+  if (!id) return [];
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const start = new RegExp(`^  ['"]?${escaped}['"]?:[ \\t]*\\r?\\n`, "m").exec(text);
+  if (!start) return [];
+  const rest = text.slice(start.index + start[0].length);
+  const end = /^(?:  \S|\S)/m.exec(rest);
+  const block = end ? rest.slice(0, end.index) : rest;
+  return [...block.matchAll(PNPM_IMPORTER_DEP)].map(([, name = "", version = ""]) => [name, version]);
+}
+
+/** Installed packages from a `pnpm-lock.yaml` (v6–v9 `packages` / `snapshots` entries and `importers`). */
+export function readPnpmLock(text: string, sub = ""): Map<string, string> {
+  const packages = [...text.matchAll(PNPM_PKG)].map(([, name = "", version = ""]): [string, string] => [name, version]);
+  const importer = sub.replace(/\/$/, "");
+  return new Map([...packages, ...pnpmImporter(text, "."), ...pnpmImporter(text, importer)]);
 }
 
 /** Installed packages from a `yarn.lock` (v1 classic and Berry). */
@@ -92,19 +105,16 @@ export function readYarnLock(text: string): Map<string, string> {
 
 function typescript(dir: string, read: ReadRepoFile): Pinned | undefined {
   for (const base of ancestors(dir)) {
+    const sub = dir.slice(base.length);
     for (const name of ["package-lock.json", "npm-shrinkwrap.json"]) {
       const file = base + name;
       const text = read(file);
-      if (text !== undefined) return { file, versions: readNpmLock(text, dir.slice(base.length)) };
+      if (text !== undefined) return { file, versions: readNpmLock(text, sub) };
     }
-    for (const [name, reader] of [
-      ["pnpm-lock.yaml", readPnpmLock],
-      ["yarn.lock", readYarnLock],
-    ] as const) {
-      const file = base + name;
-      const text = read(file);
-      if (text !== undefined) return { file, versions: reader(text) };
-    }
+    const pnpm = read(base + "pnpm-lock.yaml");
+    if (pnpm !== undefined) return { file: base + "pnpm-lock.yaml", versions: readPnpmLock(pnpm, sub) };
+    const yarn = read(base + "yarn.lock");
+    if (yarn !== undefined) return { file: base + "yarn.lock", versions: readYarnLock(yarn) };
   }
   return undefined;
 }

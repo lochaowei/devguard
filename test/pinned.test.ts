@@ -29,9 +29,12 @@ describe("pinnedVersions", () => {
     expect(Object.fromEntries(pinned?.versions ?? [])).toEqual({ ruff: "0.17.4", mypy: "1.18.2" });
   });
 
-  it("falls back to poetry.lock", () => {
+  it("falls back to poetry.lock and walks ancestor directories for Python sub-components", () => {
     const poetry = '[[package]]\nname = "ruff"\nversion = "0.17.1"\ndescription = "x"\n';
     expect(pinnedVersions("python", "", files({ "poetry.lock": poetry }))?.versions.get("ruff")).toBe("0.17.1");
+    const sub = pinnedVersions("python", "packages/a/", files({ "poetry.lock": poetry }));
+    expect(sub?.file).toBe("poetry.lock");
+    expect(sub?.versions.get("ruff")).toBe("0.17.1");
   });
 
   it("reads the installed top-level packages from package-lock.json, up to the workspace root", () => {
@@ -165,16 +168,38 @@ pmd {
 
     const pnpm = [
       "lockfileVersion: '9.0'",
+      "importers:",
+      "  .:",
+      "    devDependencies:",
+      "      typescript:",
+      "        specifier: ^5.5.4",
+      "        version: 5.5.4",
+      "  packages/web:",
+      "    dependencies:",
+      "      zod:",
+      "        specifier: workspace:*",
+      "        version: link:../zod",
+      "    devDependencies:",
+      "      typescript:",
+      "        specifier: ^6.0.3",
+      "        version: 6.0.3",
       "packages:",
       "  '@biomejs/biome@2.3.1':",
       "    resolution: {integrity: sha512-x}",
+      "  typescript@5.5.4:",
+      "    resolution: {integrity: sha512-t1}",
+      "  typescript@6.0.3:",
+      "    resolution: {integrity: sha512-t2}",
       "  vitest@4.1.6(@types/node@25.8.0):",
       "    resolution: {integrity: sha512-y}",
     ].join("\n");
-    const fromPnpm = pinnedVersions("typescript", "web/", files({ "pnpm-lock.yaml": pnpm }));
-    expect(fromPnpm?.file).toBe("pnpm-lock.yaml");
-    expect(Object.fromEntries(fromPnpm?.versions ?? [])).toEqual({
+    const fromPnpmRoot = pinnedVersions("typescript", "", files({ "pnpm-lock.yaml": pnpm }));
+    expect(fromPnpmRoot?.versions.get("typescript")).toBe("5.5.4");
+    const fromPnpmWeb = pinnedVersions("typescript", "packages/web/", files({ "pnpm-lock.yaml": pnpm }));
+    expect(fromPnpmWeb?.file).toBe("pnpm-lock.yaml");
+    expect(Object.fromEntries(fromPnpmWeb?.versions ?? [])).toEqual({
       "@biomejs/biome": "2.3.1",
+      typescript: "6.0.3",
       vitest: "4.1.6",
     });
 

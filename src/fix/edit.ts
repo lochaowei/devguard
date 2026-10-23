@@ -73,6 +73,15 @@ function separator(out: string): string {
   return out.endsWith("\n") ? "\n" : "\n\n";
 }
 
+function hasTomlTable(text: string, doc: Obj, table: KeyPath, name: string): boolean {
+  if (text.trim() === "") return false;
+  if (table.length === 0) return true;
+  if (!isObj(getIn(doc, table))) return false;
+  if (table.some((k) => typeof k === "number")) return true;
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^\\s*\\[\\s*${escaped}\\s*\\]`, "m").test(text);
+}
+
 /**
  * toml-patch writes a key of a table that does not exist yet as a dotted key at the top of the file
  * (`tool.mypy = {strict = true}`), so keys of new tables are collected and appended as `[section]` blocks instead.
@@ -87,12 +96,13 @@ function editToml(text: string, edits: readonly KeyEdit[]): string {
     const name = table.map(bareKey).join(".");
     const section = sections.get(name);
     const value = valueAfter(e, getIn(doc, e.path) ?? section?.[key]);
-    if (value !== undefined && !isObj(getIn(doc, table))) sections.set(name, { ...section, [key]: value });
+    if (value !== undefined && !hasTomlTable(text, doc, table, name)) sections.set(name, { ...section, [key]: value });
     else setIn(doc, e.path, value);
   }
   let out = empty ? "" : patchToml(text, doc, TOML_FORMAT);
   for (const [name, values] of sections) {
-    out += `${separator(out)}[${name}]\n${stringifyToml(values, TOML_FORMAT).trimEnd()}\n`;
+    const header = name ? `[${name}]\n` : "";
+    out += `${separator(out)}${header}${stringifyToml(values, TOML_FORMAT).trimEnd()}\n`;
   }
   return out;
 }
@@ -130,7 +140,7 @@ function editYaml(text: string, edits: readonly KeyEdit[]): string {
     else if (isSeq(node)) editSeq(doc, node, e);
     else doc.setIn(e.path, doc.createNode(listAfter(e, undefined)));
   }
-  return doc.toString();
+  return doc.toString({ lineWidth: 0 });
 }
 
 function editLines(text: string, edits: readonly KeyEdit[]): string {

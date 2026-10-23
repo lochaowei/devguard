@@ -1,5 +1,5 @@
 import { dirname, extname, join } from "node:path";
-import { at, isRecord, parseJsonc, readIfExists } from "../config-files.ts";
+import { at, isRecord, parseJsonc, readIfExists, searchDirs } from "../config-files.ts";
 import { setAt, type SettingsJudge } from "../judge.ts";
 
 interface Loaded {
@@ -51,13 +51,21 @@ async function load(path: string, depth = 0): Promise<Loaded | undefined> {
   return { options: { ...options, ...(isRecord(own) ? own : {}) }, unresolved };
 }
 
+async function loadNearest(root: string, subDir: string): Promise<{ file: string; loaded: Loaded } | undefined> {
+  for (const { fsDir, relDir } of searchDirs(root, subDir)) {
+    const loaded = await load(join(fsDir, "tsconfig.json"));
+    if (loaded) return { file: `${relDir}tsconfig.json`, loaded };
+  }
+  return undefined;
+}
+
 /** `typecheck.strict` and `typecheck.options` against tsconfig.json (SPEC §6.3). */
 export async function checkTsconfig(root: string, judge: SettingsJudge): Promise<void> {
-  const file = judge.path("tsconfig.json");
-  const loaded = await load(join(root, "tsconfig.json"));
+  const found = await loadNearest(root, judge.dir);
   const wanted = judge.declared("typecheck.options");
   const extraOptions = Array.isArray(wanted) ? wanted.filter((o): o is string => typeof o === "string") : [];
-  if (!loaded) {
+  if (!found) {
+    const file = judge.path("tsconfig.json");
     const strict = judge.declared("typecheck.strict");
     const repairs = [
       ...(strict === undefined ? [] : setAt(file, ["compilerOptions", "strict"])(strict)),
@@ -66,7 +74,10 @@ export async function checkTsconfig(root: string, judge: SettingsJudge): Promise
     judge.missingFile(file, " tsconfig.json", repairs);
     return;
   }
-  const { options, unresolved } = loaded;
+  const {
+    file,
+    loaded: { options, unresolved },
+  } = found;
   const check = (key: string, name: string, actual: unknown, run: () => void) => {
     if (actual === undefined && unresolved) judge.unconfirmed(file, `（extends 的來源讀不到）tsconfig 的 ${name}`);
     else run();

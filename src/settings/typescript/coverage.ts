@@ -8,6 +8,7 @@ import {
   propertyValueIndex,
   pullsFromElsewhere,
   readIfExists,
+  searchDirs,
 } from "../config-files.ts";
 import type { KeyPath } from "../../fix/repair.ts";
 import { setAt, type SettingsJudge } from "../judge.ts";
@@ -52,38 +53,33 @@ function judgeConfig(text: string, path: readonly string[], t: Thresholds, judge
 
 async function checkVitest(root: string, judge: SettingsJudge): Promise<void> {
   const names = ["vitest", "vite"].flatMap((tool) => CODE_EXTS.map((ext) => `${tool}.config.${ext}`));
-  const found = await findFirst(root, names);
+  const found = await findFirst(root, names, judge.dir);
   if (!found) {
     judge.missingFile(judge.path("vitest.config.ts"), " Vitest 設定檔（覆蓋率門檻設在 coverage.thresholds）");
     return;
   }
   const at = ["test", "coverage", "thresholds"];
-  judgeConfig(
-    found.text,
-    ["thresholds"],
-    { file: judge.path(found.name), label: "Vitest coverage.thresholds", at },
-    judge,
-  );
+  judgeConfig(found.text, ["thresholds"], { file: found.file, label: "Vitest coverage.thresholds", at }, judge);
 }
 
 async function checkJest(root: string, judge: SettingsJudge): Promise<void> {
   const label = "Jest coverageThreshold.global";
   const path = ["coverageThreshold", "global"];
-  const pkg = parseJsonc((await readIfExists(join(root, "package.json"))) ?? "");
-  if (isRecord(pkg) && isRecord(pkg.jest)) {
-    const t = { file: judge.path("package.json"), label, at: ["jest", ...path] };
-    judgeConfig(JSON.stringify(pkg.jest), path, t, judge);
-    return;
+  const names = [...CODE_EXTS, "json"].map((ext) => `jest.config.${ext}`);
+  for (const { fsDir, relDir } of searchDirs(root, judge.dir)) {
+    const pkg = parseJsonc((await readIfExists(join(fsDir, "package.json"))) ?? "");
+    if (isRecord(pkg) && isRecord(pkg.jest)) {
+      const t = { file: `${relDir}package.json`, label, at: ["jest", ...path] };
+      judgeConfig(JSON.stringify(pkg.jest), path, t, judge);
+      return;
+    }
+    const found = await findFirst(fsDir, names);
+    if (found) {
+      judgeConfig(found.text, path, { file: relDir + found.name, label, at: path }, judge);
+      return;
+    }
   }
-  const found = await findFirst(
-    root,
-    [...CODE_EXTS, "json"].map((ext) => `jest.config.${ext}`),
-  );
-  if (!found) {
-    judge.missingFile(judge.path("jest.config.js"), " Jest 設定檔（覆蓋率門檻設在 coverageThreshold.global）");
-    return;
-  }
-  judgeConfig(found.text, path, { file: judge.path(found.name), label, at: path }, judge);
+  judge.missingFile(judge.path("jest.config.js"), " Jest 設定檔（覆蓋率門檻設在 coverageThreshold.global）");
 }
 
 /** The four coverage thresholds against the declared `coverage.lines`, for Vitest or Jest. */

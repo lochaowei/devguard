@@ -61,12 +61,12 @@ function checkPreset(text: string, file: string, judge: SettingsJudge): void {
 
 /** `lint.rules` (strictTypeChecked) and the complexity limits against the ESLint flat config. */
 export async function checkEslint(root: string, judge: SettingsJudge): Promise<void> {
-  const found = await findFirst(root, FLAT_CONFIGS);
+  const found = await findFirst(root, FLAT_CONFIGS, judge.dir);
   if (!found) {
     judge.missingFile(judge.path("eslint.config.js"), " ESLint flat config（eslint.config.*）");
     return;
   }
-  const file = judge.path(found.name);
+  const { file } = found;
   checkPreset(found.text, file, judge);
   for (const { key, rule, option, fallback } of LIMIT_RULES) {
     const repair = setAt(file, ["rules", rule], (max) => ["error", max]);

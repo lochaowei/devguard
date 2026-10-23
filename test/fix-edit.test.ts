@@ -56,6 +56,17 @@ describe("editConfigText: TOML (SPEC §13 T1)", () => {
   it("creates the file content from nothing", () => {
     const out = editConfigText("pyproject.toml", "", [{ op: "set", path: ["tool", "mypy", "strict"], value: true }]);
     expect(out).toMatch(/\[tool\.mypy\]\s*\nstrict = true/);
+    const topLevel = editConfigText("ruff.toml", "", [{ op: "set", path: ["line-length"], value: 120 }]);
+    expect(topLevel).toBe("line-length = 120\n");
+  });
+
+  it("appends [tool.ruff] when only [tool.ruff.lint] exists in the file", () => {
+    const text = '[project]\nname = "app"\n\n[tool.ruff.lint]\nselect = ["E"]\n';
+    const out = editConfigText("pyproject.toml", text, [
+      { op: "set", path: ["tool", "ruff", "line-length"], value: 120 },
+    ]);
+    expect(out.startsWith('[project]\nname = "app"')).toBe(true);
+    expect(out).toContain("[tool.ruff]\nline-length = 120\n");
   });
 });
 
@@ -101,6 +112,17 @@ describe("editConfigText: YAML", () => {
       { op: "set", path: ["printWidth"], value: 120 },
     ]);
     expect(out).toBe("printWidth: 120 # narrow\n");
+  });
+
+  it("does not wrap long lines in existing YAML sections", () => {
+    const longRule =
+      'version: "2"\nlinters:\n  exclusions:\n    rules:\n      - path: foo_test\\.go\n        text: "very-long-pattern-that-exceeds-eighty-columns-and-must-not-be-wrapped-by-yaml-stringify"\n';
+    const out = editConfigText(".golangci.yml", longRule, [
+      { op: "set", path: ["linters", "settings", "gocognit", "min-complexity"], value: 15 },
+    ]);
+    expect(out).toContain(
+      'text: "very-long-pattern-that-exceeds-eighty-columns-and-must-not-be-wrapped-by-yaml-stringify"',
+    );
   });
 });
 

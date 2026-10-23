@@ -98,34 +98,41 @@ const VITEST_CONFIGS = ["js", "mjs", "cjs", "ts", "mts", "cts"].map((e) => `vite
 const JEST_CONFIGS = ["js", "mjs", "cjs", "ts", "mts", "cts", "json"].map((e) => `jest.config.${e}`);
 
 interface FileProbe {
-  has: (...names: string[]) => boolean;
-  hasUp: (...names: string[]) => boolean;
+  nearest: (win: readonly string[], lose?: readonly string[]) => boolean;
 }
 
 const CHOICE_RULES: Readonly<Record<Language, (p: FileProbe) => [boolean, string, string][]>> = {
   python: (p) => [
-    [p.has("poetry.lock") && !p.has("uv.lock"), "deps.manager", "poetry"],
-    [p.has("pyrightconfig.json"), "typecheck.tool", "pyright"],
+    [p.nearest(["poetry.lock"], ["uv.lock"]), "deps.manager", "poetry"],
+    [p.nearest(["pyrightconfig.json"]), "typecheck.tool", "pyright"],
   ],
   go: () => [],
   typescript: (p) => [
-    [p.has("biome.json", "biome.jsonc") && !p.has(...ESLINT_CONFIGS), "lint.tool", "biome"],
-    [p.has(...JEST_CONFIGS) && !p.has(...VITEST_CONFIGS), "test.tool", "jest"],
-    [!p.hasUp("package-lock.json", "npm-shrinkwrap.json") && p.hasUp("pnpm-lock.yaml"), "deps.manager", "pnpm"],
-    [
-      !p.hasUp("package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml") && p.hasUp("yarn.lock"),
-      "deps.manager",
-      "yarn",
-    ],
+    [p.nearest(["biome.json", "biome.jsonc"], ESLINT_CONFIGS), "lint.tool", "biome"],
+    [p.nearest(JEST_CONFIGS, VITEST_CONFIGS), "test.tool", "jest"],
+    [p.nearest(["pnpm-lock.yaml"], ["package-lock.json", "npm-shrinkwrap.json"]), "deps.manager", "pnpm"],
+    [p.nearest(["yarn.lock"], ["package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml"]), "deps.manager", "yarn"],
   ],
-  java: (p) => [[p.has("build.gradle", "build.gradle.kts") && !p.has("pom.xml"), "build.tool", "gradle"]],
+  java: (p) => [[p.nearest(["build.gradle", "build.gradle.kts"], ["pom.xml"]), "build.tool", "gradle"]],
 };
+
+function nearestChoice(
+  dir: string,
+  present: ReadonlySet<string>,
+  win: readonly string[],
+  lose: readonly string[] = [],
+): boolean {
+  for (const d of ancestors(dir)) {
+    if (lose.some((n) => present.has(d + n))) return false;
+    if (win.some((n) => present.has(d + n))) return true;
+  }
+  return false;
+}
 
 /** Infers non-default tool choices (`build.tool`, `deps.manager`, `lint.tool`, etc.) from the component's files. */
 function inferToolChoices(c: DraftComponent, present: ReadonlySet<string>): Record<string, string> {
   const probe: FileProbe = {
-    has: (...names) => names.some((n) => present.has(c.dir + n)),
-    hasUp: (...names) => ancestors(c.dir).some((d) => names.some((n) => present.has(d + n))),
+    nearest: (win, lose) => nearestChoice(c.dir, present, win, lose),
   };
   return Object.fromEntries(
     CHOICE_RULES[c.language](probe)
