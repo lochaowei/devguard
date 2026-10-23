@@ -27,7 +27,7 @@ class GoReport {
     this.component = component;
   }
 
-  add(level: Level, rule: string, message: string, at: { file: string; line?: number; fix?: string }): void {
+  add(level: Level, rule: string, message: string, at: Pick<Finding, "file" | "line" | "fix" | "observed">): void {
     this.findings.push({ level, layer: "config", rule, message, component: this.component.name, ...at });
   }
 
@@ -125,19 +125,15 @@ function judgeThreshold(r: GoReport, config: Golangci, t: Threshold, actual: unk
   const path = ["linters", "settings", t.linter, t.setting];
   const what = `${GOLANGCI_FILE} 的 ${t.linter}.${t.setting} 是 ${String(actual)}`;
   if (status === "looser") {
-    r.add(
-      "error",
-      "settings/golangci-looser",
-      `${what}，比宣告的${t.label} ${String(declared)} 寬鬆`,
-      config.at(path, `把 ${t.linter}.${t.setting} 改成 ${String(declared)}`),
-    );
+    r.add("error", "settings/golangci-looser", `${what}，比宣告的${t.label} ${String(declared)} 寬鬆`, {
+      ...config.at(path, `把 ${t.linter}.${t.setting} 改成 ${String(declared)}`),
+      observed: { key: t.item, value: actual },
+    });
   } else if (status === "stricter") {
-    r.add(
-      "hint",
-      "settings/golangci-stricter",
-      `${what}，比宣告的${t.label} ${String(declared)} 嚴格`,
-      config.at(path, `建議把宣告的 ${t.item} 同步成 ${String(actual)}`),
-    );
+    r.add("hint", "settings/golangci-stricter", `${what}，比宣告的${t.label} ${String(declared)} 嚴格`, {
+      ...config.at(path, `建議把宣告的 ${t.item} 同步成 ${String(actual)}`),
+      observed: { key: t.item, value: actual },
+    });
   } else if (status === "invalid") {
     r.add("error", "settings/golangci-invalid", `${what}，必須是數字`, config.at(path));
   }
@@ -234,7 +230,12 @@ function checkGoMod(r: GoReport, file: string, text: string): void {
     found
       ? `${GOMOD_FILE} 的 go 版本 ${found.version} 低於標準要求的 ${required}`
       : `${GOMOD_FILE} 沒有 go 版本（標準要求至少 ${required}）`,
-    { file, line: found?.line, fix: `go mod edit -go=${required}` },
+    {
+      file,
+      line: found?.line,
+      fix: `go mod edit -go=${required}`,
+      ...(found ? { observed: { key: "go.minVersion", value: found.version } } : {}),
+    },
   );
 }
 

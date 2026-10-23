@@ -56,7 +56,7 @@ class Report {
     return this.component.effective[key]?.value;
   }
 
-  add(level: Level, rule: string, message: string, fix?: string): void {
+  add(level: Level, rule: string, message: string, fix?: string, observed?: Finding["observed"]): void {
     this.findings.push({
       level,
       layer: "config",
@@ -65,6 +65,7 @@ class Report {
       component: this.component.name,
       file: this.file,
       ...(fix ? { fix } : {}),
+      ...(observed ? { observed } : {}),
     });
   }
 
@@ -76,18 +77,19 @@ class Report {
     const shown = toolDefault ? `未設定（${toolDefault} ${fmt(value)}）` : fmt(value);
     const basis = bar ? `專案 ${bar.source} 的` : "宣告的";
     const what = `${name} 為 ${shown}，${basis}「${item.label}」是 ${fmt(declared)}`;
+    const observed = { key, value };
     switch (compareToDefault({ ...item, value: declared as ItemDef["value"] }, value)) {
       case "invalid":
         this.add("error", "invalid-setting", `${name} 的值 ${fmt(value)} 無法辨識`, "devguard fix");
         return;
       case "looser":
-        this.add("error", "looser", `${what}：設定檔比宣告寬鬆`, "devguard fix");
+        this.add("error", "looser", `${what}：設定檔比宣告寬鬆`, "devguard fix", observed);
         return;
       case "stricter":
-        this.add("hint", "stricter", `${what}：設定檔比宣告嚴格，建議把宣告同步成 ${fmt(value)}`);
+        this.add("hint", "stricter", `${what}：設定檔比宣告嚴格，建議把宣告同步成 ${fmt(value)}`, undefined, observed);
         return;
       case "different":
-        this.add("error", "style-mismatch", `${what}：與宣告不一致`, "devguard fix");
+        this.add("error", "style-mismatch", `${what}：與宣告不一致`, "devguard fix", observed);
         return;
       default:
         return;

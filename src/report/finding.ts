@@ -15,6 +15,11 @@ export interface Finding {
   line?: number;
   /** How to resolve it: a command, or what to edit by hand. */
   fix?: string;
+  /**
+   * Set by settings checks when a tool config file holds another value than the declaration: the standard item and
+   * the value read. Lets `devguard draft` turn existing settings into overrides (SPEC §4.3).
+   */
+  observed?: { key: string; value: unknown };
 }
 
 export const LEVEL_ORDER: readonly Level[] = ["error", "deviation", "hint"];
