@@ -13,7 +13,7 @@ export interface CodeTarget {
   /** Where the tools run: normalized, "" for the repo root, otherwise ending in "/". */
   dir: string;
   language: Language;
-  /** Effective standard values for this target (`lint.tool`, `format.printWidth`...). */
+  /** Effective standard values for this target (`lint.tool`, `format.printWidth`...) and the repo-wide `mirrors.*`. */
   effective: Readonly<Record<string, unknown>>;
   /**
    * Files to check, relative to `dir`. Absent means the whole directory: file-level checks run on "." and

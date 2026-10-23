@@ -1,0 +1,85 @@
+import { posix } from "node:path";
+import type { Finding } from "../report/finding.ts";
+import type { ToolResult } from "../tools/runner.ts";
+import { codeFinding, runBatched, toolFailed, toRepoPath } from "./support.ts";
+import type { CodeCategory, CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
+
+interface GolangciIssue {
+  FromLinter: string;
+  Text: string;
+  Severity?: string;
+  Pos: { Filename: string; Line?: number };
+}
+
+function parseIssues(stdout: string): GolangciIssue[] | undefined {
+  try {
+    const parsed = JSON.parse(stdout) as { Issues?: unknown };
+    return Array.isArray(parsed.Issues) ? (parsed.Issues as GolangciIssue[]) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** golangci-lint v2 reports its formatters' problems as issues too, under the formatter's name. */
+const FORMATTERS = new Set(["gofumpt", "goimports", "gofmt", "gci", "golines", "swaggo"]);
+
+function categoryOf(linter: string): CodeCategory {
+  if (FORMATTERS.has(linter)) return "format";
+  return linter === "typecheck" ? "typecheck" : "lint";
+}
+
+function issueFindings(target: CodeTarget, ctx: CodeCheckContext, result: ToolResult): Finding[] {
+  const issues = result.code <= 1 ? parseIssues(result.stdout) : undefined;
+  if (!issues) return [toolFailed(target, "golangci-lint", result)];
+  const wanted = issues.filter((i) => target.categories.has(categoryOf(i.FromLinter)));
+  return wanted.map((i) =>
+    codeFinding(target, {
+      level: i.Severity === "warning" || i.Severity === "info" ? "hint" : "error",
+      rule: `golangci-lint/${i.FromLinter}`,
+      message: i.Text,
+      file: toRepoPath(ctx.cwd, target.dir, i.Pos.Filename),
+      line: i.Pos.Line,
+    }),
+  );
+}
+
+/** GOTOOLCHAIN=local plus the standard's Go mirrors, for every Go tool run (SPEC §3.2, §10.2). */
+function goEnv(target: CodeTarget): Record<string, string> {
+  const env: Record<string, string> = { GOTOOLCHAIN: "local" };
+  const proxy = target.effective["mirrors.go"];
+  const sumdb = target.effective["mirrors.gosumdb"];
+  if (typeof proxy === "string") env.GOPROXY = proxy;
+  // Keeps the official public key; only the transport goes through the mirror (SPEC §10.2).
+  if (typeof sumdb === "string") env.GOSUMDB = `sum.golang.org ${sumdb}`;
+  return env;
+}
+
+/**
+ * golangci-lint loads whole packages, so a file list becomes the list of package directories ("." or "./pkg");
+ * undefined means the whole component ("./...").
+ */
+function packageDirs(files: readonly string[] | undefined): string[] | undefined {
+  if (files === undefined) return undefined;
+  const dirs = files.filter((f) => f.endsWith(".go")).map((f) => posix.dirname(f));
+  return [...new Set(dirs)].map((d) => (d === "." ? "." : `./${d}`));
+}
+
+/**
+ * golangci-lint v2 (linters and formatters such as gofumpt / goimports) from the internal Scoop bucket
+ * (SPEC §5.2, §6.2). One run covers lint, format and type errors; issues are sorted into categories afterwards.
+ */
+export const goChecker: CodeChecker = {
+  language: "go",
+  async check(target, ctx) {
+    const packages = packageDirs(target.files);
+    if (packages?.length === 0) return [];
+    const request = { language: "go", tool: "golangci-lint", dir: target.dir, env: goEnv(target) } as const;
+    const args = ["run", "--output.json.path=stdout", "--show-stats=false", "--path-mode=abs"];
+    const results = await runBatched(ctx.tools, request, args, packages ?? ["./..."]);
+    const findings = results.flatMap((r) => issueFindings(target, ctx, r));
+    if (target.files === undefined) return findings;
+    // Other files of the same packages are not what was asked for.
+    const asked = new Set(target.files.map((f) => toRepoPath(ctx.cwd, target.dir, f)));
+    return findings.filter((f) => f.file === undefined || asked.has(f.file));
+  },
+};

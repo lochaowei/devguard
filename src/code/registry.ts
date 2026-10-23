@@ -1,5 +1,6 @@
 import type { Language } from "../standard/types.ts";
 import type { CodeChecker } from "./types.ts";
+import { goChecker } from "./go.ts";
 import { pythonChecker } from "./python.ts";
 import { typescriptChecker } from "./typescript.ts";
 
@@ -7,4 +8,5 @@ import { typescriptChecker } from "./typescript.ts";
 export const CODE_CHECKERS: Readonly<Partial<Record<Language, CodeChecker>>> = {
   python: pythonChecker,
   typescript: typescriptChecker,
+  go: goChecker,
 };
