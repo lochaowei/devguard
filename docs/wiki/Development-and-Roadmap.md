@@ -80,37 +80,51 @@ src/
 
 ---
 
+## 打包單一 `.exe` 與發佈流程（GitHub Releases）
+
+1. **本機打包與驗證**：
+   ```bash
+   npm run build:exe          # 以 Bun 打包 dist/devguard-windows-x64.exe 與 arm64
+   npm run smoke:exe          # 將 Node 從 PATH 移除後，驗證 exe 可獨立執行 --version 與 check
+   ```
+2. **正式發佈新版本**：
+   - 更新 `package.json` 中的 `version`，提交並合併至 `main`。
+   - 建立並推送相同版本的 Git tag（例如 `git tag v0.2.0 && git push origin v0.2.0`）。
+   - GitHub Actions 的 [release workflow](../../.github/workflows/release.yml) 會在 Windows runner 上執行完整測試、建置 `devguard-windows-x64.exe` 與 `devguard-windows-arm64.exe`、執行 smoke test，並自動建立 GitHub Release 附上兩個 `.exe` 與 `SHA256SUMS.txt`（若 tag 與 `package.json` 版本不一致則會中止失敗）。
+
+---
+
 ## 實作路線圖與 Issue 進度對照表
 
-以下對應 GitHub Issues `#1`–`#28` 與 `feat/spec-implementation`（PR #29）目前的開發進度：
+以下對應 GitHub Issues `#1`–`#28` 的開發進度（PR #29 已全數完成並合併至 `main`）：
 
 | Issue | 主題 | SPEC 章節 | 狀態 |
 |---|---|---|---|
 | #1 | 專案宣告（`.devguard.yaml`）解析與檢查 | §4、§5.5、§11 | ✅ 已完成（已合併至 `main`） |
-| #2 | 可插拔的檢查層與專案工具執行器 | §2、§5.2 | ✅ 已完成（`feat/spec-implementation`） |
-| #3 | 設定檢查：TypeScript | §6.3、§8 | ✅ 已完成（`feat/spec-implementation`） |
-| #4 | 設定檢查：Python | §6.1、§8 | ✅ 已完成（`feat/spec-implementation`） |
-| #5 | 設定檢查：Go | §6.2、§8 | ✅ 已完成（`feat/spec-implementation`） |
-| #6 | 設定檢查：Java | §6.4、§8 | ✅ 已完成（`feat/spec-implementation`） |
-| #7 | 沒有宣告時依既有設定產生草稿（`devguard draft`） | §4.3 | ✅ 已完成（`feat/spec-implementation`） |
-| #8 | 依賴規則：lockfile 與禁用清單 | §5.4、§6 | ✅ 已完成（`feat/spec-implementation`） |
-| #9 | 工具版本一致性檢查 | §5.2、§8 | ✅ 已完成（`feat/spec-implementation`） |
-| #10 | 程式碼檢查：TypeScript | §6.3、§7.1 | ✅ 已完成（`feat/spec-implementation`） |
-| #11 | 程式碼檢查：Python | §6.1、§7.1 | ✅ 已完成（`feat/spec-implementation`） |
-| #12 | 程式碼檢查：Go | §6.2、§7.1 | ✅ 已完成（`feat/spec-implementation`） |
-| #13 | 程式碼檢查：Java | §6.4、§7.1 | ✅ 已完成（`feat/spec-implementation`） |
-| #14 | 測試與覆蓋率（`check --full`） | §6、§7.1 | ✅ 已完成（`feat/spec-implementation`） |
-| #15 | 報告格式：`sarif`、`vscode`、`claude` | §11 | ✅ 已完成（`feat/spec-implementation`） |
-| #16 | `fix --code`：自動修正程式碼 | §9.1 | ✅ 已完成（`feat/spec-implementation`） |
-| #17 | `fix`：依檔案類別修正設定檔 | §9 | ✅ 已完成（`feat/spec-implementation`） |
-| #18 | `devguard install` 與 pre-commit hook | §7.4 | ✅ 已完成（`feat/spec-implementation`） |
-| #19 | pre-push hook：完整測試與覆蓋率 | §7.4 | ✅ 已完成（`feat/spec-implementation`） |
-| #20 | 注入既有 hook 框架（pre-commit / husky / lefthook） | §7.4 | ✅ 已完成（`feat/spec-implementation`） |
-| #21 | `devguard doctor` 與 git hook 環境檢查 | §7.4、§11 | ✅ 已完成（`feat/spec-implementation`） |
-| #22 | 第一道防線：VS Code workspace 設定（`.vscode/`） | §7.2 | ✅ 已完成（`feat/spec-implementation`） |
-| #23 | 第二道防線：Claude Code（`.claude/` rules、hooks、skill） | §7.3 | ✅ 已完成（`feat/spec-implementation`） |
-| #24 | 內部鏡像設定與帳密檢查 | §10 | ✅ 已完成（`feat/spec-implementation`） |
-| #25 | 進階：弱點掃描 | §5.3 | ✅ 已完成（`feat/spec-implementation`） |
-| #26 | `devguard standard upgrade` 與棄用版本 | §5.5 | ✅ 已完成（`feat/spec-implementation`） |
-| #27 | Bun 打包單一 `.exe`、smoke test 與 T2 探測腳本 | §3.1、§13 | ✅ Bun 1.4.4 實機建置；smoke test、T1、T2 通過 |
-| #28 | 簽章與內部 Scoop bucket 發佈 | §3.1、§12 | 🚫 已取消：改以 GitHub Release 發佈 exe（`wontfix`） |
+| #2 | 可插拔的檢查層與專案工具執行器 | §2、§5.2 | ✅ 已完成（已合併至 `main`） |
+| #3 | 設定檢查：TypeScript | §6.3、§8 | ✅ 已完成（已合併至 `main`） |
+| #4 | 設定檢查：Python | §6.1、§8 | ✅ 已完成（已合併至 `main`） |
+| #5 | 設定檢查：Go | §6.2、§8 | ✅ 已完成（已合併至 `main`） |
+| #6 | 設定檢查：Java | §6.4、§8 | ✅ 已完成（已合併至 `main`） |
+| #7 | 沒有宣告時依既有設定產生草稿（`devguard draft`） | §4.3 | ✅ 已完成（已合併至 `main`） |
+| #8 | 依賴規則：lockfile 與禁用清單 | §5.4、§6 | ✅ 已完成（已合併至 `main`） |
+| #9 | 工具版本一致性檢查 | §5.2、§8 | ✅ 已完成（已合併至 `main`） |
+| #10 | 程式碼檢查：TypeScript | §6.3、§7.1 | ✅ 已完成（已合併至 `main`） |
+| #11 | 程式碼檢查：Python | §6.1、§7.1 | ✅ 已完成（已合併至 `main`） |
+| #12 | 程式碼檢查：Go | §6.2、§7.1 | ✅ 已完成（已合併至 `main`） |
+| #13 | 程式碼檢查：Java | §6.4、§7.1 | ✅ 已完成（已合併至 `main`） |
+| #14 | 測試與覆蓋率（`check --full`） | §6、§7.1 | ✅ 已完成（已合併至 `main`） |
+| #15 | 報告格式：`sarif`、`vscode`、`claude` | §11 | ✅ 已完成（已合併至 `main`） |
+| #16 | `fix --code`：自動修正程式碼 | §9.1 | ✅ 已完成（已合併至 `main`） |
+| #17 | `fix`：依檔案類別修正設定檔 | §9 | ✅ 已完成（已合併至 `main`） |
+| #18 | `devguard install` 與 pre-commit hook | §7.4 | ✅ 已完成（已合併至 `main`） |
+| #19 | pre-push hook：完整測試與覆蓋率 | §7.4 | ✅ 已完成（已合併至 `main`） |
+| #20 | 注入既有 hook 框架（pre-commit / husky / lefthook） | §7.4 | ✅ 已完成（已合併至 `main`） |
+| #21 | `devguard doctor` 與 git hook 環境檢查 | §7.4、§11 | ✅ 已完成（已合併至 `main`） |
+| #22 | 第一道防線：VS Code workspace 設定（`.vscode/`） | §7.2 | ✅ 已完成（已合併至 `main`） |
+| #23 | 第二道防線：Claude Code（`.claude/` rules、hooks、skill） | §7.3 | ✅ 已完成（已合併至 `main`） |
+| #24 | 內部鏡像設定與帳密檢查 | §10 | ✅ 已完成（已合併至 `main`） |
+| #25 | 進階：弱點掃描 | §5.3 | ✅ 已完成（已合併至 `main`） |
+| #26 | `devguard standard upgrade` 與棄用版本 | §5.5 | ✅ 已完成（已合併至 `main`） |
+| #27 | Bun 打包單一 `.exe`、smoke test 與 T2 探測腳本 | §3.1、§13 | ✅ Bun 1.4.4 實機建置；smoke test、T1、T2 通過（已合併至 `main`） |
+| #28 | 以 GitHub Release 發佈 `.exe`（取代原簽章與內部 Scoop bucket） | §3.1、§12 | ✅ 已完成（`.github/workflows/release.yml`，已合併至 `main`） |

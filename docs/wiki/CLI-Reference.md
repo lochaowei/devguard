@@ -100,6 +100,62 @@
 
 | Exit Code | 意義 |
 |---|---|
-| `0` | 檢查通過（無錯誤；若僅有偏離 `deviation` 或提示 `hint` 亦為 `0`） |
-| `1` | 檢查失敗（有 `error`；或加上 `--strict` 時有 `deviation`），或 `fix` 未套用待寫入變更 |
-| `2` | CLI 用法或執行環境錯誤（例如未知指令、不支援的格式、`--full` 與檔案同時指定、檔案不在 repo 內、`draft` 時 `.devguard.yaml` 已存在） |
+| `0` | 檢查通過（無錯誤；若僅有偏離 `deviation` 或提示 `hint` 亦為 `0`），或 `fix` / `install` 已套用完成（或無須修改） |
+| `1` | 檢查失敗（有 `error`；或加上 `--strict` 時有 `deviation`），或 `fix` / `install` 未套用待寫入變更（使用者取消，或非互動環境未加 `--yes`） |
+| `2` | CLI 用法或執行環境錯誤（例如未知指令、不支援的格式、`--full` 與檔案同時指定、檔案不在 repo 內、`draft` 時 `.devguard.yaml` 已存在、`check` 時專案工具尚未安裝） |
+
+---
+
+## `devguard install` 與三道防線細節
+
+`devguard install` 結合了 `devguard fix` 的設定檔產生、Claude Code 初次建置（`.claude/`），以及 git hooks 安裝（`pre-commit`、`pre-push`）：
+
+### 1. VS Code 防線（`.vscode/`）
+- 在 repo 根目錄維護單一份 `.vscode/settings.json`、`.vscode/extensions.json`、`.vscode/tasks.json`（皆須提交至 Git）。
+- 自動針對專案包含的語言寫入推薦與不推薦的擴充套件、存檔格式化（Java 例外：關閉 `formatOnSave` 以免與 Spotless Palantir 規則衝突）、專案本地工具路徑（Python `.venv`、TypeScript `node_modules/typescript/lib`、Java `checkstyle.xml` 版本與路徑），以及 `standards: doctor`（開啟資料夾自動執行）、`standards: check`、`standards: fix`、`standards: test & coverage`、`standards: format (Spotless)` 等 tasks。
+
+### 2. Claude Code 防線（`.claude/`）
+- **`.claude/rules/standards-<元件>.md`**：以 frontmatter `paths` 綁定元件目錄與副檔名，於 Claude 讀寫該元件時載入規範摘要。
+- **`.claude/settings.json`**：註冊三個 hook：
+  - `SessionStart` → `devguard hook claude-session-start`（執行 `doctor --quiet` 並寫入 `.git/devguard/claude-last-seen`）
+  - `PostToolUse`（matcher `Edit|Write`）→ `devguard hook claude-post-edit`（對剛編輯的檔案執行 lint + format，有誤時回傳 `decision: "block"`）
+  - `Stop` → `devguard hook claude-stop`（對工作區所有變更檔案執行 lint + format + typecheck；若 `stop_hook_active` 為 true 且仍失敗則放行並顯示 `systemMessage`，防止無限迴圈）
+- **`.claude/skills/standards-doctor/SKILL.md`**：提供 `/standards-doctor` 指令（`disable-model-invocation: true`），嵌入 `devguard doctor --format claude --exit-zero` 結果並在開發者同意後執行 `fix --yes`。
+
+### 3. git hook 防線（`pre-commit` / `pre-push`）
+- **原生安裝**：預設寫入 `.git/hooks/pre-commit` 與 `.git/hooks/pre-push`（含 `devguard-hook` 標記與 sha256 checksum）。
+- **既有框架注入**：若 repo 已存在 `.pre-commit-config.yaml`（pre-commit）、`.husky/`（husky）或 `lefthook.yml` / `.toml` / `.json`（lefthook），CLI 不覆寫原有 hook，而是在框架設定中注入 `devguard hook git-pre-commit` 與 `devguard hook git-pre-push`。
+- **部分 staged（partially staged）處理**：`pre-commit`（及 `check --staged`）不做 `git stash`，單檔工具（`ruff`、`eslint`、`prettier`、`biome`、`golangci-lint fmt --stdin`）透過 `git show :<path>` 讀取 staged 內容由 stdin 檢查；跨檔或無 stdin 模式的工具（`mypy`、`pyright`、`tsc`、`golangci-lint run`、Java wrapper）則檢查工作區檔案並印出提示。
+
+---
+
+## `devguard doctor`：本機環境檢查項目
+
+`devguard doctor` 除了執行 `check` 的 15 道檢查層外，還會執行 `environment` 層（只回報並附上修正指令，不自動修改本機環境）：
+
+1. **專案工具與啟動器是否已安裝**：檢查 `.venv`、`node_modules/.bin`、`go.mod` tool、Maven/Gradle wrapper，以及 PATH 上的 `golangci-lint`（`check` 遇到缺工具會直接以 exit `2` 中止；`doctor` 則將其列為一筆 `error` 並繼續跑完所有檢查）。
+2. **git hook 安裝狀態**：檢查 `core.hooksPath` 是否衝突或被停用（如指向 `/dev/null`）、hook 檔案是否存在且 checksum 未被篡改（或既有框架已注入且 `pre-commit install` 已執行）。
+3. **VS Code 擴充套件**：透過 `code --list-extensions --show-versions` 檢查推薦擴充套件是否已安裝（缺少為 `error`），以及是否安裝了不推薦的衝突擴充套件（`hint`）。
+4. **Claude Code 環境**：檢查 `claude --version` 是否達到 `claude.minVersion`（預設 `2.1.295`），並檢查 `.git/devguard/claude-last-seen` 確認資料夾是否已被信任且執行過 hook。
+5. **Go 使用者層級鏡像**：檢查 `go env GOPROXY` 與 `GOSUMDB` 是否指向內部鏡像，且 `GOSUMDB` 未被設為 `off`。
+6. **內部鏡像帳密變數（`mirrors.auth: env`）**：只檢查環境變數或憑證檔是否存在（**絕不讀取或印出內容**）：
+   - Python（uv）：`UV_INDEX_NEXUS_USERNAME` / `UV_INDEX_NEXUS_PASSWORD`（或 `NEXUS_USERNAME` / `NEXUS_PASSWORD`）
+   - TypeScript（npm/pnpm/yarn）：`.npmrc` 引用的環境變數（如 `NEXUS_NPM_AUTH` 或 `NEXUS_NPM_TOKEN`）
+   - Java（Maven）：`NEXUS_USERNAME` / `NEXUS_PASSWORD`
+   - Java（Gradle）：`ORG_GRADLE_PROJECT_nexusUsername` / `ORG_GRADLE_PROJECT_nexusPassword`
+   - Go：`NETRC` 指向的檔案或 `%USERPROFILE%\_netrc`
+7. **標準版本更新提示**：若 CLI 內建了比 `.devguard.yaml` 更新的預設標準版本，提示執行 `devguard standard upgrade`。
+
+---
+
+## `devguard standard upgrade`：升級預設標準
+
+當 CLI 內建了新版預設標準時：
+
+```bash
+devguard standard upgrade [目標版本]          # 預覽變更（不寫入檔案）
+devguard standard upgrade [目標版本] --apply  # 實際套用升級
+```
+
+- **預覽內容**：列出舊版與目標版本的標準差異、專案既有 `overrides` 在新版下的重新判定結果（例如原本的收緊在新版已成為預設值而可移除，或原本的值在新版變成放寬而需補理由）、設定檔 diff，以及需要透過內部鏡像執行的套件管理指令（`uv`、`npm`、`go`）。
+- **`--apply`**：更新 `.devguard.yaml` 的 `standard` 欄位、套用設定檔修補，並透過內部鏡像執行套件更新指令（Java 建置檔只印出修改片段，由開發者手動更新）。

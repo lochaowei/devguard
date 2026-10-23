@@ -22,29 +22,245 @@
 - **修正**：`fix` 依檔案類別修正設定（保留註解與順序、CRLF 檔不整份重寫），`fix --code` 修正程式碼。
 - **實際專案測試**：以 27 個開源專案跑過 `draft` → `check` → `fix --yes` → `check`，發現的問題都已修正並補上測試，見 [KEI-6 報告](docs/real-project-test-report.md) 與 [KEI-7 報告](docs/testing/round-2-report.md)。
 
-## 快速開始
+## 快速開始（Quick Start）
 
-需要 Node.js **22.18 以上**（直接執行 TypeScript 原始碼需要 Node 內建的 type stripping）。
+### 1. 安裝 devguard
+
+- **下載執行檔（一般開發者／CI）**：從 [GitHub Releases](https://github.com/lochaowei/devguard/releases/latest) 下載 `devguard-windows-x64.exe`（arm64 機器用 `devguard-windows-arm64.exe`），改名為 `devguard.exe` 並放進 `PATH`。可用同一個 release 中的 `SHA256SUMS.txt` 核對雜湊值。更新時下載新版取代即可。`devguard.exe` 內建執行環境，不需要安裝 Node.js，也沒有程式碼簽章（SPEC §3.1）。
+- **從原始碼執行（開發 devguard 本身）**：需要 Node.js **22.18 以上**（使用 Node 內建的 TypeScript type stripping）：
+  ```bash
+  npm ci
+  npm run devguard -- check
+  ```
+
+### 2. 專案導入通用流程
+
+在任何 Git 專案根目錄導入 `devguard` 的五個步驟：
 
 ```bash
-npm install
-npm run devguard -- check
+# 步驟 1：產生 .devguard.yaml（既有專案自動偵測元件與覆寫；新專案也可手寫）
+devguard draft
+
+# 步驟 2：依語言安裝並鎖定專案工具（uv / npm / go / Maven 或 Gradle wrapper，見下方各語言章節）
+
+# 步驟 3：產生三道防線與工具設定檔（.vscode/、.claude/、工具設定、鏡像設定、git hooks）
+devguard install        # 互動預覽 diff 後確認套用（CI 或腳本可加 --yes）
+
+# 步驟 4：執行檢查與自動修正
+devguard check          # 檢查宣告、設定、依賴、工具版本與程式碼（lint / format / typecheck）
+devguard fix            # 自動修補不合規的設定檔（保留註解與順序）
+devguard fix --code     # 自動格式化與修正可自動修復的 lint 問題
+devguard check --full   # 完整檢查：再加上測試、行/分支覆蓋率門檻與弱點掃描
+
+# 步驟 5：檢查本機開發環境
+devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code 版本、Go 鏡像、鏡像帳密環境變數
 ```
 
-在一個專案中導入：
+> **提示**：
+> - `devguard` 透過 `git ls-files` 判斷專案檔案，請先確保 `git init` 已執行且 `.gitignore` 已排除虛擬環境或建置目錄（如 `.venv/`、`node_modules/`、`target/`、`build/`、`dist/`），避免第三方套件被誤判為專案元件。
+> - 若在公司內網外開發（無內部 Nexus 鏡像），請在 `.devguard.yaml` 的 `mirrors` 區塊將對應鏡像改為公開來源並附上 `reason`（見[鏡像設定](#鏡像mirrors)）。
 
-```bash
-devguard draft      # 還沒有 .devguard.yaml 時：依既有設定產生宣告草稿
-devguard install    # 產生 .vscode/、.claude/、工具設定檔、鏡像設定，並安裝 git hook（先預覽）
-devguard check      # 檢查專案宣告、工具設定、依賴、工具版本與程式碼
-devguard check --full  # 再加上測試、覆蓋率門檻與弱點掃描
-devguard fix        # 預覽並修正不合規的設定檔
-devguard doctor     # check 加上環境檢查：擴充套件、hook、Claude Code、鏡像帳密
-```
+---
 
-### 安裝
+### 3. 各語言快速開始（Per-Language Quick Start）
 
-從 [GitHub Releases](https://github.com/lochaowei/devguard/releases/latest) 下載 `devguard-windows-x64.exe`（arm64 機器用 `devguard-windows-arm64.exe`），改名為 `devguard.exe` 並放進 PATH。可用同一個 release 中的 `SHA256SUMS.txt` 核對檔案。更新時下載新版取代即可。exe 不需要 Node，也沒有簽章（SPEC §3.1）。
+#### Python（`uv` + `ruff` + `mypy` / `pyright` + `pytest`）
+
+1. **前置環境與安裝專案工具**（Python `>= 3.11`，預設使用 `uv`，亦可於宣告改用 `poetry`）：
+   ```bash
+   # 初始化虛擬環境並鎖定標準要求的工具版本範圍（寫入 pyproject.toml 與 uv.lock）
+   uv add --dev "ruff>=0.17,<0.18" "mypy>=1.18,<2" "pytest>=8,<10" "pytest-cov>=6,<8"
+   # 若改用 pyright：uv add --dev "pyright>=1.1.400,<1.2"
+   ```
+2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
+   ```yaml
+   standard: team@1.0.0
+   components:
+     - path: ./
+       language: python
+       # overrides:
+       #   typecheck.tool: pyright   # 允許替代：mypy（預設）| pyright
+       #   deps.manager: poetry      # 允許替代：uv（預設）| poetry
+   ```
+3. **產生設定與安裝防線**：
+   ```bash
+   devguard install
+   ```
+   `install` / `fix` 會在 `pyproject.toml` 自動寫入並維護（保留原有註解與順序）：
+   - `[tool.ruff]`：`line-length = 120`、`target-version`（依 `requires-python` 或 `3.11`）
+   - `[tool.ruff.lint]`：`select = ["E", "W", "F", "I", "B", "UP", "C90", "SIM", "N", "S", "TID"]`（不使用 `extend-select`）、`mccabe.max-complexity = 10`，以及測試檔放寬 `S101`（`per-file-ignores`）
+   - `[tool.mypy]`：`strict = true`、`python_version`（或 `[tool.pyright]` 的 `typeCheckingMode = "strict"`）
+   - `[tool.coverage.run]`：`branch = true`
+   - `[[tool.uv.index]]`：指向內部 PyPI 鏡像 `nexus`（`default = true`）
+4. **日常檢查與修正**：
+   ```bash
+   devguard check          # 透過 uv run --no-sync 執行 ruff check、ruff format --check、mypy/pyright
+   devguard fix --code     # 執行 ruff check --fix 與 ruff format
+   devguard check --full   # 執行 pytest --cov --cov-branch，要求行與分支覆蓋率「各自」>= 80%
+   ```
+
+---
+
+#### Go（`go 1.26+` + `golangci-lint v2` + `gofumpt` / `goimports`）
+
+1. **前置環境與安裝工具**：
+   - Go `>= 1.26`（`go.mod` 的 `go` directive）。
+   - **PATH 上的 `golangci-lint`**：Go 唯一由開發者放到 `PATH` 的工具，版本須在 `>=2.12,<3`（v2 格式，支援 `gomodguard_v2` 與 `golangci-lint fmt`）。
+   - 在 `go.mod` 以 `tool` directive 鎖定格式化與弱點掃描工具，並確保 `go.sum` 乾淨：
+     ```bash
+     go get -tool mvdan.cc/gofumpt@latest golang.org/x/tools/cmd/goimports@latest golang.org/x/vuln/cmd/govulncheck@latest
+     go mod tidy
+     ```
+   - 設定使用者層級 Go 鏡像（`devguard doctor` 會檢查）：
+     ```bash
+     go env -w GOPROXY=https://nexus.example.internal/repository/go-proxy/
+     go env -w GOSUMDB="sum.golang.org https://nexus.example.internal/repository/go-sumdb-proxy/"
+     ```
+2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
+   ```yaml
+   standard: team@1.0.0
+   components:
+     - path: ./
+       language: go
+   ```
+3. **產生設定與安裝防線**：
+   ```bash
+   devguard install
+   ```
+   `install` / `fix` 會產生或更新 `.golangci.yml`（`version: "2"`）：
+   - 啟用標準要求的 14 個 linters（`errcheck`、`govet`、`ineffassign`、`staticcheck`、`unused`、`gosec`、`revive`、`errorlint`、`bodyclose`、`misspell`、`cyclop`、`gocognit`、`gomodguard_v2`、`depguard`）
+   - 設定 `cyclop.max-complexity = 10`、`gocognit.min-complexity = 15`
+   - 設定 `gomodguard_v2` 禁用模組（`github.com/pkg/errors`、`github.com/golang/protobuf`）與 `depguard` 禁用 API（`io/ioutil`）
+   - 啟用 formatters：`gofumpt` 與 `goimports`
+4. **日常檢查與修正**：
+   ```bash
+   devguard check          # 檢查 go mod tidy -diff 與 golangci-lint run（含 lint、format、typecheck）
+   devguard fix --code     # 執行 golangci-lint run --fix（含 gofumpt / goimports 格式化）
+   devguard check --full   # 執行 go test -coverprofile，排除 generated 檔與 mocks/ 後要求行覆蓋率 >= 80%
+   ```
+
+---
+
+#### TypeScript（Node `22+` + `ESLint` + `Prettier` / `Biome` + `Vitest` / `Jest`）
+
+1. **前置環境與安裝專案工具**（Node.js `>= 22`，預設使用 `npm` + `eslint+prettier` + `vitest`）：
+   ```bash
+   npm pkg set type=module "engines.node=>=22"
+   npm i -D "typescript@>=6 <7" "eslint@>=10 <11" "typescript-eslint@>=8 <9" \
+     "eslint-plugin-sonarjs@>=3 <4" "prettier@>=3 <4" "vitest@>=5 <6" "@vitest/coverage-v8@>=5 <6"
+   # 若改用 Biome：npm i -D "@biomejs/biome@>=2 <3"
+   # 若改用 Jest：npm i -D "jest@>=30 <31"
+   ```
+2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
+   ```yaml
+   standard: team@1.0.0
+   components:
+     - path: ./
+       language: typescript
+       # overrides:
+       #   lint.tool: biome          # 允許替代：eslint+prettier（預設）| biome
+       #   test.tool: jest           # 允許替代：vitest（預設）| jest
+       #   deps.manager: pnpm        # 允許替代：npm（預設）| pnpm | yarn
+   ```
+3. **產生設定與安裝防線**：
+   ```bash
+   devguard install
+   ```
+   - **自動寫入（`managed`）**：
+     - `tsconfig.json`：設定 `strict: true`、`noUncheckedIndexedAccess: true`、`noImplicitOverride: true`、`noFallthroughCasesInSwitch: true`
+     - `.prettierrc`（`printWidth: 120`、`endOfLine: "lf"`）或 `biome.json`（含 `noExcessiveCognitiveComplexity`）
+     - `.npmrc`：設定內部 `registry`（當 `mirrors.auth: env` 時加上 `:_auth=${NEXUS_NPM_AUTH}`）
+     - `.vscode/`：設定 Prettier/Biome 存檔格式化、`source.fixAll.eslint`、`js/ts.tsdk.path`
+   - **印出片段由開發者套用（`snippet`）**：`eslint.config.js` 與 `vitest.config.ts` 屬於程式碼設定檔，CLI 不會自動改寫，可建立如下最小設定：
+     ```js
+     // eslint.config.js
+     import { defineConfig } from "eslint/config";
+     import sonarjs from "eslint-plugin-sonarjs";
+     import tseslint from "typescript-eslint";
+
+     export default defineConfig(
+       { ignores: ["coverage/", "dist/", "node_modules/"] },
+       tseslint.configs.strictTypeChecked,
+       {
+         plugins: { sonarjs },
+         languageOptions: {
+           parserOptions: { projectService: { allowDefaultProject: ["eslint.config.js"] } },
+         },
+         rules: {
+           complexity: ["error", 10],
+           "sonarjs/cognitive-complexity": ["error", 15],
+         },
+       },
+     );
+     ```
+     ```ts
+     // vitest.config.ts
+     import { defineConfig } from "vitest/config";
+
+     export default defineConfig({
+       test: {
+         coverage: {
+           provider: "v8",
+           thresholds: { lines: 80, branches: 80, functions: 80, statements: 80 },
+         },
+       },
+     });
+     ```
+     > 若使用 Prettier，建議在 `.prettierignore` 加入 `.claude/` 與 `coverage/`。
+4. **日常檢查與修正**：
+   ```bash
+   devguard check          # 執行 eslint、prettier --list-different（或 biome）、tsc --noEmit
+   devguard fix --code     # 執行 eslint --fix 與 prettier --write（或 biome check --write）
+   devguard check --full   # 執行 vitest run --coverage（或 jest），檢查 lines/branches/functions/statements 皆 >= 80%
+   ```
+
+---
+
+#### Java（Java `17+` + Maven / Gradle Wrapper + `Spotless` + `Checkstyle` + `PMD` + `JaCoCo`）
+
+1. **前置環境與建置 Wrapper**：
+   - JDK `>= 17`（新專案建議 21+）。
+   - **必須提交 Wrapper**：CLI 一律透過 `./mvnw`（`mvnw.cmd`）或 `./gradlew`（`gradlew.bat`）呼叫建置工具：
+     ```bash
+     mvn -N wrapper:wrapper   # Maven：提交 mvnw、mvnw.cmd 與 .mvn/wrapper/
+     # 或 gradle wrapper      # Gradle：提交 gradlew、gradlew.bat 與 gradle/wrapper/
+     ```
+2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
+   ```yaml
+   standard: team@1.0.0
+   components:
+     - path: ./
+       language: java
+       # overrides:
+       #   build.tool: gradle        # 允許替代：maven（預設）| gradle
+   ```
+3. **產生設定與安裝防線**：
+   ```bash
+   devguard install
+   ```
+   - **CLI 全權產生（`generated`）**：
+     - `checkstyle.xml`：包含 `CyclomaticComplexity`（上限 10）與 `IllegalImport`（預設禁用 `sun.*`）
+     - `pmd-ruleset.xml`：引用 `rulesets/java/quickstart.xml` 並啟用 `CognitiveComplexity`（`reportLevel = 15`）
+     - `.mvn/maven.config` 與 `.mvn/settings.xml`（Maven 專案）：指向內部 Maven 鏡像，當 `mirrors.auth: env` 時引用 `${env.NEXUS_USERNAME}` / `${env.NEXUS_PASSWORD}`
+   - **結構化設定（`managed`）**：
+     - `lombok.config`（若偵測到使用 Lombok）：自動補上 `lombok.addLombokGeneratedAnnotation = true`，避免 Lombok 產生的程式碼拉低 JaCoCo 覆蓋率
+     - `.vscode/settings.json`：關閉 Java `editor.formatOnSave`（避免 IDE 格式化與 Palantir 衝突），並將 `java.checkstyle.configuration` 與 `java.checkstyle.version` 對齊建置檔；同時在 `.vscode/tasks.json` 產生 `standards: format (Spotless)` task
+   - **建置檔設定（`snippet`，手動加入 `pom.xml` 或 `build.gradle(.kts)`）**：
+     - Java 版本：`<maven.compiler.release>17</maven.compiler.release>`（或 Gradle Java toolchain）
+     - 鎖定外掛版本並設定：
+       - `spotless-maven-plugin`（`>=2.44,<3`）或 `com.diffplug.spotless`（`>=7,<8`），設定 `palantirJavaFormat()`
+       - `maven-checkstyle-plugin`（`>=3.6,<4`，設定 `configLocation` 為 `checkstyle.xml`）或 Gradle `checkstyle`（`toolVersion` `>=10.21,<11`）
+       - `maven-pmd-plugin`（`>=3.26,<4`，設定 `rulesets` 為 `pmd-ruleset.xml`）或 Gradle `pmd`（`toolVersion` `>=7,<8`）
+       - `jacoco-maven-plugin`（`>=0.8.12,<0.9`，含 `prepare-agent` 與 `report`）或 Gradle `jacoco`（開啟 `xml.required = true`）
+       - 依賴鎖定：Maven 設定 `maven-enforcer-plugin`（`>=3.5,<4`）啟用 `banDynamicVersions` 與 `dependencyConvergence`；Gradle 啟用 dependency locking 並提交 `gradle.lockfile`
+4. **日常檢查與修正**：
+   ```bash
+   devguard check          # 執行 spotless:check、checkstyle:check、pmd:check（或對應 Gradle tasks）並解析報告
+   devguard fix --code     # 執行 spotless:apply（或 spotlessApply）自動格式化
+   devguard check --full   # 執行 test + jacoco，解析 jacoco.xml 檢查 LINE 與 BRANCH 覆蓋率各自 >= 80%
+   ```
+
+---
 
 ### 發佈新版本
 
@@ -193,6 +409,68 @@ web/ (TypeScript)
 | **結構化的共用檔**（`managed`） | `pyproject.toml`、`.golangci.yml`、`tsconfig.json`、`.prettierrc`、`biome.json`、`.gitattributes` | 只修改 CLI 管理的 key 或行規則，保留註解與原有順序 |
 | **建置檔與程式碼設定**（`snippet`） | `pom.xml`、`build.gradle(.kts)`、`eslint.config.js`、`vitest.config.ts` | 不自動修改檔案，在預覽中印出應套用的設定片段 |
 | **使用者層級設定**（`user`） | `~/.m2/settings.xml`、使用者的 `.npmrc`、`go env` | 絕不自動修改，只印出修改說明 |
+
+## 三道防線運作細節
+
+執行 `devguard install` 後，CLI 會在 repo 根目錄與 `.git/hooks/` 建立並管理三道防線的設定（SPEC §7）：
+
+### 第一道防線：VS Code（`.vscode/`）
+
+只在 repo 根目錄放一份 `.vscode/`（必須提交至 Git；若 `.gitignore` 忽略了 `.vscode/`，`check` 會提示改為 `.vscode/*` 並放行 `settings.json`、`extensions.json`、`tasks.json`）：
+
+- **`extensions.json`**：依專案使用的語言與工具寫入推薦與不推薦的擴充套件：
+  - **Python**：推薦 `ms-python.python`、`charliermarsh.ruff`、`ms-python.mypy-type-checker`（使用 mypy 時）；不推薦 `black-formatter`、`isort`、`flake8`、`pylint`
+  - **Go**：推薦 `golang.go`
+  - **TypeScript**：預設推薦 `dbaeumer.vscode-eslint`、`esbenp.prettier-vscode`（改用 Biome 時推薦 `biomejs.biome`，未選用的那一套列入不推薦），以及 `vitest.explorer`（使用 Vitest 時）
+  - **Java**：推薦 `vscjava.vscode-java-pack`、`shengchen.vscode-checkstyle`
+- **`settings.json`**（只修改 CLI 管理的 key，保留個人或專案其他設定）：
+  - 共通：`files.eol: "\n"`
+  - Python：存檔時以 Ruff 格式化並執行 `source.fixAll` / `source.organizeImports`，`ruff.importStrategy` 與 `mypy-type-checker.importStrategy` 設為 `fromEnvironment`，`python.defaultInterpreterPath` 指向 `.venv`
+  - Go：`go.lintTool: "golangci-lint-v2"`、`go.lintOnSave: "package"`、`gopls.formatting.gofumpt: true`
+  - TypeScript：存檔時以 Prettier 或 Biome 格式化並執行 `source.fixAll.eslint`（或 `source.fixAll.biome`），`js/ts.tsdk.path` 指向專案 `node_modules/typescript/lib`，`eslint.workingDirectories` 列出所有 ESLint 元件
+  - Java：**關閉 `[java].editor.formatOnSave`**（避免 IDE 格式化與 Spotless Palantir 規則衝突），並將 `java.checkstyle.configuration` 與 `java.checkstyle.version` 同步至建置設定
+- **`tasks.json`**：提供 `standards: doctor`（開啟資料夾時自動執行 `devguard doctor --quiet`）、`standards: check`、`standards: fix`、`standards: test & coverage`，以及 Java 專案的 `standards: format (Spotless)`。
+
+### 第二道防線：Claude Code（`.claude/`）
+
+由 `devguard install` 初次產生並提交，開發者在 Claude Code 信任專案資料夾後自動生效：
+
+- **`.claude/rules/standards-<元件>.md`**：以 frontmatter `paths` 綁定元件目錄與副檔名，只在 Claude 讀寫該元件檔案時載入，提供精簡的語言標準、門檻、禁用清單與目前偏離項目。
+- **`.claude/settings.json` hooks**：
+  - `SessionStart`（`devguard hook claude-session-start`）：執行 `doctor --quiet` 將環境與設定問題注入 Claude context，並記錄 `.git/devguard/claude-last-seen`。
+  - `PostToolUse`（matcher `Edit|Write`，`devguard hook claude-post-edit`）：每次 Claude 編輯檔案後，立即對該檔案跑 `lint` 與 `format`，有問題時以 JSON `decision: "block"` 回饋給 Claude（最多 20 項、少於 4,000 字元）。
+  - `Stop`（`devguard hook claude-stop`）：Claude 完成一輪回答前，找出工作目錄所有變更與新增檔案執行 `lint`、`format`、`typecheck`；若連續失敗（`stop_hook_active`）則放行並以 `systemMessage` 提醒開發者，避免無限修正迴圈。
+- **`/standards-doctor` skill（`.claude/skills/standards-doctor/SKILL.md`）**：由開發者手動呼叫，嵌入 `devguard doctor --format claude --exit-zero` 報告，經開發者同意後代為執行 `devguard fix --yes` 或 `devguard fix --code <檔案> --yes`。
+
+### 第三道防線：git hook（`pre-commit` / `pre-push`）
+
+- **安裝與框架相容**：`devguard install` 預設在 `.git/hooks/`（或 `core.hooksPath`）寫入帶 sha256 checksum 的 POSIX sh hook。若專案已使用 **pre-commit**（`.pre-commit-config.yaml`）、**husky**（`.husky/`）或 **lefthook**（`lefthook.yml` / `.toml` / `.json`），CLI 不會覆寫原有 hook，而是自動在該框架設定檔注入呼叫 `devguard` 的項目。
+- **`pre-commit`（等同 `devguard check --staged`）**：
+  - 只檢查 staged 檔案；若檔案為「部分 staged（partially staged）」，CLI **不做 `git stash`**，而是透過 `git show :<path>` 取出 staged 內容由 stdin 送交單檔工具（`ruff`、`eslint`、`prettier`、`biome`、`golangci-lint fmt --stdin`）檢查，避免工作區未暫存修改造成誤判；無 stdin 模式的工具（`mypy`、`pyright`、`tsc`、`golangci-lint run`、Java wrapper）則檢查工作區版本並印出提示。
+  - 當依賴相關檔案（如 `pyproject.toml`、`uv.lock`、`package.json`、`go.mod`、`pom.xml` 等）被 staged 時，一併執行依賴規則檢查（lockfile 與禁用套件）。
+  - hook 只檢查不自動改檔；失敗時會印出可直接複製執行的 `devguard fix --code <files>` 指令。
+- **`pre-push`（等同 `devguard check --full`）**：完整執行所有檢查層、單元測試、行/分支覆蓋率門檻與（開啟時的）弱點掃描。
+
+### 內部鏡像與帳密變數（`mirrors.auth: env`）
+
+當專案宣告設定 `mirrors.auth: env` 時，設定檔只寫入環境變數引用，帳密絕不進 repo，`devguard doctor` 會在不讀取變數值的前提下檢查變數或憑證檔是否存在（SPEC §10.3）：
+
+| 語言 / 工具 | 專案設定檔落地位置 | `mirrors.auth: env` 時需設定的本機環境變數 / 檔案 |
+|---|---|---|
+| Python（`uv`） | `pyproject.toml` 的 `[[tool.uv.index]]`（`name = "nexus"`） | `UV_INDEX_NEXUS_USERNAME`、`UV_INDEX_NEXUS_PASSWORD`（或通用 `NEXUS_USERNAME`、`NEXUS_PASSWORD`） |
+| TypeScript（`npm` / `pnpm` / `yarn`） | `.npmrc` 的 `registry=` 與 `//<host>/<path>/:_auth=${NEXUS_NPM_AUTH}` | `NEXUS_NPM_AUTH`（`username:password` 的 base64）或 `NEXUS_NPM_TOKEN` |
+| Java（Maven） | `.mvn/maven.config` + `.mvn/settings.xml` | `NEXUS_USERNAME`、`NEXUS_PASSWORD` |
+| Java（Gradle） | `settings.gradle(.kts)` 片段（`credentials(PasswordCredentials)`） | `ORG_GRADLE_PROJECT_nexusUsername`、`ORG_GRADLE_PROJECT_nexusPassword` |
+| Go | 使用者層級 `go env`（`GOPROXY`、`GOSUMDB`） | `NETRC` 環境變數指向的檔案，或 `%USERPROFILE%\_netrc` |
+
+### 標準升級與弱點掃描
+
+- **升級預設標準（`devguard standard upgrade`）**：
+  ```bash
+  devguard standard upgrade           # 預覽升級至最新內建標準的設定差異、既有覆寫變化與需執行的套件指令
+  devguard standard upgrade --apply   # 實際更新 .devguard.yaml、修補設定檔，並透過內部鏡像執行套件管理指令
+  ```
+- **開啟弱點掃描（`deps.vulnScan: true`）**：在元件 `overrides` 將 `deps.vulnScan` 設為 `true` 後，`devguard check --full` 與 `pre-push` 會執行對應語言的弱點掃描（Python：`uv export` + `pip-audit`；Go：`govulncheck`；TypeScript：`npm audit`；Java：OWASP `dependency-check`）。若需暫時忽略特定弱點，可在 `deps.ignoredVulns` 填入 `{ id, reason, until }`。
 
 ## 開發
 
