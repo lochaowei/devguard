@@ -41,13 +41,24 @@
 
 ### 執行方式
 
-- **工具執行器**：`uv run <tool>`（鎖定版本讀取自 `uv.lock` 或 `poetry.lock`）
+- **工具執行器**：`uv run --no-sync <tool>`（鎖定版本讀取自 `uv.lock` 或 `poetry.lock`）
+- **工具版本範圍（`team@1.0.0` 佔位值）**：
+  - `tools.ruff`：`>=0.17,<0.18`
+  - `tools.mypy`：`>=1.18,<2`
+  - `tools.pyright`：`>=1.1.400,<1.2`
+  - `tools.pytest`：`>=8,<10`
+  - `tools.pytest-cov`：`>=6,<8`
 - **程式碼檢查（`code` 層）**：
-  - `lint`：`uv run ruff check --output-format json`
-  - `format`：`uv run ruff format --check`
-  - `typecheck`：`uv run mypy` 或 `uv run pyright --outputjson`
+  - `lint`：`uv run --no-sync ruff check --output-format json`（`--staged` 時改用 `--stdin-filename <path> -` 讀取 staged 內容）
+  - `format`：`uv run --no-sync ruff format --check`（`--staged` 時改用 `--stdin-filename <path> -`）
+  - `typecheck`：`uv run --no-sync mypy` 或 `uv run --no-sync pyright --outputjson`
+- **自動修正程式碼（`fix --code`）**：
+  - `uv run --no-sync ruff check --fix --force-exclude`
+  - `uv run --no-sync ruff format --force-exclude`
 - **測試與覆蓋率（`tests` 層，`--full`）**：
-  - 執行 `uv run pytest --cov --cov-branch --cov-report=json:<tmp>`，由 CLI 解析 JSON 報告中的 `totals`，分別檢查行覆蓋率與分支覆蓋率是否達到門檻。
+  - 執行 `uv run --no-sync pytest --cov --cov-branch --cov-report=json:<tmp>`，由 CLI 解析 JSON 報告中的 `totals`，分別檢查行覆蓋率與分支覆蓋率是否達到門檻。
+- **弱點掃描（`vuln` 層，`--full` 且 `deps.vulnScan: true`）**：
+  - 先執行 `uv export --frozen --no-emit-project --format requirements.txt -o <tmp>`，再對匯出檔執行 `pip-audit -r <tmp> --disable-pip -s osv --osv-url <mirrors.osv>`，`deps.ignoredVulns` 轉為 `--ignore-vuln`。
 
 ---
 
@@ -70,10 +81,19 @@
 ### 執行方式
 
 - **工具執行器**：PATH 上的 `golangci-lint`（例外：指定版本的 binary 由開發者放到 PATH，CLI 核對版本）與 `go tool <name>`（鎖定於 `go.mod` 的 `tool` directive）；執行時一律帶入 `GOTOOLCHAIN=local`；golangci-lint 與套件管理指令另外帶入鏡像環境變數（`GOPROXY`、`GOSUMDB`），`go tool` 與 `go mod` 等檢查用的指令則帶入 `GOPROXY=off`，檢查時不下載任何模組。
+- **工具版本範圍（`team@1.0.0` 佔位值）**：
+  - `tools.golangci-lint`（PATH）：`>=2.12,<3`
+  - `tools.gofumpt`（`mvdan.cc/gofumpt`）：`>=0.9,<1`
+  - `tools.goimports`（`golang.org/x/tools/cmd/goimports`）：`>=0.38,<1`
+  - `tools.govulncheck`（`golang.org/x/vuln/cmd/govulncheck`）：`>=1.1,<2`
 - **程式碼檢查（`code` 層）**：
-  - 透過 `golangci-lint run --output.json.path stdout` 一次涵蓋 lint、format 與型別編譯問題，並依類別過濾。
+  - 透過 `golangci-lint run --output.json.path=stdout` 一次涵蓋 lint、format 與型別編譯問題，並依類別過濾；`--staged` 時額外對 staged `.go` 檔執行 `golangci-lint fmt --stdin` 檢查排版。
+- **自動修正程式碼（`fix --code`）**：
+  - `golangci-lint run --fix`（套用 linters 自動修復與設定中的 `gofumpt` / `goimports`）。
 - **測試與覆蓋率（`tests` 層，`--full`）**：
   - 執行 `go test -coverprofile=<tmp> ./...` 與 `go tool cover -func=<tmp>`，過濾自動產生檔案與 `mocks/` 後計算總行覆蓋率。
+- **弱點掃描（`vuln` 層，`--full` 且 `deps.vulnScan: true`）**：
+  - 執行 `go tool govulncheck -json -db <mirrors.govulndb> ./...`，由 CLI 判定結果並過濾 `deps.ignoredVulns`。
 
 ---
 
@@ -99,13 +119,21 @@
 
 ### 執行方式
 
-- **工具執行器**：`node_modules/.bin/<tool>`（Windows 下 `.cmd` 自動透過 `cmd.exe /d /s /c` 啟動；鎖定版本讀取自 `package-lock.json`）。
+- **工具執行器**：`node_modules/.bin/<tool>`（Windows 下 `.cmd` 自動透過 `cmd.exe /d /s /c` 啟動；鎖定版本讀取自 `package-lock.json`、`pnpm-lock.yaml` 或 `yarn.lock`）。
+- **工具版本範圍（`team@1.0.0` 佔位值）**：
+  - `tools.eslint`：`>=10,<11`、`tools.prettier`：`>=3,<4`、`tools.typescript`：`>=6,<7`、`tools.typescript-eslint`：`>=8,<9`、`tools.eslint-plugin-sonarjs`：`>=3,<4`
+  - `tools.biome`（`@biomejs/biome`）：`>=2,<3`
+  - `tools.vitest`：`>=5,<6`、`tools.jest`：`>=30,<31`
 - **程式碼檢查（`code` 層）**：
-  - `lint`：`eslint --format json`（或 `biome lint --reporter=json`）
-  - `format`：`prettier --list-different`（或 `biome format --reporter=json`）
+  - `lint`：`eslint --format json`（或 `biome lint --reporter=json`；`--staged` 時透過 `--stdin` 讀取 staged 內容）
+  - `format`：`prettier --list-different`（或 `biome format --reporter=json`；`--staged` 時透過 `--stdin-filepath` 讀取 staged 內容）
   - `typecheck`：`tsc --noEmit --pretty false`
+- **自動修正程式碼（`fix --code`）**：
+  - `eslint --fix` + `prettier --write`（或 `biome lint --write` + `biome format --write`）
 - **測試與覆蓋率（`tests` 層，`--full`）**：
   - 執行 Vitest（或 Jest）產生 `coverage-summary.json`，檢查 `lines`、`branches`、`functions`、`statements` 四項百分比。
+- **弱點掃描（`vuln` 層，`--full` 且 `deps.vulnScan: true`）**：
+  - 執行 `npm audit --json --registry=<mirrors.npm>`，依嚴重度門檻（預設 `high`）與 `deps.ignoredVulns`（GHSA ID）過濾。
 
 ---
 
@@ -129,9 +157,15 @@
 ### 執行方式
 
 - **工具執行器**：元件目錄或上層目錄的 `./mvnw`（`mvnw.cmd`）或 `./gradlew`（`gradlew.bat`）。
+- **工具版本範圍（`team@1.0.0` 佔位值）**：
+  - Maven plugins：`maven-checkstyle-plugin`（`>=3.6,<4`）、`maven-pmd-plugin`（`>=3.26,<4`）、`spotless-maven-plugin`（`>=2.44,<3`）、`jacoco-maven-plugin`（`>=0.8.12,<0.9`）、`maven-enforcer-plugin`（`>=3.5,<4`）
+  - Gradle plugin 與 `toolVersion`：`spotless-gradle-plugin` / `com.diffplug.spotless`（`>=7,<8`）、`checkstyle`（`>=10.21,<11`）、`pmd`（`>=7,<8`）、`jacoco`（`>=0.8.12,<0.9`）
 - **程式碼檢查（`code` 層）**：
-  - `format`：`spotless:check`（或 Gradle `spotlessCheck`）
-  - `lint`：`checkstyle:check` + `pmd:check`（或 Gradle `checkstyleMain checkstyleTest pmdMain pmdTest`），解析產生的 Checkstyle 與 PMD XML 報告。
-  - `typecheck`：`test-compile`（或 Gradle `compileJava compileTestJava`），解析 javac 編譯錯誤。
+  - `format`：`mvnw -B -ntp spotless:check`（或 Gradle `spotlessCheck --console=plain -q`）
+  - `lint`：`mvnw -B -ntp checkstyle:check pmd:check -Dcheckstyle.failOnViolation=false -Dpmd.failOnViolation=false`（或 Gradle `checkstyleMain checkstyleTest pmdMain pmdTest --continue --console=plain -q`），解析產生的 Checkstyle（`target/checkstyle-result.xml` 或 `build/reports/checkstyle/*.xml`）與 PMD（`target/pmd.xml` 或 `build/reports/pmd/*.xml`）XML 報告。
+- **自動修正程式碼（`fix --code`）**：
+  - `mvnw -B -ntp spotless:apply`（或 `gradlew spotlessApply --console=plain -q`）。
 - **測試與覆蓋率（`tests` 層，`--full`）**：
-  - 執行 `test jacoco:report`（或 Gradle `test jacocoTestReport`），解析 `jacoco.xml` 根層級的 `LINE` 與 `BRANCH` counter。
+  - 執行 `mvnw -B -Dmaven.test.failure.ignore=true test jacoco:report`（或 Gradle `test jacocoTestReport --continue`），解析 `jacoco.xml`（或 `jacocoTestReport.xml`）根層級的 `LINE` 與 `BRANCH` counter。
+- **弱點掃描（`vuln` 層，`--full` 且 `deps.vulnScan: true`）**：
+  - 透過 OWASP Dependency-Check Maven plugin（指向內部 NVD 資料鏡像 `<mirrors.nvd>nvdcve-{0}.json.gz`）產生報告，依 CVSS 門檻（`high` 對應 CVSS 7.0）與 `dependency-check-suppressions.xml` 判定。

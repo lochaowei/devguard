@@ -14,14 +14,16 @@
 
 ## 文件導覽
 
+- **[快速開始（Quick Start）](Quick-Start.md)**
+  下載安裝 `devguard.exe`、五步驟專案導入流程，以及 **Python、Go、TypeScript、Java** 四種語言從零建立宣告、產生設定、安裝防線與執行檢查的完整操作範例。
 - **[專案宣告（`.devguard.yaml`）](Project-Declaration.md)**
   元件與檔案歸屬規則、9 種標準項目類型、覆寫與偏離（`reason` / `until`）規則、以及使用 `devguard draft` 從既有設定自動產生草稿。
 - **[CLI 指令與報告格式參考](CLI-Reference.md)**
-  `devguard check`、`devguard fix`、`devguard draft` 的完整參數、10 道可插拔檢查層的執行順序、4 種檔案修補分類，以及 `text`、`json`、`sarif`、`vscode`、`claude` 五種輸出格式與 exit code 語意。
+  `devguard check`、`devguard doctor`、`devguard fix`、`devguard install`、`devguard draft`、`devguard standard upgrade` 的完整參數、16 道可插拔檢查層的執行順序、三道防線與內部鏡像帳密細節、4 種檔案修補分類，以及 `text`、`json`、`sarif`、`vscode`、`claude` 五種輸出格式與 exit code 語意。
 - **[各語言預設標準（`team@1.0.0`）與檢查對照表](Language-Standards.md)**
-  Python、Go、TypeScript、Java 四種語言的標準項目預設值、設定檔落地位置、鎖定工具版本的讀取來源、程式碼檢查工具與測試覆蓋率判定方式。
+  Python、Go、TypeScript、Java 四種語言的標準項目預設值、工具版本範圍、設定檔落地位置、鎖定工具版本的讀取來源、程式碼檢查工具、測試覆蓋率與弱點掃描判定方式。
 - **[開發指南與實作路線圖](Development-and-Roadmap.md)**
-  專案架構與模組職責、本機開發與測試指令、Bun 單一 `.exe` 打包與 T2 子程序探測，以及 GitHub Issues（#1–#28）實作進度對照表。
+  專案架構與模組職責、本機開發與測試指令、Bun 單一 `.exe` 打包、GitHub Release 發佈流程與 T2 子程序探測，以及 GitHub Issues（#1–#28）實作進度對照表。
 
 ## 規格與領域詞彙
 
