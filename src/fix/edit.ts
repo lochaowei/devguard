@@ -102,12 +102,40 @@ function jsonFormatting(text: string): FormattingOptions {
   return { insertSpaces: !indent.startsWith("\t"), tabSize: indent.startsWith("\t") ? 1 : indent.length, eol: "\n" };
 }
 
+/** Prettier's default print width: a written array of plain values that fits stays on one line. */
+const DEFAULT_WIDTH = 80;
+const PLAIN_ARRAY = /\[\n(?:[ \t]*(?:"(?:[^"\\\n]|\\.)*"|-?\d[\d.eE+-]*|true|false|null),?\n)+[ \t]*\]/g;
+
+/**
+ * jsonc-parser writes every array one value per line; Prettier puts an array of plain values on one line when it fits.
+ * Only the text an edit writes is changed, so arrays already in the file keep their layout.
+ */
+function inlineShortArrays(content: string, column: number, width: number): string {
+  return content.replace(PLAIN_ARRAY, (array: string, at: number) => {
+    const lineStart = content.lastIndexOf("\n", at) + 1;
+    const lead = (lineStart === 0 ? column : 0) + at - lineStart;
+    const values = array
+      .slice(1, -1)
+      .split("\n")
+      .map((l) => l.trim().replace(/,$/, ""))
+      .filter((l) => l !== "");
+    const inline = `[${values.join(", ")}]`;
+    const tail = /^,?/.exec(content.slice(at + array.length))?.[0] ?? "";
+    return lead + inline.length + tail.length <= width ? inline : array;
+  });
+}
+
 function editJsonc(text: string, edits: readonly KeyEdit[]): string {
   let out = text.trim() === "" ? "{}\n" : text;
   const formattingOptions = jsonFormatting(out);
   for (const e of pathEdits(edits)) {
     const value = valueAfter(e, getIn(parseJsoncTree(out), e.path));
-    out = applyEdits(out, modify(out, [...e.path], value, { formattingOptions }));
+    const width = ("layout" in e ? e.layout?.printWidth : undefined) ?? DEFAULT_WIDTH;
+    const changes = modify(out, [...e.path], value, { formattingOptions }).map((c) => ({
+      ...c,
+      content: inlineShortArrays(c.content, c.offset - out.lastIndexOf("\n", c.offset - 1) - 1, width),
+    }));
+    out = applyEdits(out, changes);
   }
   return out;
 }

@@ -1,6 +1,7 @@
 import { claudeCodeCheck } from "./claude-code.ts";
 import { gitHooksCheck } from "./git-hooks.ts";
 import { createStandardUpgradeCheck } from "./standard-upgrade.ts";
+import { vscodeExtensionsCheck } from "./vscode-extensions.ts";
 import type { EnvironmentCheck } from "./types.ts";
 
 export type { EnvironmentCheck, EnvironmentContext } from "./types.ts";
@@ -13,4 +14,5 @@ export const ENVIRONMENT_CHECKS: readonly EnvironmentCheck[] = [
   createStandardUpgradeCheck(),
   gitHooksCheck,
   claudeCodeCheck,
+  vscodeExtensionsCheck,
 ];

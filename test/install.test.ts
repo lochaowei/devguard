@@ -57,6 +57,14 @@ describe("devguard install (SPEC §3.2, §7.4)", () => {
     expect(read(dir, "pyproject.toml")).toContain("[tool.ruff]");
   });
 
+  it("generates the VS Code workspace settings in the same run (SPEC §7.2)", async () => {
+    const dir = repo({ ".devguard.yaml": DECL });
+    await runInstall({ cwd: dir, today: TODAY, io: io() });
+    expect(read(dir, ".vscode/settings.json")).toContain('"ruff.importStrategy": "fromEnvironment"');
+    expect(read(dir, ".vscode/extensions.json")).toContain("charliermarsh.ruff");
+    expect(read(dir, ".vscode/tasks.json")).toContain("standards: doctor");
+  });
+
   it("writes into core.hooksPath when it is set", async () => {
     const dir = repo({ ".devguard.yaml": DECL });
     execFileSync("git", ["config", "core.hooksPath", ".githooks"], { cwd: dir });
