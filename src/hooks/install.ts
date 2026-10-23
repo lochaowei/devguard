@@ -8,6 +8,7 @@ import { planConfigFix } from "../fix/run.ts";
 import { nodeExec, type Exec } from "../process/exec.ts";
 import { UsageError } from "../report/failure.ts";
 import {
+  hookCommandLine,
   inspectHookFile,
   renderHookFile,
   type GitHookName,
@@ -44,13 +45,15 @@ export interface InstalledHook {
   /** Absolute path of the hook file. */
   path: string;
   status: HookFileStatus | { kind: "missing" };
+  /** The file's content, when it exists. */
+  text?: string;
 }
 
 /** Whether a hook is installed: missing, someone else's, or devguard's with an intact checksum (for doctor, §7.4). */
 export async function installedHook(cwd: string, hook: GitHookName, exec: Exec = nodeExec): Promise<InstalledHook> {
   const path = await hookFilePath(cwd, hook, exec);
   const text = await readOrUndefined(path);
-  return { path, status: text === undefined ? { kind: "missing" } : inspectHookFile(text) };
+  return text === undefined ? { path, status: { kind: "missing" } } : { path, status: inspectHookFile(text), text };
 }
 
 /**
@@ -69,11 +72,10 @@ export async function planHooks(
     const after = renderHookFile(hook, options);
     const file = shown(cwd, path);
     if (before !== "" && inspectHookFile(before).kind === "foreign") {
-      const line = after.split("\n").find((l) => l.startsWith("command -v")) ?? "";
       plan.printed.push({
         file,
         category: "snippet",
-        lines: ["這個 hook 不是 devguard 產生的，不會覆寫；請在其中加上：", line],
+        lines: ["這個 hook 不是 devguard 產生的，不會覆寫；請在其中加上：", hookCommandLine(hook, options.command)],
       });
     } else if (before !== after) {
       plan.writes.push({ file, category: "generated", before, after, mode: 0o755 });

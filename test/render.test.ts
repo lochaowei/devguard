@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Finding } from "../src/report/finding.ts";
-import { exitCodeFor, renderJson, renderText, summaryLine } from "../src/report/render.ts";
+import { exitCodeFor, problemsOnly, renderJson, renderText, summaryLine } from "../src/report/render.ts";
 
 const f = (level: Finding["level"], extra: Partial<Finding> = {}): Finding => ({
   level,
@@ -8,6 +8,13 @@ const f = (level: Finding["level"], extra: Partial<Finding> = {}): Finding => ({
   rule: `r/${level}`,
   message: `${level} message`,
   ...extra,
+});
+
+describe("problemsOnly (doctor --quiet)", () => {
+  it("keeps errors and deviations and drops hints", () => {
+    const input = { components: [], findings: [f("error"), f("deviation"), f("hint")] };
+    expect(problemsOnly(input).findings.map((x) => x.level)).toEqual(["error", "deviation"]);
+  });
 });
 
 describe("exitCodeFor", () => {
