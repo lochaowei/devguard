@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runDoctor } from "../src/doctor.ts";
-import { createGitHooksCheck, type HookFrameworkProbe } from "../src/environment/git-hooks.ts";
+import { createGitHooksCheck, type FrameworkEntryProbe } from "../src/environment/git-hooks.ts";
 import { renderHookFile, type GitHookName } from "../src/hooks/file.ts";
+import { runInstall } from "../src/hooks/install.ts";
 import { nodeExec, type Exec } from "../src/process/exec.ts";
 import type { Finding } from "../src/report/finding.ts";
 import { rules, TODAY } from "./helpers.ts";
@@ -70,26 +71,49 @@ describe("git hooks installed (SPEC §7.4)", () => {
 });
 
 describe("an existing hook framework (SPEC §7.4 step 2)", () => {
-  const husky =
-    (missing: GitHookName[]): HookFrameworkProbe =>
-    () =>
-      Promise.resolve({ name: "husky", file: ".husky/pre-commit", missing });
+  const lefthook =
+    (missing: GitHookName[]): FrameworkEntryProbe =>
+    (_cwd, hook) =>
+      Promise.resolve({ framework: "lefthook", file: "lefthook.yml", present: !missing.includes(hook) });
 
   it("checks the framework's config for the devguard entry instead of the hook file", async () => {
-    const dir = repo();
-    const checks = [createGitHooksCheck({ framework: husky(["pre-commit"]) })];
-    const findings = environment((await runDoctor({ cwd: dir, today: TODAY, checks })).findings);
+    const checks = [createGitHooksCheck({ framework: lefthook(["pre-push"]) })];
+    const findings = environment((await runDoctor({ cwd: repo(), today: TODAY, checks })).findings);
     expect(rules(findings)).toEqual(["error:environment/framework-entry-missing"]);
-    expect(findings[0]).toMatchObject({ file: ".husky/pre-commit", fix: "devguard install" });
+    expect(findings[0]).toMatchObject({ file: "lefthook.yml", fix: "devguard install" });
+    expect(findings[0]?.message).toContain("pre-push");
   });
 
   it("passes when the framework calls devguard for every hook", async () => {
-    const checks = [createGitHooksCheck({ framework: husky([]) })];
+    const checks = [createGitHooksCheck({ framework: lefthook([]) })];
     expect(environment((await runDoctor({ cwd: repo(), today: TODAY, checks })).findings)).toEqual([]);
+  });
+
+  it("reads a real husky setup: entries missing until install injects them", async () => {
+    const dir = repo({ ".devguard.yaml": DECL, ".husky/pre-commit": "npm test\n", ".husky/_/h": "" });
+    execFileSync("git", ["config", "core.hooksPath", ".husky/_"], { cwd: dir });
+    const before = environment((await runDoctor({ cwd: dir, today: TODAY })).findings);
+    expect(rules(before)).toEqual([
+      "error:environment/framework-entry-missing",
+      "error:environment/framework-entry-missing",
+    ]);
+    await runInstall({
+      cwd: dir,
+      today: TODAY,
+      io: { yes: true, interactive: false, write: () => undefined, confirm: () => Promise.resolve(false) },
+    });
+    expect(environment((await runDoctor({ cwd: dir, today: TODAY })).findings)).toEqual([]);
+  });
+
+  it("reports a core.hooksPath that conflicts with the framework", async () => {
+    const dir = repo({ ".devguard.yaml": DECL, ".husky/pre-commit": "npm test\n" });
+    const [finding] = environment((await runDoctor({ cwd: dir, today: TODAY })).findings);
+    expect(finding).toMatchObject({ level: "error", rule: "environment/hooks-path-conflict" });
+    expect(finding?.message).toContain("npx husky");
   });
 });
 
-/** Real git, except that reading `core.hooksPath` answers as if `git config --show-scope --show-origin` gave `line`. */
+/** Real git, except that reading `core.hooksPath` answers as if `git config --show-origin` gave `line`. */
 function gitConfigSays(line: string): Exec {
   return (command) =>
     command.file === "git" && command.args[0] === "config" && command.args.includes("core.hooksPath")
@@ -127,10 +151,10 @@ describe("core.hooksPath and where it is set (SPEC §7.4)", () => {
 
   it("names the global config file when core.hooksPath is set there", async () => {
     const dir = repo();
-    const exec = gitConfigSays("global\tfile:C:/Users/dev/.gitconfig\t/dev/null");
+    const exec = gitConfigSays("file:C:/Users/dev/.gitconfig\t/dev/null");
     const [finding] = environment((await runDoctor({ cwd: dir, today: TODAY, exec })).findings);
     expect(finding?.rule).toBe("environment/hooks-path-disabled");
-    expect(finding?.message).toContain("global");
     expect(finding?.message).toContain("C:/Users/dev/.gitconfig");
+    expect(finding?.fix).toContain('git config --file "C:/Users/dev/.gitconfig" --unset core.hooksPath');
   });
 });

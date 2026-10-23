@@ -8,7 +8,7 @@ import { planConfigFix } from "../fix/run.ts";
 import { nodeExec, type Exec } from "../process/exec.ts";
 import { UsageError } from "../report/failure.ts";
 import {
-  hookCallLine,
+  hookCommandLine,
   inspectHookFile,
   renderHookFile,
   type GitHookName,
@@ -75,7 +75,7 @@ export async function planHooks(
       plan.printed.push({
         file,
         category: "snippet",
-        lines: ["這個 hook 不是 devguard 產生的，不會覆寫；請在其中加上：", hookCallLine(hook, options)],
+        lines: ["這個 hook 不是 devguard 產生的，不會覆寫；請在其中加上：", hookCommandLine(hook, options.command)],
       });
     } else if (before !== after) {
       plan.writes.push({ file, category: "generated", before, after, mode: 0o755 });

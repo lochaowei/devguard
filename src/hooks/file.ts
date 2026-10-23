@@ -34,11 +34,6 @@ export function hookCommandLine(hook: GitHookName, command = "devguard", { exec 
   );
 }
 
-/** The line a hand-written hook needs to hand over to devguard (printed by install, suggested by doctor). */
-export function hookCallLine(hook: GitHookName, options: HookFileOptions = {}): string {
-  return commandLine(hook, options.command ?? "devguard");
-}
-
 /** Whether a hook devguard did not write still hands over to it (`… hook git-<name>`). */
 export function callsDevguard(text: string, hook: GitHookName): boolean {
   return new RegExp(`\\bhook git-${hook}\\b`).test(text);
