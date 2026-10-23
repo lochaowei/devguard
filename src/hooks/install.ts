@@ -15,8 +15,8 @@ import {
   type HookFileStatus,
 } from "./file.ts";
 
-/** The hooks `devguard install` writes. pre-push joins once `devguard hook git-pre-push` exists (#19). */
-export const INSTALLED_HOOKS: readonly GitHookName[] = ["pre-commit"];
+/** The hooks `devguard install` writes (SPEC §7.4). */
+export const INSTALLED_HOOKS: readonly GitHookName[] = ["pre-commit", "pre-push"];
 
 /** Where git looks for a hook: `core.hooksPath` when set, otherwise `.git/hooks` (also right in a worktree). */
 export async function hookFilePath(cwd: string, hook: GitHookName, exec: Exec = nodeExec): Promise<string> {
