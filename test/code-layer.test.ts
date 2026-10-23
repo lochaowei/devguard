@@ -24,6 +24,7 @@ function project(declaration: string): string {
 /** The layers under test: settings/deps/tool-version layers are covered by their own tests. */
 const LAYERS = [declarationLayer, uncoveredFilesLayer, codeLayer];
 
+const API = "standard: team@1.0.0\ncomponents:\n  - {path: api/, language: python}\n";
 const WEB = "standard: team@1.0.0\ncomponents:\n  - {path: web/, language: typescript}\n  - {path: ./, language: go}\n";
 
 /** Every tool passes; records what ran. */
@@ -32,7 +33,8 @@ function passingTools() {
   const tools: ToolRunner = {
     run(req) {
       calls.push(req);
-      return Promise.resolve({ code: 0, stdout: req.tool === "eslint" ? "[]" : "", stderr: "" });
+      const json = req.tool === "eslint" || (req.tool === "ruff" && req.args?.[0] === "check");
+      return Promise.resolve({ code: 0, stdout: json ? "[]" : "", stderr: "" });
     },
   };
   return { tools, calls };
@@ -115,6 +117,32 @@ describe("code checks in devguard check", () => {
     expect(ts?.message).toContain("建議在宣告中補上元件");
     expect(ts?.file).toBe("scripts/x.ts");
     expect(r.findings.some((f) => f.message.includes("Python"))).toBe(true);
+    expect(summary(calls)).toContain(":ruff check --output-format json --no-fix --force-exclude lib/z.py");
+  });
+
+  it("runs Ruff and mypy on a Python component, honouring file arguments and --only", async () => {
+    const declaration = API;
+    const listFiles = () => Promise.resolve(["api/app.py", "api/util.py"]);
+    const run = async (scope: CheckOptions["scope"]) => {
+      const { tools, calls } = passingTools();
+      await runCheck({ cwd: project(declaration), today: TODAY, tools, listFiles, scope }, LAYERS);
+      return summary(calls);
+    };
+    expect(await run({ files: ["api/util.py"], full: false })).toEqual([
+      "api/:ruff check --output-format json --no-fix --force-exclude util.py",
+      "api/:ruff format --diff --force-exclude util.py",
+      "api/:mypy --no-pretty --no-error-summary --show-error-codes --no-color-output .",
+    ]);
+    expect(await run({ only: "format", full: false })).toEqual(["api/:ruff format --diff --force-exclude ."]);
+  });
+
+  it("fails with ToolMissingError (exit 2, uv sync) when a Python tool is not installed", async () => {
+    const declaration = API;
+    const tools: ToolRunner = {
+      run: () => Promise.reject(new ToolMissingError("找不到 ruff：專案環境（.venv）中沒有安裝", "cd api && uv sync")),
+    };
+    const options = { cwd: project(declaration), today: TODAY, tools, listFiles: () => Promise.resolve(["api/a.py"]) };
+    await expect(runCheck(options, LAYERS)).rejects.toMatchObject({ install: "cd api && uv sync" });
   });
 
   it("fails with ToolMissingError (exit 2, npm ci) when a tool is not installed", async () => {
