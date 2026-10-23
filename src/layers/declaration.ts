@@ -5,7 +5,6 @@ import { resolveDeclaration } from "../declaration/resolve.ts";
 import { DECLARATION_FILE } from "../declaration/types.ts";
 import { BUNDLED_STANDARDS } from "../standard/registry.ts";
 import type { Standard } from "../standard/types.ts";
-import { upgradeSuggestion } from "../standard/upgrade.ts";
 import type { CheckLayer } from "./types.ts";
 
 export async function readDeclaration(cwd: string): Promise<string | undefined> {
@@ -48,12 +47,7 @@ export function createDeclarationLayer(options: DeclarationLayerOptions = {}): C
       if (!parsed.declaration) return { findings: parsed.findings };
       const declaration = { ...parsed.declaration, standard: options.standard ?? parsed.declaration.standard };
       const resolution = resolveDeclaration(declaration, today, bundled);
-      // SPEC §5.5 puts this in doctor; check carries it until doctor exists (#21).
-      const suggestion = resolution.standard ? upgradeSuggestion(resolution.standard.id, bundled) : undefined;
-      return {
-        findings: [...parsed.findings, ...resolution.findings, ...(suggestion ? [suggestion] : [])],
-        resolution,
-      };
+      return { findings: [...parsed.findings, ...resolution.findings], resolution };
     },
   };
 }

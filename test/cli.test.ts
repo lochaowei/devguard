@@ -289,6 +289,38 @@ describe("devguard hook / install", () => {
   });
 });
 
+describe("devguard doctor", { timeout: 60_000 }, () => {
+  const gitProject = () => {
+    const dir = project("standard: team@1.0.0\ncomponents: []\n");
+    spawnSync("git", ["init", "-q"], { cwd: dir });
+    return dir;
+  };
+
+  it("reports the missing hook with devguard install and exits 1", () => {
+    const r = run(["doctor", "--cwd", gitProject(), "--format", "json"]);
+    expect(r.code).toBe(1);
+    const report = JSON.parse(r.out) as { findings: { layer: string; rule: string; fix?: string }[] };
+    expect(report.findings).toContainEqual(
+      expect.objectContaining({ layer: "environment", rule: "environment/hook-missing", fix: "devguard install" }),
+    );
+  });
+
+  it("reports a directory outside git instead of failing", () => {
+    const r = run(["doctor", "--cwd", project("standard: team@1.0.0\ncomponents: []\n")]);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("environment/not-a-git-repo");
+  });
+
+  it("prints nothing with --quiet once installed, and only the problems otherwise", () => {
+    const dir = gitProject();
+    const before = run(["doctor", "--quiet", "--cwd", dir]);
+    expect(before.out).toContain("environment/hook-missing");
+    expect(run(["install", "--yes", "--cwd", dir]).code).toBe(0);
+    expect(run(["doctor", "--quiet", "--cwd", dir])).toMatchObject({ code: 0, out: "" });
+    expect(run(["doctor", "--cwd", dir]).out).toContain("通過");
+  });
+});
+
 describe("localDate", () => {
   it("formats the local calendar date", () => {
     expect(localDate(new Date(2026, 0, 5, 23, 59))).toBe("2026-01-05");

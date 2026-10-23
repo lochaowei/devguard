@@ -48,8 +48,8 @@ export function newerVersions(id: string, bundled: readonly Standard[]): Standar
 }
 
 /**
- * The hint `doctor` gives when this CLI bundles a minor or patch update of the declared standard (SPEC §5.5). Until
- * `doctor` exists (#21) `check` reports it. Undefined when there is none, or the id is malformed or unknown.
+ * The hint `doctor` gives when this CLI bundles a minor or patch update of the declared standard (SPEC §5.5;
+ * `src/environment/standard-upgrade.ts`). Undefined when there is none, or the id is malformed or unknown.
  */
 export function upgradeSuggestion(id: string, bundled: readonly Standard[] = BUNDLED_STANDARDS): Finding | undefined {
   const major = parseStandardId(id)?.version[0];
