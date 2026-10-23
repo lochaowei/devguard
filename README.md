@@ -69,10 +69,43 @@ mirrors:
 
 可以覆寫的項目與預設值，見 [src/standard/team-1.0.0.ts](src/standard/team-1.0.0.ts) 或 SPEC §5、§6。
 
+### 還沒有宣告：`devguard draft`
+
+專案還沒有 `.devguard.yaml` 時（`check` 會回報「找不到 .devguard.yaml」並建議這個指令），執行：
+
+```bash
+devguard draft [--cwd <dir>]
+```
+
+依偵測到的元件與既有的工具設定產生**草稿**並寫入 `.devguard.yaml`（SPEC §4.3）：
+
+- **元件**：每個 `.py`、`.go`、`.ts`、`.java` 檔歸屬於最近一層有該語言建置或工具檔（`pyproject.toml` / `setup.py` / `setup.cfg` / `requirements.txt`、`go.mod`、`package.json` / `tsconfig.json`、`pom.xml` / `build.gradle(.kts)` / `settings.gradle(.kts)`）的目錄，沒有的話歸屬 repo 根目錄；monorepo 會產生多個元件。Java 的多模組建置以最外層的建置檔為一個元件。
+- **覆寫**：沿用設定檢查讀取的工具設定（`pyproject.toml`、`.golangci.yml` / `go.mod`、`pom.xml`、tsconfig / ESLint / Prettier / Biome / Vitest 等）。與預設相同的值省略；比預設嚴格的值、風格項目直接寫入；比預設寬鬆的值寫成 `{value, reason: "TODO: …"}`，**填寫理由之前 `check` 會回報錯誤**。
+- **不覆寫**：`.devguard.yaml` 已存在時不做任何修改，以 exit code `2` 結束。
+
+產生後請確認元件是否正確、填寫所有 `TODO` 理由（可加 `until`），再執行 `devguard check`。
+
+### 工具版本範圍
+
+`check` 會讀出各元件用依賴管理鎖定的工具版本（`uv.lock` / `poetry.lock`、`package-lock.json`、`go.mod` 的 `tool`、`pom.xml` / `build.gradle(.kts)` 中的 plugin 版本），超出標準的版本範圍（`tools.<工具>` 項目，例如 `tools.ruff: ">=0.17,<0.18"`）就回報錯誤。golangci-lint 例外：從 PATH 呼叫 `golangci-lint --version` 核對，不符時提示 `scoop update golangci-lint`。
+
+要使用範圍外的版本，在宣告中放寬範圍並寫理由，依偏離規則處理：
+
+```yaml
+    overrides:
+      tools.ruff:
+        value: ">=0.17,<0.19"
+        reason: "升級到 0.18 中"
+        until: 2027-01-31
+```
+
+> **待團隊訂定**：`team@1.0.0` 中各工具的版本範圍與 golangci-lint 的指定版本目前都是**佔位值**（SPEC §12 第 5 項），在 [src/standard/team-1.0.0.ts](src/standard/team-1.0.0.ts) 以 `placeholderRange` 與 `TODO` 標註，發佈前必須換成團隊訂定的範圍。
+
 ## 指令
 
 ```
 devguard check [--format text|json] [--strict] [--verbose] [--cwd <dir>]
+devguard draft [--cwd <dir>]
 devguard --version
 ```
 
@@ -109,6 +142,9 @@ web/ (TypeScript)
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint（typescript-eslint `strictTypeChecked`，循環複雜度上限 10） |
 | `npm run format` / `format:check` | Prettier（行寬 120、LF） |
+| `npm run build:exe [-- x64\|arm64]` | 用 Bun（≥ 1.2.23）打包成 `dist/devguard-windows-<arch>.exe`，含圖示與版本資訊。交叉編譯的目標沒有圖示與版本資訊（Bun 的限制） |
+| `npm run smoke:exe [-- <exe>]` | 從 PATH 移除 Node 後，對 exe 執行 `--version` 與 `check`（範例專案） |
+| `npm run t2:probe` / `build:t2-probe` | SPEC §13 T2：子程序行為探測，先在 Node 下跑基準，再打包成 `dist/t2-probe-windows-<arch>.exe` 執行比對 |
 
 devguard 本身也遵守 SPEC §6.3 的 TypeScript 預設標準，並以 [.devguard.yaml](.devguard.yaml) 宣告自己。
 
@@ -118,10 +154,14 @@ devguard 本身也遵守 SPEC §6.3 的 TypeScript 預設標準，並以 [.devgu
 src/
   cli.ts                 指令列入口
   check.ts               devguard check 的宣告檢查層
+  process/               啟動外部程序（.cmd 透過 cmd.exe）
   standard/              內建的預設標準與版本查找
+  versions/              版本範圍，以及從 lockfile / 建置檔讀出鎖定的工具版本
   declaration/           宣告檔的解析、比對、套用、檔案歸屬
   report/                finding 型別、文字與 JSON 報告、exit code
 test/                    Vitest 測試
+scripts/                 exe 打包、smoke test、T2 探測
+assets/                  exe 圖示
 SPEC.md                  實作規格
 GLOSSARY.md              用語定義
 .scratch/                規劃過程：地圖、決策票、研究紀錄、原型

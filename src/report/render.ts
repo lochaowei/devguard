@@ -1,4 +1,4 @@
-import { LEVEL_LABEL, LEVEL_ORDER, type Finding, type Level } from "./finding.ts";
+import { isFixable, LEVEL_LABEL, LEVEL_ORDER, type Finding, type Level } from "./finding.ts";
 
 export interface ReportInput {
   standard?: string;
@@ -20,7 +20,8 @@ export function summaryLine(findings: Finding[]): string {
 function renderFinding(f: Finding): string[] {
   const where = f.file ? ` ${f.file}${f.line ? `:${String(f.line)}` : ""}` : "";
   const lines = [`  ${LEVEL_LABEL[f.level]}  ${f.message}  [${f.rule}]${where}`];
-  if (f.fix) lines.push(`        修正：${f.fix}`);
+  const how = isFixable(f) ? "可用 fix 修正" : "需手動修正";
+  lines.push(`        ${how}${f.fix ? `：${f.fix}` : ""}`);
   return lines;
 }
 
@@ -48,13 +49,20 @@ export function renderText(input: ReportInput, verbose = false): string {
   return out.join("\n") + "\n";
 }
 
+/** A finding as reported: without the internal repairs. */
+function publicFinding(f: Finding): Omit<Finding, "repairs"> {
+  const out: Partial<Finding> = { ...f };
+  delete out.repairs;
+  return out as Omit<Finding, "repairs">;
+}
+
 export function renderJson(input: ReportInput): string {
   return (
     JSON.stringify(
       {
         standard: input.standard ?? null,
         components: input.components.map((c) => ({ path: c.dir === "" ? "./" : c.dir, language: c.language })),
-        findings: input.findings,
+        findings: input.findings.map((f) => ({ ...publicFinding(f), fixable: isFixable(f) })),
       },
       null,
       2,
