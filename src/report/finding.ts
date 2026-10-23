@@ -1,3 +1,5 @@
+import type { Repair } from "../fix/repair.ts";
+
 export type Level = "error" | "deviation" | "hint";
 
 /** The three check layers from SPEC §1, plus findings about the code itself. */
@@ -17,6 +19,8 @@ export interface Finding {
   column?: number;
   /** How to resolve it: a command, or what to edit by hand. */
   fix?: string;
+  /** What `devguard fix` does about it, by file category (SPEC §9.2). Internal: not part of the JSON report. */
+  repairs?: Repair[];
   /**
    * Set by settings checks when a tool config file holds another value than the declaration: the standard item and
    * the value read. Lets `devguard draft` turn existing settings into overrides (SPEC §4.3).

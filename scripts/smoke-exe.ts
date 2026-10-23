@@ -20,6 +20,7 @@ export interface SmokeResult {
 /** A TypeScript project whose tool configs and lockfile meet team@1.0.0. */
 const SAMPLE: Readonly<Record<string, string>> = {
   ".devguard.yaml": "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: typescript\n",
+  ".gitattributes": "* text=auto eol=lf\n",
   "tsconfig.json": JSON.stringify({
     compilerOptions: {
       strict: true,

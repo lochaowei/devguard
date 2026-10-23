@@ -1,5 +1,7 @@
 import { compareToDefault } from "../declaration/compare.ts";
 import type { EffectiveItem, ResolvedComponent } from "../declaration/resolve.ts";
+import { fixText } from "../fix/category.ts";
+import type { KeyPath, Repair } from "../fix/repair.ts";
 import type { Finding } from "../report/finding.ts";
 import type { ItemDef, ItemValue, Standard } from "../standard/types.ts";
 
@@ -11,6 +13,14 @@ export interface ConfigSite {
   line?: number;
 }
 
+/** Builds the repairs that put the declared value back, from that value. */
+export type RepairFor = (want: unknown) => Repair[];
+
+/** The repair that sets the key at `path` of `file` to the declared value (or to `map(declared)`). */
+export const setAt =
+  (file: string, path: KeyPath, map: (want: unknown) => unknown = (w) => w): RepairFor =>
+  (want) => [{ op: "set", file, path, value: map(want) }];
+
 const fmt = (v: unknown): string => (Array.isArray(v) ? `[${v.map(fmt).join(", ")}]` : JSON.stringify(v));
 
 /**
@@ -19,6 +29,8 @@ const fmt = (v: unknown): string => (Array.isArray(v) ? `[${v.map(fmt).join(", "
  * item that differs is an error because the declaration is the source of truth.
  * Without a declaration entry the standard's default is the declared value; an invalid declaration (already
  * reported) and an unjudgeable value give nothing. `label` names the setting in the file (default: the item's label).
+ * `repair` says how to put the declared value back; whether `devguard fix` writes it or only prints it follows the
+ * file's category (SPEC §9.2).
  */
 export function judgeConfigValue(
   key: string,
@@ -27,36 +39,35 @@ export function judgeConfigValue(
   actual: unknown,
   site: ConfigSite,
   label: string = item.label,
+  repair?: RepairFor,
 ): Finding | undefined {
   if (declared?.status === "invalid") return undefined;
   const want = declared?.value ?? item.value;
   const status = compareToDefault({ ...item, value: want as ItemValue }, actual);
   const what = `${label} 為 ${fmt(actual)}`;
+  if (status === "stricter") return stricterHint(key, `${what}，比宣告的 ${fmt(want)} 嚴格`, actual, site);
+  if (status !== "looser" && status !== "different") return undefined;
+  const why = status === "looser" ? `比宣告的 ${fmt(want)} 寬鬆` : `與宣告的 ${fmt(want)} 不同`;
   const observed = { key, value: actual };
-  if (status === "stricter") {
-    return {
-      level: "hint",
-      layer: "config",
-      rule: "settings/stricter",
-      message: `${what}，比宣告的 ${fmt(want)} 嚴格`,
-      ...site,
-      fix: `建議把宣告中的 ${key} 同步成 ${fmt(actual)}`,
-      observed,
-    };
-  }
-  if (status === "looser" || status === "different") {
-    const why = status === "looser" ? `比宣告的 ${fmt(want)} 寬鬆` : `與宣告的 ${fmt(want)} 不同`;
-    return {
-      level: "error",
-      layer: "config",
-      rule: "settings/looser",
-      message: `${what}，${why}`,
-      ...site,
-      fix: `devguard fix（把 ${site.file} 的 ${label} 改回宣告的 ${fmt(want)}）`,
-      observed,
-    };
-  }
-  return undefined;
+  return withRepairs(
+    { level: "error", layer: "config", rule: "settings/looser", message: `${what}，${why}`, ...site, observed },
+    `把 ${site.file} 的 ${label} 改回宣告的 ${fmt(want)}`,
+    repair,
+    want,
+  );
+}
+
+/** A config value stricter than declared: a hint to sync the declaration (SPEC §8). */
+function stricterHint(key: string, message: string, actual: unknown, site: ConfigSite): Finding {
+  const fix = `建議把宣告中的 ${key} 同步成 ${fmt(actual)}`;
+  const observed = { key, value: actual };
+  return { level: "hint", layer: "config", rule: "settings/stricter", message, ...site, fix, observed };
+}
+
+/** A finding with its repairs and the matching fix text (SPEC §9.2: fix writes it, or only prints it). */
+function withRepairs(finding: Finding, detail: string, repair: RepairFor | undefined, want: unknown): Finding {
+  const repairs = repair?.(want) ?? [];
+  return { ...finding, fix: fixText(detail, repairs), ...(repairs.length > 0 ? { repairs } : {}) };
 }
 
 /**
@@ -85,39 +96,48 @@ export class SettingsJudge {
     return this.component.dir + name;
   }
 
-  private add(level: Finding["level"], rule: string, message: string, file: string, fix?: string): void {
-    this.findings.push({ level, layer: "config", rule, message, component: this.component.name, file, fix });
+  private add(finding: Omit<Finding, "layer" | "component">): void {
+    this.findings.push({ ...finding, layer: "config", component: this.component.name });
   }
 
   /** Judges `actual` (read from `file`) against the declared value of `key`; `label` names the setting in the file. */
-  compare(key: string, actual: unknown, file: string, label?: string): void {
+  compare(key: string, actual: unknown, file: string, label?: string, repair?: RepairFor): void {
     const item = this.defs[key];
     if (!item || this.declared(key) === undefined) return;
     const site = { component: this.component.name, file };
-    const finding = judgeConfigValue(key, item, this.component.effective[key], actual, site, label);
+    const finding = judgeConfigValue(key, item, this.component.effective[key], actual, site, label, repair);
     if (finding) this.findings.push(finding);
   }
 
   /** A setting that must be on is off (or absent from a config whose content is fully known). */
-  disabled(key: string, file: string, label: string): void {
-    if (this.declared(key) === undefined) return;
-    this.add("error", "settings/looser", `${label} 沒有啟用`, file, `在 ${file} 啟用 ${label}`);
+  disabled(key: string, file: string, label: string, repair?: RepairFor): void {
+    const want = this.declared(key);
+    if (want === undefined) return;
+    const finding: Finding = { level: "error", layer: "config", rule: "settings/looser", message: `${label} 沒有啟用` };
+    const located = { ...finding, component: this.component.name, file };
+    this.findings.push(withRepairs(located, `在 ${file} 啟用 ${label}`, repair, want));
   }
 
   /** A lint rule with a numeric limit: off is looser; undefined means the config does not show it literally. */
-  limit(key: string, rule: { enabled: boolean; max: number } | undefined, file: string, label: string): void {
+  limit(
+    key: string,
+    rule: { enabled: boolean; max: number } | undefined,
+    file: string,
+    label: string,
+    repair?: RepairFor,
+  ): void {
     if (!rule) this.unconfirmed(file, ` ${label} 的設定`);
-    else if (!rule.enabled) this.disabled(key, file, label);
-    else this.compare(key, rule.max, file, `${label} 上限`);
+    else if (!rule.enabled) this.disabled(key, file, label, repair);
+    else this.compare(key, rule.max, file, `${label} 上限`, repair);
   }
 
   /** The tool's config file is not there at all. */
   missingFile(file: string, what: string): void {
-    this.add("error", "settings/missing-file", `找不到${what}`, file, `建立 ${file}`);
+    this.add({ level: "error", rule: "settings/missing-file", message: `找不到${what}`, file, fix: `建立 ${file}` });
   }
 
   /** Part of a config that cannot be read reliably (code-form config, shared presets): say so instead of guessing. */
   unconfirmed(file: string, what: string): void {
-    this.add("hint", "settings/unconfirmed", `無法從設定檔確認${what}，請自行確認`, file);
+    this.add({ level: "hint", rule: "settings/unconfirmed", message: `無法從設定檔確認${what}，請自行確認`, file });
   }
 }

@@ -1,6 +1,8 @@
 import { isNode, LineCounter, parseDocument, type Document } from "yaml";
 import { compareToDefault } from "../declaration/compare.ts";
 import type { ResolvedComponent } from "../declaration/resolve.ts";
+import { fixText } from "../fix/category.ts";
+import type { Repair } from "../fix/repair.ts";
 import type { Finding, Level } from "../report/finding.ts";
 
 export const GOLANGCI_FILE = ".golangci.yml";
@@ -29,6 +31,26 @@ class GoReport {
 
   add(level: Level, rule: string, message: string, at: Pick<Finding, "file" | "line" | "fix" | "observed">): void {
     this.findings.push({ level, layer: "config", rule, message, component: this.component.name, ...at });
+  }
+
+  /** An error `devguard fix` resolves with `repairs`; `at.fix` is the manual instruction. */
+  fixable(
+    rule: string,
+    message: string,
+    at: Pick<Finding, "file" | "line" | "fix" | "observed">,
+    repairs: Repair[],
+  ): void {
+    const fix = fixText(at.fix ?? "", repairs);
+    this.findings.push({
+      level: "error",
+      layer: "config",
+      rule,
+      message,
+      component: this.component.name,
+      ...at,
+      fix,
+      repairs,
+    });
   }
 
   /** The component's effective value of a standard item (default + declaration override). */
@@ -78,11 +100,17 @@ function checkLinters(r: GoReport, config: Golangci): void {
   const isOn = isLinterOn(config);
   for (const name of strings(r.effective("lint.rules"))) {
     if (isOn(name)) continue;
-    r.add(
-      "error",
+    const file = config.file;
+    r.fixable(
       "settings/golangci-linter-missing",
       `${GOLANGCI_FILE} 沒有啟用標準要求的 linter「${name}」`,
-      config.at(["linters", "enable"], `在 ${config.file} 的 linters.enable 加上 ${name}`),
+      config.at(["linters", "enable"], `在 ${file} 的 linters.enable 加上 ${name}`),
+      [
+        { op: "add", file, path: ["linters", "enable"], value: name },
+        ...(strings(config.get("linters", "disable")).includes(name)
+          ? [{ op: "remove" as const, file, path: ["linters", "disable"], value: name }]
+          : []),
+      ],
     );
   }
 }
@@ -125,10 +153,15 @@ function judgeThreshold(r: GoReport, config: Golangci, t: Threshold, actual: unk
   const path = ["linters", "settings", t.linter, t.setting];
   const what = `${GOLANGCI_FILE} 的 ${t.linter}.${t.setting} 是 ${String(actual)}`;
   if (status === "looser") {
-    r.add("error", "settings/golangci-looser", `${what}，比宣告的${t.label} ${String(declared)} 寬鬆`, {
-      ...config.at(path, `把 ${t.linter}.${t.setting} 改成 ${String(declared)}`),
-      observed: { key: t.item, value: actual },
-    });
+    r.fixable(
+      "settings/golangci-looser",
+      `${what}，比宣告的${t.label} ${String(declared)} 寬鬆`,
+      {
+        ...config.at(path, `把 ${t.linter}.${t.setting} 改成 ${String(declared)}`),
+        observed: { key: t.item, value: actual },
+      },
+      [{ op: "set", file: config.file, path, value: declared }],
+    );
   } else if (status === "stricter") {
     r.add("hint", "settings/golangci-stricter", `${what}，比宣告的${t.label} ${String(declared)} 嚴格`, {
       ...config.at(path, `建議把宣告的 ${t.item} 同步成 ${String(actual)}`),
@@ -143,14 +176,15 @@ function checkThresholds(r: GoReport, config: Golangci): void {
   for (const t of THRESHOLDS) {
     const written = config.get("linters", "settings", t.linter, t.setting);
     if (written === undefined && t.explicit) {
-      r.add(
-        "error",
+      const declared = r.effective(t.item);
+      r.fixable(
         "settings/golangci-unset",
         `${GOLANGCI_FILE} 沒有明確設定 ${t.linter}.${t.setting}（golangci-lint 預設 ${String(t.toolDefault)}）`,
         config.at(
           ["linters", "settings", t.linter],
-          `在 linters.settings.${t.linter} 加上 ${t.setting}: ${String(r.effective(t.item))}`,
+          `在 linters.settings.${t.linter} 加上 ${t.setting}: ${String(declared)}`,
         ),
+        [{ op: "set", file: config.file, path: ["linters", "settings", t.linter, t.setting], value: declared }],
       );
       continue;
     }
@@ -161,11 +195,13 @@ function checkThresholds(r: GoReport, config: Golangci): void {
 function checkDepguard(r: GoReport, config: Golangci): void {
   const rules = config.get("linters", "settings", "depguard", "rules");
   if (typeof rules === "object" && rules !== null && Object.keys(rules).length > 0) return;
-  r.add(
-    "error",
+  const path = ["linters", "settings", "depguard", "rules"];
+  const deny = strings(r.effective("deps.bannedApis")).map((pkg) => ({ pkg, desc: "標準禁用（deps.bannedApis）" }));
+  r.fixable(
     "settings/golangci-depguard-rules",
     `${GOLANGCI_FILE} 的 depguard 沒有明確規則（linters.settings.depguard.rules）`,
-    config.at(["linters", "settings", "depguard", "rules"], "在 linters.settings.depguard.rules 寫明禁用的套件"),
+    config.at(path, "在 linters.settings.depguard.rules 寫明禁用的套件"),
+    [{ op: "set", file: config.file, path, value: { main: { deny } } }],
   );
 }
 
@@ -173,11 +209,11 @@ function checkFormatters(r: GoReport, config: Golangci): void {
   const enabled = new Set(strings(config.get("formatters", "enable")));
   for (const name of strings(r.effective("format.tools"))) {
     if (enabled.has(name)) continue;
-    r.add(
-      "error",
+    r.fixable(
       "settings/golangci-formatter-missing",
       `${GOLANGCI_FILE} 沒有啟用宣告的格式化工具「${name}」`,
       config.at(["formatters", "enable"], `在 ${config.file} 的 formatters.enable 加上 ${name}`),
+      [{ op: "add", file: config.file, path: ["formatters", "enable"], value: name }],
     );
   }
 }

@@ -1,5 +1,5 @@
 import { findFirst, propertyValueIndex } from "../config-files.ts";
-import type { SettingsJudge } from "../judge.ts";
+import { setAt, type SettingsJudge } from "../judge.ts";
 
 const FLAT_CONFIGS = ["js", "mjs", "cjs", "ts", "mts", "cts"].map((ext) => `eslint.config.${ext}`);
 
@@ -50,7 +50,10 @@ function checkPreset(text: string, file: string, judge: SettingsJudge): void {
   if (!Array.isArray(rules) || !rules.includes(STRICT_PRESET)) return;
   if (/\bstrictTypeChecked(?:Only)?\b/.test(text)) return;
   if (/\bconfigs\s*\.\s*(?:recommended|strict|stylistic)\w*/.test(text)) {
-    judge.disabled("lint.rules", file, "typescript-eslint strictTypeChecked（目前用的是較寬鬆的組合）");
+    const snippet = "tseslint.configs.strictTypeChecked,  // 取代目前的 tseslint.configs.* 組合";
+    judge.disabled("lint.rules", file, "typescript-eslint strictTypeChecked（目前用的是較寬鬆的組合）", () => [
+      { op: "snippet", file, text: snippet },
+    ]);
   } else {
     judge.unconfirmed(file, "已套用 typescript-eslint strictTypeChecked");
   }
@@ -66,6 +69,7 @@ export async function checkEslint(root: string, judge: SettingsJudge): Promise<v
   const file = judge.path(found.name);
   checkPreset(found.text, file, judge);
   for (const { key, rule, option, fallback } of LIMIT_RULES) {
-    judge.limit(key, readRule(found.text, rule, option, fallback), file, `ESLint ${rule}`);
+    const repair = setAt(file, ["rules", rule], (max) => ["error", max]);
+    judge.limit(key, readRule(found.text, rule, option, fallback), file, `ESLint ${rule}`, repair);
   }
 }

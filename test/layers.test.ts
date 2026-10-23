@@ -15,6 +15,7 @@ function project(declaration: string): string {
   const dir = mkdtempSync(join(tmpdir(), "devguard-"));
   dirs.push(dir);
   writeFileSync(join(dir, ".devguard.yaml"), declaration);
+  writeFileSync(join(dir, ".gitattributes"), "* text=auto eol=lf\n");
   for (const [name, text] of Object.entries(GO_CLEAN_FILES)) writeFileSync(join(dir, name), text);
   return dir;
 }
@@ -40,6 +41,7 @@ describe("runCheck", () => {
       "deps",
       "settings-typescript",
       "tool-versions",
+      "gitattributes",
       "code",
       "tests",
     ]);

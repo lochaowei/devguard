@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse } from "@decimalturn/toml-patch";
 import type { ResolvedComponent } from "../declaration/resolve.ts";
+import { fixText } from "../fix/category.ts";
 import type { Finding } from "../report/finding.ts";
 import { checkPyproject } from "../settings/python.ts";
 import type { ItemDef } from "../standard/types.ts";
@@ -25,7 +26,10 @@ async function checkComponent(cwd: string, component: ResolvedComponent, defs: D
   const at = { level: "error", layer: "config", component: component.name, file } as const;
   const text = await readText(join(cwd, file));
   if (text === undefined) {
-    return [{ ...at, rule: "python-settings/pyproject-missing", message: `找不到 ${file}`, fix: "devguard fix" }];
+    // What an empty pyproject.toml would be missing is what `fix` writes into the new file.
+    const repairs = checkPyproject(component, defs, {}, file).flatMap((f) => f.repairs ?? []);
+    const fix = fixText(`建立 ${file}，寫入標準的 [tool.*] 設定`, repairs);
+    return [{ ...at, rule: "python-settings/pyproject-missing", message: `找不到 ${file}`, fix, repairs }];
   }
   let doc: Record<string, unknown>;
   try {

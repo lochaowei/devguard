@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { findFirst, isRecord, literalProperty, parseJsonc, readIfExists, type FoundFile } from "../config-files.ts";
-import type { SettingsJudge } from "../judge.ts";
+import { setAt, type SettingsJudge } from "../judge.ts";
 
 /** Prettier's own search order for config files (package.json first). */
 const CONFIG_FILES = [
@@ -77,9 +77,11 @@ export async function checkPrettier(root: string, judge: SettingsJudge): Promise
     return;
   }
   const file = judge.path(config.file);
+  const base = config.file === "package.json" ? ["prettier"] : [];
   for (const { key, option, fallback } of SETTINGS) {
     const value = config.options[option];
+    const repair = setAt(file, [...base, option]);
     if (value === undefined && !config.complete) judge.unconfirmed(file, ` Prettier ${option}`);
-    else judge.compare(key, value ?? fallback, file, `Prettier ${option}`);
+    else judge.compare(key, value ?? fallback, file, `Prettier ${option}`, repair);
   }
 }

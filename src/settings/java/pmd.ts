@@ -1,6 +1,6 @@
 import type { Finding } from "../../report/finding.ts";
 import { child, descendants, type XmlEl } from "../../xml/parse.ts";
-import { finding, findConfig, FIX_GENERATE, isFinding, judgeNumber, readXmlConfig, type JavaTarget } from "./common.ts";
+import { finding, findConfig, generated, isFinding, judgeNumber, readXmlConfig, type JavaTarget } from "./common.ts";
 
 /** Where the PMD ruleset is looked for, relative to the component. */
 export const PMD_FILES = ["pmd-ruleset.xml", "pmd.xml", "config/pmd/ruleset.xml", "config/pmd/pmd.xml"] as const;
@@ -30,7 +30,13 @@ export async function checkPmd(t: JavaTarget): Promise<Finding[]> {
   const file = findConfig(t, PMD_FILES);
   if (!file) {
     return [
-      finding(t, "error", "java/pmd-missing", `找不到 PMD 規則集（${PMD_FILES.join("、")}）`, { fix: FIX_GENERATE }),
+      finding(
+        t,
+        "error",
+        "java/pmd-missing",
+        `找不到 PMD 規則集（${PMD_FILES.join("、")}）`,
+        generated(t, t.component.dir + PMD_FILES[0]),
+      ),
     ];
   }
   const root = await readXmlConfig(t, file);
@@ -40,7 +46,7 @@ export async function checkPmd(t: JavaTarget): Promise<Finding[]> {
     return [
       finding(t, "error", "java/pmd-rule-missing", `${file}：缺少 PMD 的 ${RULE}（complexity.cognitive）`, {
         file,
-        fix: FIX_GENERATE,
+        ...generated(t, file),
       }),
     ];
   }

@@ -1,6 +1,6 @@
 import type { Finding } from "../../report/finding.ts";
 import { descendants, type XmlEl } from "../../xml/parse.ts";
-import { finding, findConfig, FIX_GENERATE, isFinding, judgeNumber, readXmlConfig, type JavaTarget } from "./common.ts";
+import { finding, findConfig, generated, isFinding, judgeNumber, readXmlConfig, type JavaTarget } from "./common.ts";
 
 /** Where the Checkstyle config is looked for, relative to the component (Maven-style, then Gradle's default). */
 export const CHECKSTYLE_FILES = ["checkstyle.xml", "config/checkstyle/checkstyle.xml"] as const;
@@ -58,7 +58,7 @@ function checkIllegalImport(t: JavaTarget, file: string, module: XmlEl): Finding
       "error",
       "java/banned-api-not-enforced",
       `${file}：IllegalImport 沒有涵蓋禁用 API ${missing.join("、")}`,
-      { file, line: module.line, fix: FIX_GENERATE },
+      { file, line: module.line, ...generated(t, file) },
     ),
   ];
 }
@@ -66,7 +66,7 @@ function checkIllegalImport(t: JavaTarget, file: string, module: XmlEl): Finding
 function moduleMissing(t: JavaTarget, file: string, name: string, why: string): Finding {
   return finding(t, "error", "java/checkstyle-module-missing", `${file}：缺少 Checkstyle 的 ${name}（${why}）`, {
     file,
-    fix: FIX_GENERATE,
+    ...generated(t, file),
   });
 }
 
@@ -76,7 +76,7 @@ export async function checkCheckstyle(t: JavaTarget): Promise<Finding[]> {
   if (!file) {
     return [
       finding(t, "error", "java/checkstyle-missing", `找不到 Checkstyle 設定（${CHECKSTYLE_FILES.join(" 或 ")}）`, {
-        fix: FIX_GENERATE,
+        ...generated(t, t.component.dir + CHECKSTYLE_FILES[0]),
       }),
     ];
   }

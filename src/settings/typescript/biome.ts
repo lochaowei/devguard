@@ -1,5 +1,6 @@
 import { at, findFirst, isRecord, parseJsonc } from "../config-files.ts";
-import type { SettingsJudge } from "../judge.ts";
+import type { Repair } from "../../fix/repair.ts";
+import { setAt, type SettingsJudge } from "../judge.ts";
 
 /** Biome's defaults for what the config leaves out. */
 const DEFAULT_LINE_WIDTH = 80;
@@ -26,15 +27,26 @@ export async function checkBiome(root: string, judge: SettingsJudge): Promise<vo
   const parsed = parseJsonc(found.text);
   const json = isRecord(parsed) ? parsed : {};
   const extendsOther = !isRecord(parsed) || (json.extends !== undefined && json.extends !== null);
-  const setting = (key: string, label: string, value: unknown, fallback: unknown) => {
-    if (value === undefined && extendsOther) judge.unconfirmed(file, ` Biome ${label}`);
-    else judge.compare(key, value ?? fallback, file, `Biome ${label}`);
+  const setting = (key: string, name: string, fallback: unknown) => {
+    const own = at(json, "javascript", "formatter", name);
+    const value = own ?? at(json, "formatter", name);
+    const repair = setAt(file, own === undefined ? ["formatter", name] : ["javascript", "formatter", name]);
+    if (value === undefined && extendsOther) judge.unconfirmed(file, ` Biome ${name}`);
+    else judge.compare(key, value ?? fallback, file, `Biome ${name}`, repair);
   };
-  const formatter = (name: string) => at(json, "javascript", "formatter", name) ?? at(json, "formatter", name);
-  setting("format.printWidth", "lineWidth", formatter("lineWidth"), DEFAULT_LINE_WIDTH);
-  setting("format.endOfLine", "lineEnding", formatter("lineEnding"), DEFAULT_LINE_ENDING);
+  setting("format.printWidth", "lineWidth", DEFAULT_LINE_WIDTH);
+  setting("format.endOfLine", "lineEnding", DEFAULT_LINE_ENDING);
   const label = "Biome noExcessiveCognitiveComplexity";
   const rule = cognitiveRule(json);
-  if (rule === undefined && !extendsOther) judge.disabled("complexity.cognitive", file, label);
-  else judge.limit("complexity.cognitive", rule, file, label);
+  const repair = (want: unknown): Repair[] => [
+    ...(at(json, "linter", "enabled") === false
+      ? [{ op: "set" as const, file, path: ["linter", "enabled"], value: true }]
+      : []),
+    ...setAt(file, ["linter", "rules", "complexity", "noExcessiveCognitiveComplexity"], (max) => ({
+      level: "error",
+      options: { maxAllowedComplexity: max },
+    }))(want),
+  ];
+  if (rule === undefined && !extendsOther) judge.disabled("complexity.cognitive", file, label, repair);
+  else judge.limit("complexity.cognitive", rule, file, label, repair);
 }
