@@ -11,6 +11,7 @@ import { exitCodeFor, renderJson, renderText, type ReportInput } from "./report/
 import { renderSarif } from "./report/sarif.ts";
 import { renderVscode } from "./report/vscode.ts";
 import { checkScope } from "./scope.ts";
+import { runStandardUpgrade } from "./standard/upgrade-run.ts";
 
 const VERSION = "0.1.0";
 
@@ -20,6 +21,8 @@ const USAGE = `用法：devguard <指令> [選項]
   check [檔案…]  檢查專案宣告（.devguard.yaml）與程式碼；指定檔案時只檢查這些檔案
   fix            修正設定：先預覽，確認後套用；--yes 直接套用
   draft          沒有 .devguard.yaml 時，依偵測到的元件與工具設定產生宣告草稿（不覆寫既有檔案）
+  standard upgrade [目標版本]
+                 預覽標準升級；--apply 才修改宣告與設定檔，並透過內部鏡像執行套件管理指令
 
 選項：
   --only <類別>         只跑一類程式碼檢查：lint|format|typecheck
@@ -29,6 +32,7 @@ const USAGE = `用法：devguard <指令> [選項]
   --verbose             展開所有提示
   --cwd <dir>           專案根目錄（預設為目前目錄）
   --yes                 fix：不詢問，直接套用
+  --apply               standard upgrade：實際套用升級
   --version             顯示版本
 `;
 
@@ -68,6 +72,7 @@ async function main(argv: string[]): Promise<number> {
       cwd: { type: "string" },
       version: { type: "boolean", default: false },
       yes: { type: "boolean", default: false },
+      apply: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -83,6 +88,7 @@ async function main(argv: string[]): Promise<number> {
   const cwd = resolve(values.cwd ?? process.cwd());
   if (command === "draft") return draft(cwd);
   if (command === "fix") return runFix({ cwd, today: localDate(), io: terminalInteraction(values.yes) });
+  if (command === "standard") return standard(cwd, positionals.slice(1), values.apply);
   if (command !== "check") throw new UsageError(`不認得的指令「${command}」`);
   return check(cwd, values, positionals.slice(1));
 }
@@ -102,6 +108,14 @@ async function check(cwd: string, flags: CheckFlags, files: string[]): Promise<n
   const result = await runCheck({ cwd, today: localDate(), scope });
   process.stdout.write(render(format, result, flags.verbose));
   return exitCodeFor(result.findings, flags.strict);
+}
+
+function standard(cwd: string, args: string[], apply: boolean): Promise<number> {
+  const [sub, target, ...rest] = args;
+  if (sub !== "upgrade" || rest.length > 0)
+    throw new UsageError("用法：devguard standard upgrade [目標版本] [--apply]");
+  const write = (text: string) => process.stdout.write(text);
+  return runStandardUpgrade({ cwd, today: localDate(), target, apply, write });
 }
 
 async function draft(cwd: string): Promise<number> {

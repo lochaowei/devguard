@@ -27,10 +27,27 @@ export interface ToolResult {
   stderr: string;
 }
 
-/** Runs the project's own pinned tools (SPEC §5.2). Never installs or downloads anything. */
+/** A command of the component's package manager (uv, npm, go), e.g. `devguard standard upgrade --apply`. */
+export interface PackageRequest {
+  language: Language;
+  /** Component directory, normalized as in ToolRequest. */
+  dir: string;
+  args: readonly string[];
+  /** The internal mirror (`mirrors.pypi` / `mirrors.npm` / `mirrors.go`): the only place packages come from. */
+  mirror: string;
+  /** Go only: the checksum database mirror (`mirrors.gosumdb`). */
+  sumdb?: string;
+}
+
+/** Runs the project's own pinned tools (SPEC §5.2). `run` never installs or downloads anything. */
 export interface ToolRunner {
   /** Throws ToolMissingError when the tool is not installed in the project environment. */
   run(request: ToolRequest): Promise<ToolResult>;
+  /**
+   * Runs a package-manager command that downloads only through the internal mirror. Throws when there is no mirror,
+   * or for Java, whose build files are only ever edited by hand (SPEC §9.2). Absent on fakes that never need it.
+   */
+  manage?(request: PackageRequest): Promise<ToolResult>;
 }
 
 /** The tool is not installed. The CLI reports it and exits 2 (SPEC §11). */
@@ -185,8 +202,29 @@ function readTextOrUndefined(path: string): string | undefined {
   }
 }
 
+/** The package manager of a language, pointed at the mirror through its own environment variables. */
+function packageManager(req: PackageRequest, cwd: string, env: Env): Resolved {
+  const args = [...req.args];
+  switch (req.language) {
+    case "python":
+      return { ok: true, command: { file: "uv", args, cwd, env: { UV_DEFAULT_INDEX: req.mirror } } };
+    case "typescript": {
+      const npm = onPath("npm", env);
+      if (!npm) return { ok: false, message: "找不到 npm", install: "scoop install nodejs-lts" };
+      return { ok: true, command: { file: npm, args, cwd, env: { npm_config_registry: req.mirror } } };
+    }
+    case "go": {
+      const goEnv: Record<string, string> = { GOTOOLCHAIN: "local", GOPROXY: req.mirror };
+      if (req.sumdb) goEnv.GOSUMDB = `sum.golang.org ${req.sumdb}`;
+      return { ok: true, command: { file: "go", args, cwd, env: goEnv } };
+    }
+    case "java":
+      throw new Error("Java 的建置檔只印出修改內容，不由 CLI 執行套件管理指令");
+  }
+}
+
 /** Resolves each tool to the project's pinned copy (`uv run`, `node_modules/.bin`, `go tool`, wrapper) and runs it. */
-export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
+export function createToolRunner(deps: ToolRunnerDeps): Required<ToolRunner> {
   const windows = (deps.platform ?? process.platform) === "win32";
   const env: Env = {
     path: windows ? win32 : posix,
@@ -196,17 +234,22 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
     pathEnv: deps.pathEnv ?? process.env.PATH ?? "",
   };
   const exec = deps.exec ?? nodeExec;
+  const dirOf = (dir: string) => env.path.join(deps.cwd, dir.replace(/\/$/, ""));
+  const start = async (resolved: Resolved) => {
+    if (!resolved.ok) throw new ToolMissingError(resolved.message, resolved.install);
+    try {
+      return await exec(resolved.command);
+    } catch (e) {
+      const install = LAUNCHERS[resolved.command.file];
+      if (isEnoent(e) && install) throw new ToolMissingError(`找不到 ${resolved.command.file}`, install);
+      throw e;
+    }
+  };
   return {
-    async run(req) {
-      const resolved = RESOLVERS[req.language](req, env.path.join(deps.cwd, req.dir.replace(/\/$/, "")), env);
-      if (!resolved.ok) throw new ToolMissingError(resolved.message, resolved.install);
-      try {
-        return await exec(resolved.command);
-      } catch (e) {
-        const install = LAUNCHERS[resolved.command.file];
-        if (isEnoent(e) && install) throw new ToolMissingError(`找不到 ${resolved.command.file}`, install);
-        throw e;
-      }
+    run: (req) => start(RESOLVERS[req.language](req, dirOf(req.dir), env)),
+    async manage(req) {
+      if (req.mirror.trim() === "") throw new Error("沒有設定內部鏡像，不執行套件管理指令");
+      return start(packageManager(req, dirOf(req.dir), env));
     },
   };
 }
