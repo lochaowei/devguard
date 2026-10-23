@@ -172,7 +172,7 @@ describe("Go code checks in devguard check", () => {
       "components:",
       "  - {path: svc/, language: go}",
       "mirrors:",
-      "  go: https://proxy.other.internal/go/",
+      "  go: https://nexus.example.internal/repository/go-group/",
       "",
     ].join("\n");
     const { tools, calls } = passingTools();
@@ -185,7 +185,7 @@ describe("Go code checks in devguard check", () => {
         dir: "svc/",
         env: {
           GOTOOLCHAIN: "local",
-          GOPROXY: "https://proxy.other.internal/go/",
+          GOPROXY: "https://nexus.example.internal/repository/go-group/",
           GOSUMDB: "sum.golang.org https://nexus.example.internal/repository/go-sumdb-proxy/",
         },
       }),

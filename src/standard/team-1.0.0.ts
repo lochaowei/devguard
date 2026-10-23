@@ -10,7 +10,8 @@ const vulnScan: ItemDef = { kind: "bool", label: "弱點掃描（進階）", val
 const ignoredVulns: ItemDef = { kind: "ignoredVulns", label: "忽略的弱點", value: [] };
 const bannedApisEmpty: ItemDef = { kind: "list", label: "禁用 API", value: [] };
 
-const mirror = (label: string, value: string): ItemDef => ({ kind: "style", label, value });
+/** A mirror: pointing it off the internal host is looser (SPEC §4.2, §10.2), so it needs a reason. */
+const mirror = (label: string, value: string): ItemDef => ({ kind: "mirror", label, value });
 
 /**
  * TODO(SPEC §12 item 5): PLACEHOLDER tool version ranges. The team has not set the real ranges, nor the exact

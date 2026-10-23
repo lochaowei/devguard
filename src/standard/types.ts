@@ -9,6 +9,7 @@ export type Kind =
   | "choice" // value in `allowed` is an alternative, anything else is looser
   | "versionRange" // tool version range such as ">=0.17,<0.18"; admitting any version outside it is looser
   | "style" // no strictness: overriding is never a deviation
+  | "mirror" // a mirror URL: another repository on the same host is a style change, another host is looser
   | "ignoredVulns"; // each entry is looser and needs reason + until
 
 export type Scalar = string | number | boolean;

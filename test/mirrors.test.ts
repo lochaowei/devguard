@@ -66,9 +66,17 @@ describe("npm: the project's .npmrc points at the npm mirror (SPEC §10.2)", () 
     ]);
   });
 
-  it("follows a declared mirror override", async () => {
-    const yaml = decl("typescript", "mirrors:\n  npm: https://registry.npmjs.org/\n");
-    expect(await check({ ".devguard.yaml": yaml, ".npmrc": "registry=https://registry.npmjs.org/\n" })).toEqual([]);
+  it("follows a declared mirror override, which needs a reason when it leaves the internal host", async () => {
+    const npmrc = { ".npmrc": "registry=https://registry.npmjs.org/\n" };
+    const bare = decl("typescript", "mirrors:\n  npm: https://registry.npmjs.org/\n");
+    expect(rules(await check({ ".devguard.yaml": bare, ...npmrc }))).toEqual([
+      "error:declaration/looser-without-reason",
+    ]);
+    const reasoned = decl("typescript", "mirrors:\n  npm: {value: https://registry.npmjs.org/, reason: 公司外開發}\n");
+    expect(rules(await check({ ".devguard.yaml": reasoned, ...npmrc }))).toEqual(["deviation:declaration/deviation"]);
+    const internal = decl("typescript", "mirrors:\n  npm: https://nexus.example.internal/repository/npm-group/\n");
+    const internalNpmrc = { ".npmrc": "registry=https://nexus.example.internal/repository/npm-group/\n" };
+    expect(await check({ ".devguard.yaml": internal, ...internalNpmrc })).toEqual([]);
   });
 
   describe("with mirrors.auth: env (SPEC §10.3)", () => {

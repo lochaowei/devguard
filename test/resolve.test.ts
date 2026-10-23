@@ -102,10 +102,16 @@ describe("resolveDeclaration — other rules", () => {
     expect(rules(r.findings)).toEqual(["error:declaration/unknown-language", "error:declaration/duplicate-component"]);
   });
 
-  it("applies mirrors as global items: style URLs are free, auth must be none or env", () => {
-    const ok = resolveText(`${head}  - path: ./\n    language: go\nmirrors:\n  auth: env\n  npm: https://other/\n`);
+  it("applies mirrors as global items: same-host URLs are free, other hosts looser, auth must be none or env", () => {
+    const internal = "https://nexus.example.internal/repository/npm-group/";
+    const ok = resolveText(`${head}  - path: ./\n    language: go\nmirrors:\n  auth: env\n  npm: ${internal}\n`);
     expect(ok.findings).toEqual([]);
     expect(ok.global["mirrors.auth"]?.status).toBe("alternative");
+    expect(ok.global["mirrors.npm"]?.status).toBe("different");
+    const external = resolveText(`${head}  - path: ./\n    language: go\nmirrors:\n  npm: https://other/\n`);
+    expect(rules(external.findings)).toEqual(["error:declaration/looser-without-reason"]);
+    const notUrl = resolveText(`${head}  - path: ./\n    language: go\nmirrors:\n  npm: other\n`);
+    expect(rules(notUrl.findings)).toEqual(["error:declaration/invalid-value"]);
     const bad = resolveText(`${head}  - path: ./\n    language: go\nmirrors:\n  auth: kerberos\n  ftp: x\n`);
     expect(rules(bad.findings)).toEqual(["error:declaration/looser-without-reason", "error:declaration/unknown-item"]);
   });
