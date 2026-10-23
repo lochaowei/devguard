@@ -45,6 +45,7 @@ describe("runCheck", () => {
       "claude-code",
       "code",
       "tests",
+      "vuln",
     ]);
   });
 
