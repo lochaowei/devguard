@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
-import type { CheckOptions } from "../check.ts";
+import { FIX_LAYERS, type CheckOptions } from "../check.ts";
+import { CLAUDE_CODE_LAYER_ID, createClaudeCodeLayer } from "../layers/claude-code.ts";
 import { normalizePath } from "../declaration/path.ts";
 import { previewThenApply, type Interaction } from "../fix/interaction.ts";
 import { applyPlan, renderPlan, type ChangePlan, type Printed } from "../fix/plan.ts";
@@ -119,7 +120,12 @@ export interface InstallOptions extends CheckOptions {
 export async function runInstall(options: InstallOptions): Promise<0 | 1> {
   const hookOptions = { exec: options.exec, ...(options.hookCommand ? { command: options.hookCommand } : {}) };
   const hooks = await planInstallHooks(options.cwd, hookOptions);
-  const config = await planConfigFix(options);
+  // install creates the Claude Code setup; fix only keeps an existing one current (SPEC §7.3).
+  const claude = createClaudeCodeLayer({ create: true, command: options.hookCommand });
+  const config = await planConfigFix(
+    options,
+    FIX_LAYERS.map((l) => (l.id === CLAUDE_CODE_LAYER_ID ? claude : l)),
+  );
   const plan: ChangePlan = {
     writes: [...config.writes, ...hooks.writes],
     printed: [...config.printed, ...hooks.printed],

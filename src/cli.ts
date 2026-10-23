@@ -27,7 +27,7 @@ const USAGE = `用法：devguard <指令> [選項]
   fix            修正設定：先預覽，確認後套用；--yes 直接套用
   fix --code [檔案…]  修正程式碼（格式化與可自動修正的 lint），修正後回報剩餘問題
   install        產生各防線的設定並安裝 git pre-commit 與 pre-push hook：先預覽，確認後套用；--yes 直接套用
-  hook <名稱>    給 hook 呼叫：git-pre-commit|git-pre-push
+  hook <名稱>    給 hook 呼叫：git-pre-commit|git-pre-push|claude-session-start|claude-post-edit|claude-stop
   draft          沒有 .devguard.yaml 時，依偵測到的元件與工具設定產生宣告草稿（不覆寫既有檔案）
   standard upgrade [目標版本]
                  預覽標準升級；--apply 才修改宣告與設定檔，並透過內部鏡像執行套件管理指令
@@ -39,6 +39,7 @@ const USAGE = `用法：devguard <指令> [選項]
   --strict              偏離也算失敗
   --verbose             展開所有提示
   --quiet               doctor：只輸出有問題的項目（錯誤與偏離），沒有問題時不輸出
+  --exit-zero           doctor：有問題時也以 0 結束（給 Claude Code skill 嵌入結果用）
   --cwd <dir>           專案根目錄（預設為目前目錄）
   --code                fix：修正程式碼而不是設定
   --yes                 fix / install：不詢問，直接套用
@@ -78,6 +79,7 @@ async function main(argv: string[]): Promise<number> {
       strict: { type: "boolean", default: false },
       verbose: { type: "boolean", default: false },
       quiet: { type: "boolean", default: false },
+      "exit-zero": { type: "boolean", default: false },
       only: { type: "string" },
       full: { type: "boolean", default: false },
       cwd: { type: "string" },
@@ -103,7 +105,7 @@ async function main(argv: string[]): Promise<number> {
 function dispatch(
   command: string,
   cwd: string,
-  values: CheckFlags & { code: boolean; yes: boolean; apply: boolean; quiet: boolean },
+  values: CheckFlags & { code: boolean; yes: boolean; apply: boolean; quiet: boolean; "exit-zero": boolean },
   args: string[],
 ) {
   switch (command) {
@@ -144,14 +146,18 @@ async function check(cwd: string, flags: CheckFlags, files: string[]): Promise<n
 }
 
 /** `devguard doctor`: check plus the environment checks; `--quiet` prints only the problems, nothing when none. */
-async function doctor(cwd: string, flags: CheckFlags & { quiet: boolean }, args: string[]): Promise<number> {
+async function doctor(
+  cwd: string,
+  flags: CheckFlags & { quiet: boolean; "exit-zero": boolean },
+  args: string[],
+): Promise<number> {
   const format = flags.format;
   if (!isFormat(format)) throw new UsageError(`不支援的格式「${format}」`);
   if (args.length > 0) throw new UsageError("doctor 不接受檔案");
   const result = await runDoctor({ cwd, today: localDate() });
   const shown = flags.quiet ? problemsOnly(result) : result;
   if (!flags.quiet || shown.findings.length > 0) process.stdout.write(render(format, shown, flags.verbose));
-  return exitCodeFor(result.findings, flags.strict);
+  return flags["exit-zero"] ? 0 : exitCodeFor(result.findings, flags.strict);
 }
 
 /** `fix` repairs the settings; `fix --code [files]` fixes the code (SPEC §9.1). */
@@ -166,13 +172,29 @@ function fix(cwd: string, flags: { code: boolean; yes: boolean }, files: string[
   return runCodeFix({ cwd, today, io, scope });
 }
 
-/** `devguard hook <name>`: the hook's report goes to stderr, which git shows to the person committing. */
+/**
+ * `devguard hook <name>`: the report goes to stderr, which git shows to the person committing; Claude Code hooks read
+ * their JSON input from stdin and answer on stdout.
+ */
 function hook(cwd: string, name: string | undefined): Promise<number> {
   const handler = name === undefined ? undefined : HOOK_HANDLERS[name];
   if (!handler) {
     throw new UsageError(`不認得的 hook「${name ?? ""}」，可用的有 ${Object.keys(HOOK_HANDLERS).join("|")}`);
   }
-  return handler({ cwd, today: localDate(), write: (text) => process.stderr.write(text) });
+  return handler({
+    cwd,
+    today: localDate(),
+    write: (text) => process.stderr.write(text),
+    stdout: (text) => process.stdout.write(text),
+    stdin: readStdin,
+  });
+}
+
+/** All of stdin as UTF-8 text. */
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk as Uint8Array));
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 function standard(cwd: string, args: string[], apply: boolean): Promise<number> {

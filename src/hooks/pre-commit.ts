@@ -17,6 +17,10 @@ export interface HookContext extends Omit<CheckOptions, "scope" | "listFiles" | 
   exec?: Exec;
   /** Where the hook's report goes (git shows the hook's output to the person committing). */
   write: (text: string) => void;
+  /** The hook's input on stdin (Claude Code hooks get a JSON object); absent when the caller passes none. */
+  stdin?: () => Promise<string>;
+  /** Where structured output goes (Claude Code reads the hook's stdout); defaults to `write`. */
+  stdout?: (text: string) => void;
 }
 
 interface StagedEntry {

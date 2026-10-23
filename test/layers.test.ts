@@ -43,8 +43,10 @@ describe("runCheck", () => {
       "tool-versions",
       "gitattributes",
       "mirrors",
+      "claude-code",
       "code",
       "tests",
+      "vuln",
     ]);
   });
 

@@ -1,3 +1,4 @@
+import { claudeCodeCheck } from "./claude-code.ts";
 import { gitHooksCheck } from "./git-hooks.ts";
 import { goMirrorsCheck } from "./go-mirrors.ts";
 import { mirrorCredentialsCheck } from "./mirror-credentials.ts";
@@ -13,6 +14,7 @@ export type { EnvironmentCheck, EnvironmentContext } from "./types.ts";
 export const ENVIRONMENT_CHECKS: readonly EnvironmentCheck[] = [
   createStandardUpgradeCheck(),
   gitHooksCheck,
+  claudeCodeCheck,
   goMirrorsCheck,
   mirrorCredentialsCheck,
 ];
