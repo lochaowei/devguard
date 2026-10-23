@@ -84,6 +84,16 @@ describe("devguard install (SPEC §3.2, §7.4)", () => {
     expect(again.out).not.toContain("pre-commit");
   });
 
+  it("also installs .git/hooks/pre-push with the CLI marker and checksum", async () => {
+    const dir = repo({ ".devguard.yaml": DECL });
+    const out = io();
+    await runInstall({ cwd: dir, today: TODAY, io: out });
+    const hook = read(dir, ".git/hooks/pre-push");
+    expect(inspectHookFile(hook)).toEqual({ kind: "devguard", hook: "pre-push", intact: true });
+    expect(hook).toContain("exec devguard hook git-pre-push");
+    expect(out.out).toContain(".git/hooks/pre-push：新增");
+  });
+
   it("does not overwrite a hook devguard did not write, and prints the line to add", async () => {
     const dir = repo({ ".devguard.yaml": DECL, ".git/hooks/pre-commit": "#!/bin/sh\nnpx lint-staged\n" });
     const out = io();
