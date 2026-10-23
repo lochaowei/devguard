@@ -19,15 +19,18 @@ const checksum = (body: string): string => createHash("sha256").update(body).dig
 /** The file without its marker line, LF line ends: what the checksum covers. */
 const checksummed = (text: string): string => text.replace(/\r\n/g, "\n").replace(/^# devguard-hook .*\n/m, "");
 
-/** The single command line: stop with the install command when the CLI is missing, otherwise hand over to it. */
-function commandLine(hook: GitHookName, command: string): string {
+/**
+ * The single command line: stop with the install command when the CLI is missing, otherwise hand over to it. With
+ * `exec: false` the shell carries on afterwards (a line added to another tool's hook script, e.g. husky's).
+ */
+export function hookCommandLine(hook: GitHookName, command = "devguard", { exec = true } = {}): string {
   const program = command.trim().split(/\s+/)[0] ?? command;
   const missing =
     `devguard：找不到 CLI（${program}），已擋下這次 git ${hook === "pre-commit" ? "commit" : "push"}。` +
     `安裝：${CLI_INSTALL_COMMAND}；要暫時略過檢查可加上 --no-verify`;
   return (
     `command -v ${program} >/dev/null 2>&1 || { echo '${missing}' >&2; exit 1; }; ` +
-    `exec ${command} hook git-${hook} "$@"`
+    `${exec ? "exec " : ""}${command} hook git-${hook} "$@"`
   );
 }
 
@@ -46,7 +49,7 @@ export function callsDevguard(text: string, hook: GitHookName): boolean {
  * line `# devguard-hook <name> sha256=<checksum of the rest of the file>` (SPEC §7.4).
  */
 export function renderHookFile(hook: GitHookName, options: HookFileOptions = {}): string {
-  const body = withGeneratedHeader(hook, `#!/bin/sh\n${commandLine(hook, options.command ?? "devguard")}\n`);
+  const body = withGeneratedHeader(hook, `#!/bin/sh\n${hookCommandLine(hook, options.command)}\n`);
   const [shebang, header, ...rest] = body.split("\n");
   return [shebang, header, `# devguard-hook ${hook} sha256=${checksum(body)}`, ...rest].join("\n");
 }

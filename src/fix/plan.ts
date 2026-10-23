@@ -20,7 +20,8 @@ export interface FileWrite {
 /** Something printed for a person to apply: build files, code-form config, user-level settings. */
 export interface Printed {
   file: string;
-  category: "snippet" | "user";
+  /** `conflict`: a setting that stops the git hooks from running (`core.hooksPath`, SPEC §7.4). */
+  category: "snippet" | "user" | "conflict";
   lines: string[];
 }
 
@@ -165,6 +166,7 @@ const WRITE_LABEL = { generated: "重新產生（由 CLI 產生）", managed: "�
 const PRINT_LABEL = {
   snippet: "建置檔或程式碼形式的設定，不會自動修改；請自行套用",
   user: "使用者層級的設定，不會修改；請自行套用",
+  conflict: "core.hooksPath 衝突，hook 不會執行；請自行處理",
 } as const;
 
 /** The preview: a diff per written file, then the printed snippets. */
