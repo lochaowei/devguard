@@ -79,6 +79,32 @@ describe("editConfigText: JSONC", () => {
     ]);
     expect(JSON.parse(out)).toEqual({ printWidth: 120 });
   });
+
+  it("writes new short arrays of plain values on one line, as Prettier prints them", () => {
+    const long = Array.from({ length: 8 }, (_, i) => `entry-number-${String(i)}`);
+    const out = editConfigText(".vscode/tasks.json", "", [
+      { op: "add", path: ["recommendations"], value: "a.b" },
+      { op: "add", path: ["recommendations"], value: "c.d" },
+      { op: "add", path: ["tasks"], value: { label: "x", args: ["doctor", "--quiet"], long } },
+    ]);
+    expect(out).toContain('"recommendations": ["a.b", "c.d"]');
+    expect(out).toContain('      "args": ["doctor", "--quiet"],');
+    expect(out).toContain('      "long": [\n        "entry-number-0",');
+    expect(JSON.parse(out)).toMatchObject({ recommendations: ["a.b", "c.d"], tasks: [{ long }] });
+  });
+
+  it("lays arrays out for the print width the edit asks for", () => {
+    const value = ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "vitest.explorer"];
+    const edit = (printWidth?: number) =>
+      editConfigText("x.json", "", [{ op: "set", path: ["recommendations"], value, layout: { printWidth } }]);
+    expect(edit(120)).toContain('"recommendations": ["dbaeumer');
+    expect(edit()).toContain('"recommendations": [\n');
+  });
+
+  it("leaves arrays already in the file as they are", () => {
+    const text = '{\n  "a": [\n    1\n  ]\n}\n';
+    expect(editConfigText("x.json", text, [{ op: "set", path: ["b"], value: true }])).toContain('"a": [\n    1\n  ]');
+  });
 });
 
 describe("editConfigText: YAML", () => {

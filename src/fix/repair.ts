@@ -1,12 +1,18 @@
+/** How written JSON is laid out, to match the formatter that checks the file (e.g. Prettier's printWidth). */
+export interface Layout {
+  /** A written array of plain values goes on one line when the line fits; defaults to 80 (Prettier's default). */
+  printWidth?: number;
+}
+
 /** A path of keys (and array indexes) inside a structured config file. */
 export type KeyPath = readonly (string | number)[];
 
 /** One change to a CLI-managed key of a structured shared file (SPEC §9.2), or to a line of a line-based file. */
 export type KeyEdit =
-  | { op: "set"; path: KeyPath; value: unknown }
+  | { op: "set"; path: KeyPath; value: unknown; layout?: Layout }
   | { op: "delete"; path: KeyPath }
   /** Adds `value` to the array at `path` unless it is already there (creates the array). */
-  | { op: "add"; path: KeyPath; value: unknown }
+  | { op: "add"; path: KeyPath; value: unknown; layout?: Layout }
   /** Removes `value` from the array at `path`. */
   | { op: "remove"; path: KeyPath; value: unknown }
   /** Line-based files (.gitattributes, .gitignore): makes sure the line is present. */

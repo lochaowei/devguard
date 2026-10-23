@@ -11,6 +11,7 @@ import { typescriptSettingsLayer } from "./layers/settings-typescript.ts";
 import { toolVersionsLayer } from "./layers/tool-versions.ts";
 import type { CheckLayer, CheckScope, LayerContext } from "./layers/types.ts";
 import { uncoveredFilesLayer } from "./layers/uncovered.ts";
+import { vscodeFixLayer, vscodeLayer } from "./layers/vscode.ts";
 import type { Finding } from "./report/finding.ts";
 import type { ReportInput } from "./report/render.ts";
 import { listRepoFiles } from "./repo/files.ts";
@@ -33,6 +34,7 @@ export const CHECK_LAYERS: readonly CheckLayer[] = [
   typescriptSettingsLayer,
   toolVersionsLayer,
   gitattributesLayer,
+  vscodeLayer,
   // Layers above check the setup; code checks run last.
   codeLayer,
   // Tests and coverage run only with --full.
@@ -50,6 +52,7 @@ export const FIX_LAYERS: readonly CheckLayer[] = [
   javaSettingsLayer,
   typescriptSettingsLayer,
   gitattributesLayer,
+  vscodeFixLayer,
 ];
 
 export interface CheckOptions {
