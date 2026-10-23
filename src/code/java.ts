@@ -26,6 +26,7 @@ function checkstyleFindings(target: CodeTarget, ctx: CodeCheckContext, root: Xml
         message: e.attrs.message ?? "",
         file: toRepoPath(ctx.cwd, target.dir, file.attrs.name ?? ""),
         line: lineOf(e.attrs.line),
+        fix: "依 Checkstyle 訊息手動修改",
       }),
     ),
   );
@@ -39,6 +40,7 @@ function pmdFindings(target: CodeTarget, ctx: CodeCheckContext, root: XmlEl): Fi
         message: v.text,
         file: toRepoPath(ctx.cwd, target.dir, file.attrs.name ?? ""),
         line: lineOf(v.attrs.beginline),
+        fix: "依 PMD 訊息手動修改",
       }),
     ),
   );
@@ -49,6 +51,7 @@ function pmdFindings(target: CodeTarget, ctx: CodeCheckContext, root: XmlEl): Fi
         rule: "pmd/processing-error",
         message: e.attrs.msg ?? "",
         file: toRepoPath(ctx.cwd, target.dir, e.attrs.filename ?? ""),
+        fix: "依 PMD 訊息手動修改",
       }),
     );
   return [...violations, ...errors];
@@ -213,5 +216,14 @@ export const javaChecker: CodeChecker = {
     if (target.files === undefined) return findings;
     const wanted = new Set(target.files.map((f) => toRepoPath(ctx.cwd, target.dir, f)));
     return findings.filter((f) => f.file === undefined || wanted.has(f.file));
+  },
+  /** Spotless formats the whole component; Checkstyle and PMD have no automatic fixes. */
+  async fixSteps(target, ctx) {
+    const maven = (await buildOf(target, ctx)) === "maven";
+    return [
+      maven
+        ? { tool: "mvnw", args: ["-B", "-ntp", "spotless:apply"], okUpTo: 0 }
+        : { tool: "gradlew", args: ["spotlessApply", "--console=plain", "-q"], okUpTo: 0 },
+    ];
   },
 };

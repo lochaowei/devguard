@@ -70,8 +70,9 @@ describe("go checker: golangci-lint", () => {
         component: "svc/ (Go)",
         file: "svc/main.go",
         line: 12,
-        fix: "devguard fix --code svc/main.go",
-        fixable: true,
+        column: 1,
+        fix: "依 golangci-lint 訊息手動修改",
+        fixable: false,
       },
       expect.objectContaining({ level: "hint", rule: "golangci-lint/revive", file: "svc/pkg/a.go", line: 3 }),
     ]);
@@ -128,12 +129,13 @@ describe("go checker: failures", () => {
 });
 
 describe("go checker: categories", () => {
-  const stdout = output(
+  const issues = [
     issue("gofumpt", abs("svc", "main.go"), 4, "File is not properly formatted"),
     issue("goimports", abs("svc", "pkg", "a.go"), 1, "File is not properly formatted"),
     issue("typecheck", abs("svc", "main.go"), 9, "undefined: foo"),
     issue("govet", abs("svc", "main.go"), 7, "printf: bad verb"),
-  );
+  ];
+  const stdout = output(...issues);
 
   it("reports gofumpt and goimports problems as format findings", async () => {
     const { tools } = fakeTools({ code: 1, stdout });
@@ -150,6 +152,25 @@ describe("go checker: categories", () => {
     expect(await rulesFor("lint")).toEqual(["golangci-lint/govet"]);
     expect(await rulesFor("typecheck")).toEqual(["golangci-lint/typecheck"]);
     expect(await rulesFor("lint", "format", "typecheck")).toHaveLength(4);
+  });
+
+  it("marks formatter problems and issues with a suggested fix as fixable by devguard fix --code", async () => {
+    const withFix = {
+      ...issue("whitespace", abs("svc", "b.go"), 2, "unnecessary leading newline"),
+      SuggestedFixes: [{}],
+    };
+    const v1Fix = { ...issue("misspell", abs("svc", "c.go"), 5, "misspelling"), Replacement: { NewLines: ["x"] } };
+    const { tools } = fakeTools({ code: 1, stdout: output(...issues, withFix, v1Fix) });
+    const findings = await check(target(), tools);
+    expect(findings.map((f) => [f.rule, f.fixable])).toEqual([
+      ["golangci-lint/gofumpt", true],
+      ["golangci-lint/goimports", true],
+      ["golangci-lint/typecheck", false],
+      ["golangci-lint/govet", false],
+      ["golangci-lint/whitespace", true],
+      ["golangci-lint/misspell", true],
+    ]);
+    expect(findings.find((f) => f.rule === "golangci-lint/typecheck")?.fix).toBe("手動修正型別錯誤");
   });
 
   it("runs golangci-lint once for all categories", async () => {

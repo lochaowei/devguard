@@ -8,6 +8,8 @@ interface RuffDiagnostic {
   message: string;
   filename: string;
   location?: { row: number };
+  /** Absent or null when Ruff has no fix; `ruff check --fix` applies only the safe ones. */
+  fix?: { applicability?: string } | null;
 }
 
 function parseJson(text: string): unknown {
@@ -27,6 +29,7 @@ function ruffFindings(target: CodeTarget, ctx: CodeCheckContext, result: ToolRes
       message: d.message,
       file: toRepoPath(ctx.cwd, target.dir, d.filename),
       line: d.location?.row,
+      ...(d.fix?.applicability === "safe" ? {} : { fix: "依 Ruff 訊息手動修改" }),
     }),
   );
 }
@@ -145,5 +148,13 @@ export const pythonChecker: CodeChecker = {
       findings.push(...(await (usePyright ? pyright(target, ctx) : mypy(target, ctx))));
     }
     return findings;
+  },
+  /** Ruff's safe lint fixes first, then the formatter (Ruff's recommended order). */
+  fixSteps(target) {
+    const files = target.files ?? ["."];
+    return Promise.resolve([
+      { tool: "ruff", args: ["check", "--fix", "--force-exclude"], files, okUpTo: 1 },
+      { tool: "ruff", args: ["format", "--force-exclude"], files, okUpTo: 0 },
+    ]);
   },
 };

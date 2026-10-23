@@ -77,10 +77,32 @@ describe("python checker: Ruff lint", () => {
         component: "api/ (Python)",
         file: "api/src/app.py",
         line: 1,
-        fix: "devguard fix --code api/src/app.py",
-        fixable: true,
+        fix: "依 Ruff 訊息手動修改",
+        fixable: false,
       },
       expect.objectContaining({ level: "error", rule: "ruff/syntax-error", file: "api/src/broken.py", line: 4 }),
+    ]);
+  });
+
+  it("marks only diagnostics with a safe Ruff fix as fixable by devguard fix --code", async () => {
+    const diagnostic = (code: string, fix: unknown) => ({
+      code,
+      message: code,
+      filename: abs("api", "a.py"),
+      location: { row: 1, column: 1 },
+      fix,
+    });
+    const stdout = JSON.stringify([
+      diagnostic("F401", { applicability: "safe", message: "Remove unused import", edits: [] }),
+      diagnostic("B006", { applicability: "unsafe", message: "Replace with None", edits: [] }),
+      diagnostic("E501", null),
+    ]);
+    const { tools } = fakeTools({ "ruff check": { code: 1, stdout } });
+    const findings = await check(target({ categories: only("lint") }), tools);
+    expect(findings.map((f) => [f.rule, f.fixable, f.fix])).toEqual([
+      ["ruff/F401", true, "devguard fix --code api/a.py"],
+      ["ruff/B006", false, "依 Ruff 訊息手動修改"],
+      ["ruff/E501", false, "依 Ruff 訊息手動修改"],
     ]);
   });
 

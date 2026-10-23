@@ -41,4 +41,18 @@ export interface CodeCheckContext {
 export interface CodeChecker {
   language: Language;
   check(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]>;
+  /** The formatter and lint-fix runs that resolve the target's fixable findings, in order (`fix --code`). */
+  fixSteps(target: CodeTarget, ctx: CodeCheckContext): Promise<FixStep[]>;
+}
+
+/** One tool run that changes files in place, for `devguard fix --code` (SPEC §9.1). */
+export interface FixStep {
+  /** As in ToolRequest.tool. */
+  tool: string;
+  args: readonly string[];
+  /** File arguments, appended in batches short enough for cmd.exe; absent means none. */
+  files?: readonly string[];
+  env?: Readonly<Record<string, string>>;
+  /** The highest exit code that still means the tool ran (1 for a tool that exits 1 when problems are left). */
+  okUpTo: number;
 }
