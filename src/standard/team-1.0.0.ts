@@ -10,7 +10,8 @@ const vulnScan: ItemDef = { kind: "bool", label: "弱點掃描（進階）", val
 const ignoredVulns: ItemDef = { kind: "ignoredVulns", label: "忽略的弱點", value: [] };
 const bannedApisEmpty: ItemDef = { kind: "list", label: "禁用 API", value: [] };
 
-const mirror = (label: string, value: string): ItemDef => ({ kind: "style", label, value });
+/** A mirror: pointing it off the internal host is looser (SPEC §4.2, §10.2), so it needs a reason. */
+const mirror = (label: string, value: string): ItemDef => ({ kind: "mirror", label, value });
 
 /**
  * TODO(SPEC §12 item 5): PLACEHOLDER tool version ranges. The team has not set the real ranges, nor the exact
@@ -44,7 +45,7 @@ const typescriptTools: Record<string, ItemDef> = {
 };
 
 const goTools: Record<string, ItemDef> = {
-  // SPEC §5.2 exception: an exact binary from the internal Scoop bucket, checked on PATH. ≥2.12 for gomodguard_v2.
+  // SPEC §5.2 exception: an exact binary the developer puts on PATH, version checked by the CLI. ≥2.12 for gomodguard_v2.
   "tools.golangci-lint": { ...placeholderRange("golangci-lint", ">=2.12,<3", []), onPath: true },
   "tools.gofumpt": placeholderRange("gofumpt", ">=0.9,<1", ["mvdan.cc/gofumpt"]),
   "tools.goimports": placeholderRange("goimports", ">=0.38,<1", ["golang.org/x/tools/cmd/goimports"]),
@@ -74,7 +75,9 @@ export const team_1_0_0: Standard = {
     "mirrors.go": mirror("Go 鏡像", "https://nexus.example.internal/repository/go-proxy/"),
     "mirrors.gosumdb": mirror("Go checksum 資料庫鏡像", "https://nexus.example.internal/repository/go-sumdb-proxy/"),
     "mirrors.govulndb": mirror("Go 弱點資料庫鏡像", "https://nexus.example.internal/repository/go-vulndb-proxy/"),
+    "mirrors.osv": mirror("OSV 相容弱點查詢端點（pip-audit）", "https://osv.example.internal/v1/query"),
     "mirrors.maven": mirror("Maven 鏡像", "https://nexus.example.internal/repository/maven-public/"),
+    "mirrors.nvd": mirror("NVD 資料鏡像（Dependency-Check）", "https://nexus.example.internal/repository/nvd-mirror/"),
     "mirrors.tools": mirror("工具 binary 來源", "https://nexus.example.internal/repository/raw-tools/"),
     "mirrors.vscode": mirror("VS Code 內部 marketplace", "https://vsmarketplace.example.internal"),
   },

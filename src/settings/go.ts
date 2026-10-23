@@ -1,9 +1,10 @@
 import { isNode, LineCounter, parseDocument, type Document } from "yaml";
 import { compareToDefault } from "../declaration/compare.ts";
-import type { ResolvedComponent } from "../declaration/resolve.ts";
+import type { EffectiveItem, ResolvedComponent } from "../declaration/resolve.ts";
 import { fixText } from "../fix/category.ts";
 import type { Repair } from "../fix/repair.ts";
 import type { Finding, Level } from "../report/finding.ts";
+import { judgeConfigValue, setAt } from "./judge.ts";
 
 export const GOLANGCI_FILE = ".golangci.yml";
 export const GOLANGCI_FILES = [".golangci.yml", ".golangci.yaml"] as const;
@@ -59,6 +60,14 @@ class GoReport {
   /** The component's effective value of a standard item (default + declaration override). */
   effective(key: string): unknown {
     return this.component.effective[key]?.value;
+  }
+
+  declared(key: string): EffectiveItem | undefined {
+    return this.component.effective[key];
+  }
+
+  get componentName(): string {
+    return this.component.name;
   }
 }
 
@@ -149,30 +158,21 @@ const THRESHOLDS: readonly Threshold[] = [
   },
 ];
 
-/** Settings-file value vs declared value (SPEC §8): looser is an error, stricter a hint. */
+/** Settings-file value vs declared value, through the shared judge (SPEC §8): looser is an error, stricter a hint. */
 function judgeThreshold(r: GoReport, config: Golangci, t: Threshold, actual: unknown): void {
-  const declared = r.effective(t.item) as number;
-  const status = compareToDefault({ kind: "max", label: t.label, value: declared }, actual);
   const path = ["linters", "settings", t.linter, t.setting];
-  const what = `${GOLANGCI_FILE} 的 ${t.linter}.${t.setting} 是 ${String(actual)}`;
-  if (status === "looser") {
-    r.fixable(
-      "settings/golangci-looser",
-      `${what}，比宣告的${t.label} ${String(declared)} 寬鬆`,
-      {
-        ...config.at(path, `把 ${t.linter}.${t.setting} 改成 ${String(declared)}`),
-        observed: { key: t.item, value: actual },
-      },
-      [{ op: "set", file: config.file, path, value: declared }],
-    );
-  } else if (status === "stricter") {
-    r.add("hint", "settings/golangci-stricter", `${what}，比宣告的${t.label} ${String(declared)} 嚴格`, {
-      ...config.at(path, `建議把宣告的 ${t.item} 同步成 ${String(actual)}`),
-      observed: { key: t.item, value: actual },
-    });
-  } else if (status === "invalid") {
-    r.add("error", "settings/golangci-invalid", `${what}，必須是數字`, config.at(path));
-  }
+  const { line } = config.at(path);
+  const finding = judgeConfigValue({
+    key: t.item,
+    item: { kind: "max", label: t.label, value: r.effective(t.item) as number },
+    declared: r.declared(t.item),
+    actual,
+    site: { component: r.componentName, file: config.file, ...(line === undefined ? {} : { line }) },
+    label: `${t.linter}.${t.setting}`,
+    repair: setAt(config.file, path),
+    reportInvalid: true,
+  });
+  if (finding) r.findings.push(finding);
 }
 
 function checkThresholds(r: GoReport, config: Golangci): void {

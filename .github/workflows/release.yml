@@ -1,0 +1,57 @@
+# Builds devguard.exe and publishes it as a GitHub Release when a version tag is pushed (SPEC §3.1).
+#   git tag v0.1.0 && git push origin v0.1.0
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Built on Windows: icon and version info can only be set when compiling for the host (SPEC §3.1).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.18"
+          cache: npm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Tag matches package.json version
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match package.json version ${version}" >&2
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test:coverage
+
+      - name: Build exe
+        run: npm run build:exe
+
+      - name: Smoke test the exe without Node
+        run: npm run smoke:exe
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          sha256sum devguard-windows-x64.exe devguard-windows-arm64.exe > SHA256SUMS.txt
+          gh release create "${GITHUB_REF_NAME}" \
+            devguard-windows-x64.exe devguard-windows-arm64.exe SHA256SUMS.txt \
+            --title "devguard ${GITHUB_REF_NAME}" --generate-notes

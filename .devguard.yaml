@@ -1,4 +1,9 @@
 standard: team@1.0.0
+mirrors:
+  # Pointing a mirror off the internal host is looser than the standard (SPEC §4.2), so it needs a reason.
+  npm:
+    value: https://registry.npmjs.org/
+    reason: "devguard 本身在公司網路外開發，沒有內部 Nexus 可用"
 components:
   - path: ./
     language: typescript

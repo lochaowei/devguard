@@ -70,8 +70,9 @@ describe("go checker: golangci-lint", () => {
         component: "svc/ (Go)",
         file: "svc/main.go",
         line: 12,
-        fix: "devguard fix --code svc/main.go",
-        fixable: true,
+        column: 1,
+        fix: "依 golangci-lint 訊息手動修改",
+        fixable: false,
       },
       expect.objectContaining({ level: "hint", rule: "golangci-lint/revive", file: "svc/pkg/a.go", line: 3 }),
     ]);
@@ -128,12 +129,13 @@ describe("go checker: failures", () => {
 });
 
 describe("go checker: categories", () => {
-  const stdout = output(
+  const issues = [
     issue("gofumpt", abs("svc", "main.go"), 4, "File is not properly formatted"),
     issue("goimports", abs("svc", "pkg", "a.go"), 1, "File is not properly formatted"),
     issue("typecheck", abs("svc", "main.go"), 9, "undefined: foo"),
     issue("govet", abs("svc", "main.go"), 7, "printf: bad verb"),
-  );
+  ];
+  const stdout = output(...issues);
 
   it("reports gofumpt and goimports problems as format findings", async () => {
     const { tools } = fakeTools({ code: 1, stdout });
@@ -152,9 +154,73 @@ describe("go checker: categories", () => {
     expect(await rulesFor("lint", "format", "typecheck")).toHaveLength(4);
   });
 
+  it("marks formatter problems and issues with a suggested fix as fixable by devguard fix --code", async () => {
+    const withFix = {
+      ...issue("whitespace", abs("svc", "b.go"), 2, "unnecessary leading newline"),
+      SuggestedFixes: [{}],
+    };
+    const v1Fix = { ...issue("misspell", abs("svc", "c.go"), 5, "misspelling"), Replacement: { NewLines: ["x"] } };
+    const { tools } = fakeTools({ code: 1, stdout: output(...issues, withFix, v1Fix) });
+    const findings = await check(target(), tools);
+    expect(findings.map((f) => [f.rule, f.fixable])).toEqual([
+      ["golangci-lint/gofumpt", true],
+      ["golangci-lint/goimports", true],
+      ["golangci-lint/typecheck", false],
+      ["golangci-lint/govet", false],
+      ["golangci-lint/whitespace", true],
+      ["golangci-lint/misspell", true],
+    ]);
+    expect(findings.find((f) => f.rule === "golangci-lint/typecheck")?.fix).toBe("手動修正型別錯誤");
+  });
+
   it("runs golangci-lint once for all categories", async () => {
     const { tools, calls } = fakeTools();
     await check(target(), tools);
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe("go checker: staged files (SPEC §7.4)", () => {
+  /** `run` reports a gofumpt and an errcheck issue in main.go on disk; `fmt --stdin` collapses "func  f". */
+  function tools() {
+    const calls: ToolRequest[] = [];
+    const runner: ToolRunner = {
+      run(req) {
+        calls.push(req);
+        if (req.args?.[0] === "fmt") {
+          const formatted = (req.stdin ?? "").replace("func  f", "func f");
+          return Promise.resolve({ code: 0, stdout: formatted, stderr: "" });
+        }
+        const stdout = output(
+          issue("gofumpt", abs("svc", "main.go"), 1, "File is not properly formatted"),
+          issue("errcheck", abs("svc", "main.go"), 4, "Error return value is not checked"),
+        );
+        return Promise.resolve({ code: 1, stdout, stderr: "" });
+      },
+    };
+    return { runner, calls };
+  }
+
+  const stagedCheck = (runner: ToolRunner, staged: Record<string, string>) =>
+    goChecker.check(target({ files: ["main.go"] }), {
+      cwd: CWD,
+      tools: runner,
+      readText: () => Promise.resolve(undefined),
+      staged: (path) => Promise.resolve(staged[path]),
+    });
+
+  it("checks the staged version's format through `golangci-lint fmt --stdin`, not the working tree's", async () => {
+    const { runner, calls } = tools();
+    const clean = await stagedCheck(runner, { "svc/main.go": "package x\n" });
+    expect(clean.map((f) => f.rule)).toEqual(["golangci-lint/errcheck"]);
+    const fmt = calls.find((c) => c.args?.[0] === "fmt");
+    expect(fmt).toMatchObject({ tool: "golangci-lint", dir: "svc/", args: ["fmt", "--stdin"], stdin: "package x\n" });
+    expect(fmt?.env?.GOTOOLCHAIN).toBe("local");
+
+    const messy = await stagedCheck(tools().runner, { "svc/main.go": "package x\n\nfunc  f() {}\n" });
+    expect(messy.map((f) => [f.rule, f.file, f.line])).toEqual([
+      ["golangci-lint/errcheck", "svc/main.go", 4],
+      ["golangci-lint/fmt", "svc/main.go", 3],
+    ]);
   });
 });

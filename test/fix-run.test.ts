@@ -144,7 +144,7 @@ default = true
     expect(read(dir, "checkstyle.xml")).toContain("由 CLI 產生");
     expect(read(dir, "pmd-ruleset.xml")).toContain("由 CLI 產生");
     expect(read(dir, "pom.xml")).toBe(pom);
-    expect(after.map((f) => f.rule)).toContain("java/version-too-low");
+    expect(after.map((f) => f.rule)).toContain("settings/looser");
   });
 
   it("adds * text=auto eol=lf to .gitattributes", async () => {

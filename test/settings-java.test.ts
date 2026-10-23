@@ -82,7 +82,7 @@ describe("Java settings check", () => {
   it("is part of devguard check", async () => {
     const cwd = project({ ...GOOD, mvnw: undefined, "mvnw.cmd": undefined });
     const r = await runCheck({ cwd, today: TODAY, listFiles: () => Promise.resolve(Object.keys(GOOD).slice(3)) });
-    expect(rules(r.findings)).toContain("error:java/wrapper-missing");
+    expect(rules(r.findings)).toContain("error:settings/wrapper-missing");
   });
 
   it("leaves non-Java components and unresolved declarations alone", async () => {
@@ -97,7 +97,7 @@ describe("Java settings check", () => {
 
   it("reports a missing Maven wrapper", async () => {
     const findings = await check({ ...GOOD, mvnw: undefined, "mvnw.cmd": undefined });
-    expect(rules(findings)).toEqual(["error:java/wrapper-missing"]);
+    expect(rules(findings)).toEqual(["error:settings/wrapper-missing"]);
     expect(findings[0]?.component).toBe("./ (Java)");
     expect(findings[0]?.fix).toContain("mvn wrapper:wrapper");
   });
@@ -105,8 +105,8 @@ describe("Java settings check", () => {
   it("asks for the Gradle wrapper when the component builds with Gradle", async () => {
     const files = { ...GOOD, "pom.xml": undefined, mvnw: undefined, "mvnw.cmd": undefined, "build.gradle": "" };
     const findings = await check(files);
-    expect(rules(findings).filter((r) => r.startsWith("error"))).toEqual(["error:java/wrapper-missing"]);
-    expect(findings.find((f) => f.rule === "java/wrapper-missing")?.message).toContain("gradlew");
+    expect(rules(findings).filter((r) => r.startsWith("error"))).toEqual(["error:settings/wrapper-missing"]);
+    expect(findings.find((f) => f.rule === "settings/wrapper-missing")?.message).toContain("gradlew");
   });
 
   it("accepts a wrapper committed in a parent directory of the component", async () => {
@@ -124,7 +124,7 @@ describe("Java settings check", () => {
 describe("Checkstyle settings", () => {
   it("reports a missing CyclomaticComplexity module", async () => {
     const findings = await check({ ...GOOD, "checkstyle.xml": checkstyle(ILLEGAL_IMPORT) });
-    expect(rules(findings)).toEqual(["error:java/checkstyle-module-missing"]);
+    expect(rules(findings)).toEqual(["error:settings/checkstyle-module-missing"]);
     expect(findings[0]?.message).toContain("CyclomaticComplexity");
     expect(findings[0]?.file).toBe("checkstyle.xml");
     expect(findings[0]?.fix).toContain("devguard fix");
@@ -132,20 +132,20 @@ describe("Checkstyle settings", () => {
 
   it("reports a missing IllegalImport module", async () => {
     const findings = await check({ ...GOOD, "checkstyle.xml": checkstyle(CYCLOMATIC) });
-    expect(rules(findings)).toEqual(["error:java/checkstyle-module-missing"]);
+    expect(rules(findings)).toEqual(["error:settings/checkstyle-module-missing"]);
     expect(findings[0]?.message).toContain("IllegalImport");
   });
 
   it("treats a module with severity ignore as missing", async () => {
     const off = '<module name="IllegalImport"><property name="severity" value="ignore"/></module>';
     expect(rules(await check({ ...GOOD, "checkstyle.xml": checkstyle(off + CYCLOMATIC) }))).toEqual([
-      "error:java/checkstyle-module-missing",
+      "error:settings/checkstyle-module-missing",
     ]);
   });
 
   it("reports a missing Checkstyle config", async () => {
     const findings = await check({ ...GOOD, "checkstyle.xml": undefined });
-    expect(rules(findings)).toEqual(["error:java/checkstyle-missing"]);
+    expect(rules(findings)).toEqual(["error:settings/checkstyle-missing"]);
   });
 
   it("finds the config in Gradle's default location", async () => {
@@ -158,7 +158,7 @@ describe("Checkstyle settings", () => {
       ...GOOD,
       "checkstyle.xml": '<?xml version="1.0"?>\n<module name="Checker">\n<module>\n',
     });
-    expect(rules(findings)).toEqual(["error:java/config-unparseable"]);
+    expect(rules(findings)).toEqual(["error:settings/config-unparseable"]);
     expect(findings[0]?.line).toBeGreaterThan(1);
   });
 
@@ -189,14 +189,14 @@ describe("Checkstyle settings", () => {
   it("hints instead of guessing when max is a property reference", async () => {
     const ref = '<module name="CyclomaticComplexity"><property name="max" value="${cc.max}"/></module>';
     expect(rules(await check({ ...GOOD, "checkstyle.xml": checkstyle(ILLEGAL_IMPORT + ref) }))).toEqual([
-      "hint:java/config-value-unreadable",
+      "hint:settings/config-value-unreadable",
     ]);
   });
 
   it("errors when IllegalImport does not cover the banned APIs", async () => {
     const narrow = '<module name="IllegalImport"><property name="illegalPkgs" value="com.legacy"/></module>';
     const findings = await check({ ...GOOD, "checkstyle.xml": checkstyle(narrow + CYCLOMATIC) });
-    expect(rules(findings)).toEqual(["error:java/banned-api-not-enforced"]);
+    expect(rules(findings)).toEqual(["error:settings/banned-api-not-enforced"]);
     expect(findings[0]?.message).toContain("sun.*");
   });
 
@@ -211,7 +211,7 @@ describe("Checkstyle settings", () => {
   it("hints when IllegalImport uses regular expressions", async () => {
     const re = '<module name="IllegalImport"><property name="regexp" value="true"/></module>';
     expect(rules(await check({ ...GOOD, "checkstyle.xml": checkstyle(re + CYCLOMATIC) }))).toEqual([
-      "hint:java/config-value-unreadable",
+      "hint:settings/config-value-unreadable",
     ]);
   });
 });
@@ -227,13 +227,13 @@ describe("PMD settings", () => {
       ...GOOD,
       "pmd-ruleset.xml": ruleset('<rule ref="category/java/bestpractices.xml"/>'),
     });
-    expect(rules(findings)).toEqual(["error:java/pmd-rule-missing"]);
+    expect(rules(findings)).toEqual(["error:settings/pmd-rule-missing"]);
     expect(findings[0]?.message).toContain("CognitiveComplexity");
     expect(findings[0]?.fix).toContain("devguard fix");
   });
 
   it("reports a missing PMD ruleset", async () => {
-    expect(rules(await check({ ...GOOD, "pmd-ruleset.xml": undefined }))).toEqual(["error:java/pmd-missing"]);
+    expect(rules(await check({ ...GOOD, "pmd-ruleset.xml": undefined }))).toEqual(["error:settings/pmd-missing"]);
   });
 
   it("finds the ruleset in Gradle's default location", async () => {
@@ -265,18 +265,20 @@ describe("PMD settings", () => {
     expect(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(whole) })).toEqual([]);
     const excluded = '<rule ref="category/java/design.xml"><exclude name="CognitiveComplexity"/></rule>';
     expect(rules(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(excluded) }))).toEqual([
-      "error:java/pmd-rule-missing",
+      "error:settings/pmd-rule-missing",
     ]);
   });
 
   it("hints instead of guessing when reportLevel is not a number", async () => {
     expect(rules(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(level("${lvl}"))) }))).toEqual([
-      "hint:java/config-value-unreadable",
+      "hint:settings/config-value-unreadable",
     ]);
   });
 
   it("reports a malformed ruleset", async () => {
-    expect(rules(await check({ ...GOOD, "pmd-ruleset.xml": "<ruleset>" }))).toEqual(["error:java/config-unparseable"]);
+    expect(rules(await check({ ...GOOD, "pmd-ruleset.xml": "<ruleset>" }))).toEqual([
+      "error:settings/config-unparseable",
+    ]);
   });
 });
 
@@ -288,7 +290,7 @@ describe("Java version", () => {
 
   it("errors when maven.compiler.release is below the standard", async () => {
     const findings = await check({ ...GOOD, "pom.xml": pom(release("11")) });
-    expect(rules(findings)).toEqual(["error:java/version-too-low"]);
+    expect(rules(findings)).toEqual(["error:settings/looser"]);
     expect(findings[0]?.message).toContain("11");
     expect(findings[0]?.message).toContain("17");
     expect(findings[0]?.file).toBe("pom.xml");
@@ -297,21 +299,21 @@ describe("Java version", () => {
 
   it("judges against the declared minimum", async () => {
     const decl = JAVA_ROOT + '    overrides:\n      java.minVersion: "21"\n';
-    expect(rules(await check(GOOD, decl))).toEqual(["error:java/version-too-low"]);
+    expect(rules(await check(GOOD, decl))).toEqual(["error:settings/looser"]);
     expect(await check({ ...GOOD, "pom.xml": pom(release("21")) }, decl)).toEqual([]);
     expect(await check({ ...GOOD, "pom.xml": pom(release("25")) }, decl)).toEqual([]);
   });
 
   it("reads the old 1.x form", async () => {
-    expect(rules(await check({ ...GOOD, "pom.xml": pom(release("1.8")) }))).toEqual(["error:java/version-too-low"]);
+    expect(rules(await check({ ...GOOD, "pom.xml": pom(release("1.8")) }))).toEqual(["error:settings/looser"]);
   });
 
   it("reads release from the compiler plugin and resolves a property reference", async () => {
     expect(rules(await check({ ...GOOD, "pom.xml": pom("", compilerPlugin("11")) }))).toEqual([
-      "error:java/version-too-low",
+      "error:settings/looser",
     ]);
     const viaProperty = pom("<java.version>11</java.version>", compilerPlugin("${java.version}"));
-    expect(rules(await check({ ...GOOD, "pom.xml": viaProperty }))).toEqual(["error:java/version-too-low"]);
+    expect(rules(await check({ ...GOOD, "pom.xml": viaProperty }))).toEqual(["error:settings/looser"]);
     const viaRelease = pom("<java.version>21</java.version>" + release("${java.version}"));
     expect(await check({ ...GOOD, "pom.xml": viaRelease })).toEqual([]);
   });
@@ -319,38 +321,66 @@ describe("Java version", () => {
   it("falls back to java.version or maven.compiler.target/source when maven.compiler.release is absent", async () => {
     expect(await check({ ...GOOD, "pom.xml": pom("<java.version>21</java.version>") })).toEqual([]);
     expect(rules(await check({ ...GOOD, "pom.xml": pom("<java.version>11</java.version>") }))).toEqual([
-      "error:java/version-too-low",
+      "error:settings/looser",
     ]);
     const targetPlugin =
       "<build><plugins><plugin><artifactId>maven-compiler-plugin</artifactId>" +
       "<configuration><target>11</target></configuration></plugin></plugins></build>";
-    expect(rules(await check({ ...GOOD, "pom.xml": pom("", targetPlugin) }))).toEqual(["error:java/version-too-low"]);
+    expect(rules(await check({ ...GOOD, "pom.xml": pom("", targetPlugin) }))).toEqual(["error:settings/looser"]);
   });
 
   it("only hints when the version may come from a parent POM or cannot be resolved", async () => {
     const parent = "<parent><groupId>g</groupId><artifactId>a</artifactId><version>1</version></parent>";
     const inherited = await check({ ...GOOD, "pom.xml": pom("", parent) });
-    expect(rules(inherited)).toEqual(["hint:java/version-unreadable"]);
+    expect(rules(inherited)).toEqual(["hint:settings/version-unreadable"]);
     expect(inherited[0]?.message).toContain("parent");
     expect(rules(await check({ ...GOOD, "pom.xml": pom(release("${jdk}")) }))).toEqual([
-      "hint:java/version-unreadable",
+      "hint:settings/version-unreadable",
     ]);
-    expect(rules(await check({ ...GOOD, "pom.xml": pom("") }))).toEqual(["hint:java/version-unreadable"]);
+    expect(rules(await check({ ...GOOD, "pom.xml": pom("") }))).toEqual(["hint:settings/version-unreadable"]);
   });
 
   it("only hints when pom.xml cannot be parsed", async () => {
-    expect(rules(await check({ ...GOOD, "pom.xml": "<project>" }))).toEqual(["hint:java/version-unreadable"]);
+    expect(rules(await check({ ...GOOD, "pom.xml": "<project>" }))).toEqual(["hint:settings/version-unreadable"]);
   });
 
   it("only hints for Gradle build scripts, which are code", async () => {
     const files = { ...GOOD, "pom.xml": undefined, mvnw: undefined, "mvnw.cmd": undefined };
     const findings = await check({ ...files, "build.gradle.kts": "java { toolchain { } }", gradlew: "" });
-    expect(rules(findings)).toEqual(["hint:java/version-unreadable"]);
+    expect(rules(findings)).toEqual(["hint:settings/version-unreadable"]);
     expect(findings[0]?.message).toContain("build.gradle.kts");
   });
 
   it("hints when there is no build file at all", async () => {
     const findings = await check({ ...GOOD, "pom.xml": undefined });
-    expect(rules(findings)).toEqual(["hint:java/build-file-missing"]);
+    expect(rules(findings)).toEqual(["hint:settings/build-file-missing"]);
+  });
+});
+
+describe("Lombok-generated code is left out of coverage (SPEC §6.4)", () => {
+  const LOMBOK =
+    "<dependencies><dependency><groupId>org.projectlombok</groupId>" +
+    "<artifactId>lombok</artifactId></dependency></dependencies>";
+  const withLombok = { ...GOOD, "pom.xml": pom(undefined, LOMBOK) };
+
+  it("reports a Lombok build without lombok.addLombokGeneratedAnnotation = true, and fix adds the line", async () => {
+    const findings = await check(withLombok);
+    expect(rules(findings)).toEqual(["error:settings/lombok-generated-annotation"]);
+    expect(findings[0]).toMatchObject({ file: "lombok.config" });
+    expect(findings[0]?.fix).toMatch(/^devguard fix/);
+    expect(findings[0]?.repairs).toEqual([
+      { op: "line", file: "lombok.config", value: "lombok.addLombokGeneratedAnnotation = true" },
+    ]);
+    const off = await check({ ...withLombok, "lombok.config": "lombok.addLombokGeneratedAnnotation = false\n" });
+    expect(rules(off)).toEqual(["error:settings/lombok-generated-annotation"]);
+  });
+
+  it("accepts the setting in the component's lombok.config or one above it; builds without Lombok need none", async () => {
+    const config = "config.stopBubbling = true\nlombok.addLombokGeneratedAnnotation=true\n";
+    expect(await check({ ...withLombok, "lombok.config": config })).toEqual([]);
+    const nested = "standard: team@1.0.0\ncomponents:\n  - path: svc/\n    language: java\n";
+    const files = Object.fromEntries(Object.entries(withLombok).map(([k, v]) => [`svc/${k}`, v]));
+    expect(await check({ ...files, "lombok.config": config }, nested)).toEqual([]);
+    expect(await check(GOOD)).toEqual([]);
   });
 });

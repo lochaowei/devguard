@@ -1,12 +1,12 @@
 import { parse as parseToml, patch as patchToml, stringify as stringifyToml } from "@decimalturn/toml-patch";
-import { applyEdits, modify, parse as parseJsoncTree, type FormattingOptions } from "jsonc-parser";
-import { isScalar, isSeq, parseDocument, type Document, type YAMLSeq } from "yaml";
+import { applyEdits, modify, parse as parseJsoncTree, type FormattingOptions, type ParseError } from "jsonc-parser";
+import { isScalar, isSeq, parse as parseYaml, parseDocument, type Document, type YAMLSeq } from "yaml";
 import type { KeyEdit, KeyPath } from "./repair.ts";
 
 /** How a structured shared file is read and written. */
-export type EditFormat = "toml" | "jsonc" | "yaml" | "lines";
+export type EditFormat = "toml" | "jsonc" | "yaml" | "lines" | "ini";
 
-const LINE_FILES = new Set([".gitattributes", ".gitignore"]);
+const LINE_FILES = new Set([".gitattributes", ".gitignore", "lombok.config"]);
 
 const baseName = (file: string): string => file.slice(file.lastIndexOf("/") + 1);
 
@@ -14,6 +14,7 @@ const baseName = (file: string): string => file.slice(file.lastIndexOf("/") + 1)
 export function editFormat(file: string, text = ""): EditFormat | undefined {
   const name = baseName(file);
   if (LINE_FILES.has(name)) return "lines";
+  if (name === ".npmrc") return "ini";
   if (name === ".prettierrc") return text.trim() === "" || text.trimStart().startsWith("{") ? "jsonc" : "yaml";
   if (/\.toml$/.test(name)) return "toml";
   if (/\.(json|jsonc|json5)$/.test(name)) return "jsonc";
@@ -83,14 +84,31 @@ function hasTomlTable(text: string, doc: Obj, table: KeyPath, name: string): boo
 }
 
 /**
+ * Tables added to arrays that do not exist yet ([[tool.uv.index]]), by array name: appended as `[[...]]` blocks,
+ * since toml-patch would write them inline.
+ */
+function newArrayTables(adds: readonly PathEdit[]): Map<string, Obj[]> {
+  const arrays = new Map<string, Obj[]>();
+  for (const e of adds) {
+    if (e.op !== "add" || !isObj(e.value)) continue;
+    const name = e.path.map(bareKey).join(".");
+    const items = arrays.get(name) ?? [];
+    if (!items.some((v) => same(v, e.value))) arrays.set(name, [...items, e.value]);
+  }
+  return arrays;
+}
+
+/**
  * toml-patch writes a key of a table that does not exist yet as a dotted key at the top of the file
  * (`tool.mypy = {strict = true}`), so keys of new tables are collected and appended as `[section]` blocks instead.
  */
 function editToml(text: string, edits: readonly KeyEdit[]): string {
   const empty = text.trim() === "";
   const doc = (empty ? {} : parseToml(text)) as Obj;
+  const newArray = (e: PathEdit) => e.op === "add" && isObj(e.value) && getIn(doc, e.path) === undefined;
+  const arrayTables = newArrayTables(pathEdits(edits).filter(newArray));
   const sections = new Map<string, Obj>();
-  for (const e of pathEdits(edits)) {
+  for (const e of pathEdits(edits).filter((x) => !newArray(x))) {
     const table = e.path.slice(0, -1);
     const key = String(e.path[e.path.length - 1]);
     const name = table.map(bareKey).join(".");
@@ -99,10 +117,14 @@ function editToml(text: string, edits: readonly KeyEdit[]): string {
     if (value !== undefined && !hasTomlTable(text, doc, table, name)) sections.set(name, { ...section, [key]: value });
     else setIn(doc, e.path, value);
   }
+  const blocks = [
+    // Top-level keys of an empty file (a new ruff.toml) have no section header.
+    ...[...sections].map(([name, values]) => ({ head: name ? `[${name}]\n` : "", values })),
+    ...[...arrayTables].flatMap(([name, items]) => items.map((values) => ({ head: `[[${name}]]\n`, values }))),
+  ];
   let out = empty ? "" : patchToml(text, doc, TOML_FORMAT);
-  for (const [name, values] of sections) {
-    const header = name ? `[${name}]\n` : "";
-    out += `${separator(out)}${header}${stringifyToml(values, TOML_FORMAT).trimEnd()}\n`;
+  for (const { head, values } of blocks) {
+    out += `${separator(out)}${head}${stringifyToml(values, TOML_FORMAT).trimEnd()}\n`;
   }
   return out;
 }
@@ -112,12 +134,40 @@ function jsonFormatting(text: string): FormattingOptions {
   return { insertSpaces: !indent.startsWith("\t"), tabSize: indent.startsWith("\t") ? 1 : indent.length, eol: "\n" };
 }
 
+/** Prettier's default print width: a written array of plain values that fits stays on one line. */
+const DEFAULT_WIDTH = 80;
+const PLAIN_ARRAY = /\[\n(?:[ \t]*(?:"(?:[^"\\\n]|\\.)*"|-?\d[\d.eE+-]*|true|false|null),?\n)+[ \t]*\]/g;
+
+/**
+ * jsonc-parser writes every array one value per line; Prettier puts an array of plain values on one line when it fits.
+ * Only the text an edit writes is changed, so arrays already in the file keep their layout.
+ */
+function inlineShortArrays(content: string, column: number, width: number): string {
+  return content.replace(PLAIN_ARRAY, (array: string, at: number) => {
+    const lineStart = content.lastIndexOf("\n", at) + 1;
+    const lead = (lineStart === 0 ? column : 0) + at - lineStart;
+    const values = array
+      .slice(1, -1)
+      .split("\n")
+      .map((l) => l.trim().replace(/,$/, ""))
+      .filter((l) => l !== "");
+    const inline = `[${values.join(", ")}]`;
+    const tail = /^,?/.exec(content.slice(at + array.length))?.[0] ?? "";
+    return lead + inline.length + tail.length <= width ? inline : array;
+  });
+}
+
 function editJsonc(text: string, edits: readonly KeyEdit[]): string {
   let out = text.trim() === "" ? "{}\n" : text;
   const formattingOptions = jsonFormatting(out);
   for (const e of pathEdits(edits)) {
     const value = valueAfter(e, getIn(parseJsoncTree(out), e.path));
-    out = applyEdits(out, modify(out, [...e.path], value, { formattingOptions }));
+    const width = ("layout" in e ? e.layout?.printWidth : undefined) ?? DEFAULT_WIDTH;
+    const changes = modify(out, [...e.path], value, { formattingOptions }).map((c) => ({
+      ...c,
+      content: inlineShortArrays(c.content, c.offset - out.lastIndexOf("\n", c.offset - 1) - 1, width),
+    }));
+    out = applyEdits(out, changes);
   }
   return out;
 }
@@ -150,11 +200,35 @@ function editLines(text: string, edits: readonly KeyEdit[]): string {
   return lines.join("\n") + "\n";
 }
 
+function iniKey(line: string): string | undefined {
+  const trimmed = line.trim();
+  if (trimmed.startsWith("#") || trimmed.startsWith(";")) return undefined;
+  const at = trimmed.indexOf("=");
+  return at < 0 ? undefined : trimmed.slice(0, at).trim();
+}
+
+/** `key=value` files (.npmrc): `set` replaces the key's line or appends one, `delete` drops it; the rest stays. */
+function editIni(text: string, edits: readonly KeyEdit[]): string {
+  const lines = text.split(/\r?\n/);
+  if (lines[lines.length - 1] === "") lines.pop();
+  for (const e of pathEdits(edits)) {
+    const key = String(e.path[0]);
+    const at = lines.findIndex((l) => iniKey(l) === key);
+    if (e.op === "delete" && at >= 0) lines.splice(at, 1);
+    if (e.op !== "set") continue;
+    const line = `${key}=${String(e.value)}`;
+    if (at >= 0) lines[at] = line;
+    else lines.push(line);
+  }
+  return lines.join("\n") + "\n";
+}
+
 const EDITORS: Record<EditFormat, (text: string, edits: readonly KeyEdit[]) => string> = {
   toml: editToml,
   jsonc: editJsonc,
   yaml: editYaml,
   lines: editLines,
+  ini: editIni,
 };
 
 /**
@@ -165,4 +239,29 @@ export function editConfigText(file: string, text: string, edits: readonly KeyEd
   const format = editFormat(file, text);
   if (!format) throw new Error(`${file} 不是 CLI 能修改的結構化設定檔`);
   return EDITORS[format](text.replace(/\r\n/g, "\n"), edits);
+}
+
+/**
+ * A structured config file's content as plain data, with the same libraries that edit it (TOML, JSONC, YAML);
+ * undefined when it is not one of those or does not parse. "" parses to an empty object.
+ */
+export function parseConfigText(file: string, text: string): unknown {
+  if (text.trim() === "") return {};
+  try {
+    switch (editFormat(file, text)) {
+      case "toml":
+        return parseToml(text) as unknown;
+      case "jsonc": {
+        const errors: ParseError[] = [];
+        const value = parseJsoncTree(text, errors, { allowTrailingComma: true }) as unknown;
+        return errors.length === 0 ? value : undefined;
+      }
+      case "yaml":
+        return parseYaml(text) as unknown;
+      default:
+        return undefined;
+    }
+  } catch {
+    return undefined;
+  }
 }

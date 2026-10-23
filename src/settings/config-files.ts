@@ -1,16 +1,7 @@
-import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-
-/** Reads a text file, or undefined when it does not exist. */
-export async function readIfExists(path: string): Promise<string | undefined> {
-  try {
-    return await readFile(path, "utf8");
-  } catch (e) {
-    const code = (e as NodeJS.ErrnoException).code;
-    if (code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR") return undefined;
-    throw e;
-  }
-}
+import { parse as parseJsoncTree, type ParseError } from "jsonc-parser";
+import { readIfExists } from "../shared/fs.ts";
+import { isRecord } from "../shared/guards.ts";
 
 export interface FoundFile {
   name: string;
@@ -42,42 +33,11 @@ export async function findFirst(dir: string, names: readonly string[], subDir = 
   return undefined;
 }
 
-/** Drops comments and trailing commas outside strings, so JSONC (tsconfig, biome.jsonc) parses as JSON. */
-function stripJsonc(text: string): string {
-  let out = "";
-  let i = 0;
-  while (i < text.length) {
-    const c = text.charAt(i);
-    if (c === '"') {
-      const end = endOfString(text, i);
-      out += text.slice(i, end);
-      i = end;
-    } else if (text.startsWith("//", i)) {
-      while (i < text.length && text.charAt(i) !== "\n") i++;
-    } else if (text.startsWith("/*", i)) {
-      const end = text.indexOf("*/", i + 2);
-      i = end < 0 ? text.length : end + 2;
-    } else {
-      out += c;
-      i++;
-    }
-  }
-  return out.replace(/,(\s*[}\]])/g, "$1");
-}
-
-function endOfString(text: string, start: number): number {
-  let i = start + 1;
-  while (i < text.length && text.charAt(i) !== '"') i += text.charAt(i) === "\\" ? 2 : 1;
-  return i + 1;
-}
-
 /** Parses JSON with comments and trailing commas; undefined when it is not valid. */
 export function parseJsonc(text: string): unknown {
-  try {
-    return JSON.parse(stripJsonc(text)) as unknown;
-  } catch {
-    return undefined;
-  }
+  const errors: ParseError[] = [];
+  const value = parseJsoncTree(text, errors, { allowTrailingComma: true }) as unknown;
+  return errors.length === 0 ? value : undefined;
 }
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
@@ -118,9 +78,6 @@ export function objectProperty(text: string, name: string): string | undefined {
 
 /** Signs that a code-form config pulls settings from somewhere this file does not show. */
 export const pullsFromElsewhere = (text: string): boolean => /\bmergeConfig\b|\.\.\.|\bpreset\b|\bextends\b/.test(text);
-
-export const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** Follows a dotted path through nested objects. */
 export function at(v: unknown, ...keys: string[]): unknown {

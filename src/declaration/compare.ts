@@ -35,6 +35,27 @@ function compareStyle(def: unknown, value: unknown): Status {
   return sameValue(def, value) ? "same" : "different";
 }
 
+/** The scheme and host (with port) of a URL; undefined when it is not one. */
+function hostOf(url: string): string | undefined {
+  try {
+    const u = new URL(url);
+    return `${u.protocol}//${u.host}`.toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
+/** Another repository on the default mirror's host is a style change; anywhere else is looser (SPEC §4.2, §10.2). */
+function compareMirror(item: ItemDef, value: unknown): Status {
+  if (typeof value !== "string" || typeof item.value !== "string") return "invalid";
+  // An empty mirror points nowhere: the checks that need it report it missing.
+  if (value.trim() === "") return "different";
+  if (hostOf(value) === undefined) return "invalid";
+  const norm = (u: string) => u.trim().replace(/\/+$/, "").toLowerCase();
+  if (norm(value) === norm(item.value)) return "same";
+  return hostOf(value) === hostOf(item.value) ? "different" : "looser";
+}
+
 function compareChoice(item: ItemDef, value: unknown): Status {
   if (typeof value !== "string") return "invalid";
   if (value === item.value) return "same";
@@ -87,6 +108,7 @@ const COMPARERS: Record<ItemDef["kind"], (item: ItemDef, value: unknown) => Stat
   list: (item, value) => compareList(item.value as string[], value),
   choice: compareChoice,
   style: (item, value) => compareStyle(item.value, value),
+  mirror: compareMirror,
   ignoredVulns: compareIgnoredVulns,
 };
 

@@ -69,7 +69,7 @@
 
 ### 執行方式
 
-- **工具執行器**：PATH 上的 `golangci-lint`（例外由內部 Scoop bucket 分發）與 `go tool <name>`（鎖定於 `go.mod` 的 `tool` directive）；執行時自動帶入 `GOTOOLCHAIN=local` 與鏡像環境變數（`GOPROXY`、`GOSUMDB`）。
+- **工具執行器**：PATH 上的 `golangci-lint`（例外：指定版本的 binary 由開發者放到 PATH，CLI 核對版本）與 `go tool <name>`（鎖定於 `go.mod` 的 `tool` directive）；執行時一律帶入 `GOTOOLCHAIN=local`；golangci-lint 與套件管理指令另外帶入鏡像環境變數（`GOPROXY`、`GOSUMDB`），`go tool` 與 `go mod` 等檢查用的指令則帶入 `GOPROXY=off`，檢查時不下載任何模組。
 - **程式碼檢查（`code` 層）**：
   - 透過 `golangci-lint run --output.json.path stdout` 一次涵蓋 lint、format 與型別編譯問題，並依類別過濾。
 - **測試與覆蓋率（`tests` 層，`--full`）**：

@@ -21,6 +21,7 @@ export interface SmokeResult {
 const SAMPLE: Readonly<Record<string, string>> = {
   ".devguard.yaml": "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: typescript\n",
   ".gitattributes": "* text=auto eol=lf\n",
+  ".npmrc": "registry=https://nexus.example.internal/repository/npm-proxy/\n",
   "tsconfig.json": JSON.stringify({
     compilerOptions: {
       strict: true,

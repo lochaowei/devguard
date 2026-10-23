@@ -23,12 +23,12 @@ export interface PendingChanges {
  * applies after confirmation; `--yes` applies directly; a non-interactive run without `--yes` only previews and exits
  * non-zero. Returns the exit code.
  */
-export async function previewThenApply(io: Interaction, changes: PendingChanges): Promise<0 | 1> {
+export async function previewThenApply(io: Interaction, changes: PendingChanges, applyFlag = "--yes"): Promise<0 | 1> {
   io.write(changes.preview);
   if (!changes.pending) return 0;
   if (!io.yes) {
     if (!io.interactive) {
-      io.write("非互動環境：只預覽，沒有套用。加上 --yes 才會套用。\n");
+      io.write(`非互動環境：只預覽，沒有套用。加上 ${applyFlag} 才會套用。\n`);
       return 1;
     }
     if (!(await io.confirm("要套用以上修改嗎？[y/N] "))) {

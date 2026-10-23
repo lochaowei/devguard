@@ -1,20 +1,24 @@
 import type { Resolution } from "./declaration/resolve.ts";
+import { claudeCodeLayer } from "./layers/claude-code.ts";
 import { codeLayer } from "./layers/code.ts";
 import { declarationLayer } from "./layers/declaration.ts";
 import { depsLayer } from "./layers/deps.ts";
 import { gitattributesLayer } from "./layers/gitattributes.ts";
-import { pythonSettingsLayer } from "./layers/python-settings.ts";
+import { pythonSettingsLayer } from "./layers/settings-python.ts";
 import { goSettingsLayer } from "./layers/settings-go.ts";
+import { mirrorsLayer } from "./layers/mirrors.ts";
 import { javaSettingsLayer } from "./layers/settings-java.ts";
 import { testsLayer } from "./layers/tests.ts";
 import { typescriptSettingsLayer } from "./layers/settings-typescript.ts";
 import { toolVersionsLayer } from "./layers/tool-versions.ts";
-import type { CheckLayer, CheckScope, LayerContext } from "./layers/types.ts";
+import { fixLayers, type CheckLayer, type CheckScope, type LayerContext, type LayerResult } from "./layers/types.ts";
 import { uncoveredFilesLayer } from "./layers/uncovered.ts";
+import { vscodeLayer } from "./layers/vscode.ts";
+import { vulnLayer } from "./layers/vuln.ts";
 import type { Finding } from "./report/finding.ts";
 import type { ReportInput } from "./report/render.ts";
 import { listRepoFiles } from "./repo/files.ts";
-import { createToolRunner, type ToolRunner } from "./tools/runner.ts";
+import { createToolRunner, ToolMissingError, type ToolRunner } from "./tools/runner.ts";
 
 export type { CheckLayer, CheckScope, LayerContext, LayerResult } from "./layers/types.ts";
 
@@ -22,7 +26,7 @@ export interface CheckResult extends ReportInput {
   resolution?: Resolution;
 }
 
-/** The layers of `devguard check`, in order. A new layer only needs to be added here. */
+/** The layers of `devguard check`, in order. A new layer only needs to be added here (with `fixable` if `fix` repairs it). */
 export const CHECK_LAYERS: readonly CheckLayer[] = [
   declarationLayer,
   uncoveredFilesLayer,
@@ -33,24 +37,18 @@ export const CHECK_LAYERS: readonly CheckLayer[] = [
   typescriptSettingsLayer,
   toolVersionsLayer,
   gitattributesLayer,
+  mirrorsLayer,
+  claudeCodeLayer,
+  vscodeLayer,
   // Layers above check the setup; code checks run last.
   codeLayer,
-  // Tests and coverage run only with --full.
+  // Tests, coverage and vulnerability scans run only with --full.
   testsLayer,
+  vulnLayer,
 ];
 
-/**
- * The layers `devguard fix` runs to find what to repair: the config checks, without the ones that run the project's
- * tools (dependencies, tool versions). A settings layer whose findings carry repairs belongs here too.
- */
-export const FIX_LAYERS: readonly CheckLayer[] = [
-  declarationLayer,
-  pythonSettingsLayer,
-  goSettingsLayer,
-  javaSettingsLayer,
-  typescriptSettingsLayer,
-  gitattributesLayer,
-];
+/** The layers `devguard fix` runs to find what to repair: the fixable ones of CHECK_LAYERS (`CheckLayer.fixable`). */
+export const FIX_LAYERS: readonly CheckLayer[] = fixLayers(CHECK_LAYERS);
 
 export interface CheckOptions {
   cwd: string;
@@ -61,9 +59,24 @@ export interface CheckOptions {
   listFiles?: (cwd: string) => Promise<string[]>;
   /** Defaults to the whole repo and every category. */
   scope?: CheckScope;
+  /** The staged version of a file (pre-commit hook); formatters and single-file linters check it via stdin. */
+  stagedText?: (repoPath: string) => Promise<string | undefined>;
+  /**
+   * A tool that is not installed: `throw` (plain `check`: the CLI exits 2, SPEC §11) or `report` it as an error with
+   * the install command and run the remaining layers (doctor and the hooks, so the environment checks still run).
+   */
+  missingTools?: "throw" | "report";
 }
 
-function layerContext(options: CheckOptions): LayerContext {
+export const TOOL_MISSING_RULE = "environment/tool-missing";
+
+/** A tool that is not installed, as doctor and the hooks report it (SPEC §5.2: the install command, never a download). */
+export function toolMissingFinding(e: ToolMissingError): Finding {
+  return { level: "error", layer: "environment", rule: TOOL_MISSING_RULE, message: e.message, fix: e.install };
+}
+
+/** The context the layers share; `resolution` is filled in once the declaration layer has run. */
+export function layerContext(options: CheckOptions): LayerContext {
   const { cwd, today } = options;
   const listFiles = options.listFiles ?? ((dir: string) => listRepoFiles(dir));
   let files: Promise<string[]> | undefined;
@@ -73,8 +86,23 @@ function layerContext(options: CheckOptions): LayerContext {
     tools: options.tools ?? createToolRunner({ cwd }),
     files: () => (files ??= listFiles(cwd)),
     scope: options.scope ?? { full: false },
+    ...(options.stagedText ? { stagedText: options.stagedText } : {}),
   };
 }
+
+/** One layer's result; a missing tool becomes a finding when the options say so (doctor, hooks). */
+async function runLayer(layer: CheckLayer, ctx: LayerContext, options: CheckOptions): Promise<LayerResult> {
+  try {
+    return await layer.run(ctx);
+  } catch (e) {
+    if (!(e instanceof ToolMissingError) || options.missingTools !== "report") throw e;
+    return { findings: [toolMissingFinding(e)] };
+  }
+}
+
+/** The same missing tool reported by another layer is reported once. */
+const repeated = (f: Finding, seen: readonly Finding[]) =>
+  f.rule === TOOL_MISSING_RULE && seen.some((g) => g.rule === f.rule && g.message === f.message);
 
 /** Runs the layers in order and merges their findings into one report. */
 export async function runCheck(
@@ -84,8 +112,8 @@ export async function runCheck(
   const ctx = layerContext(options);
   const findings: Finding[] = [];
   for (const layer of layers) {
-    const result = await layer.run(ctx);
-    findings.push(...result.findings);
+    const result = await runLayer(layer, ctx, options);
+    findings.push(...result.findings.filter((f) => !repeated(f, findings)));
     if (result.resolution) ctx.resolution = result.resolution;
   }
   const { resolution } = ctx;
@@ -98,11 +126,12 @@ export function checkDeclaration(cwd: string, today: string): Promise<CheckResul
 }
 
 /**
- * Tests and coverage alone, as `check --full` runs them (SPEC §7.1, for the pre-push hook): the declaration layer,
- * then each component's tests. Test failures and coverage below the declared threshold are separate errors.
+ * Tests, coverage and vulnerability scans alone, as `check --full` runs them (SPEC §7.1, for the pre-push hook): the
+ * declaration layer, then each component's tests, then the scans of components with `deps.vulnScan` on. Test failures
+ * and coverage below the declared threshold are separate errors.
  */
 export function checkTestsAndCoverage(options: Omit<CheckOptions, "scope">): Promise<CheckResult> {
-  return runCheck({ ...options, scope: { full: true } }, [declarationLayer, testsLayer]);
+  return runCheck({ ...options, scope: { full: true } }, [declarationLayer, testsLayer, vulnLayer]);
 }
 
 export function localDate(now = new Date()): string {

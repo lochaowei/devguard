@@ -1,6 +1,7 @@
-import { at, findFirst, isRecord, parseJsonc } from "../config-files.ts";
+import { at, findFirst, parseJsonc } from "../config-files.ts";
 import type { Repair } from "../../fix/repair.ts";
 import { setAt, type SettingsJudge } from "../judge.ts";
+import { isRecord } from "../../shared/guards.ts";
 
 /** Biome's defaults for what the config leaves out. */
 const DEFAULT_LINE_WIDTH = 80;

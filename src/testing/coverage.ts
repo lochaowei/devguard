@@ -1,7 +1,7 @@
-import { readFile } from "node:fs/promises";
 import type { Finding } from "../report/finding.ts";
 import type { ToolResult } from "../tools/runner.ts";
 import type { TestTarget } from "./types.ts";
+import { readIfExists } from "../shared/fs.ts";
 
 /** The coverage measures the standard can hold to a threshold (SPEC §6). */
 export type CoverageMetric = "lines" | "branches" | "functions" | "statements";
@@ -75,13 +75,7 @@ export function judgeCoverage(target: TestTarget, measured: readonly Measured[])
 }
 
 /** A report file's text, or undefined when the run did not write it. */
-export async function readReport(path: string): Promise<string | undefined> {
-  try {
-    return await readFile(path, "utf8");
-  } catch {
-    return undefined;
-  }
-}
+export const readReport = readIfExists;
 
 /** JSON text as a value, or undefined when it is not JSON. */
 export function parseJson(text: string): unknown {
@@ -108,5 +102,4 @@ export function jsonFromOutput(stdout: string): unknown {
   return undefined;
 }
 
-export const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
+export { isRecord } from "../shared/guards.ts";

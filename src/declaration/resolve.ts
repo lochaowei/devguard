@@ -1,9 +1,11 @@
+import { CLI_INSTALL_HINT } from "../distribution.ts";
 import type { Finding, Level } from "../report/finding.ts";
 import { BUNDLED_STANDARDS, findStandard } from "../standard/registry.ts";
 import { LANGUAGE_LABEL, LANGUAGES, type ItemDef, type Language, type Standard } from "../standard/types.ts";
 import { compareToDefault, type Status } from "./compare.ts";
 import { displayDir, normalizeDir } from "./path.ts";
 import type { Declaration, RawOverride } from "./types.ts";
+import { isRecord } from "../shared/guards.ts";
 
 export interface EffectiveItem {
   value: unknown;
@@ -13,6 +15,17 @@ export interface EffectiveItem {
   /** Set on a looser override whose reason and until are valid: a deviation that is in force. */
   accepted?: boolean;
   until?: string;
+}
+
+/**
+ * The value an item holds the component to: the declared one, unless it is invalid or a widening without a valid
+ * reason (the declaration layer reports those), in which case the standard's own value. The one rule for every layer
+ * that acts on a declared value (coverage threshold, tool version range, vulnerability threshold).
+ */
+export function valueInForce(standardValue: unknown, item: EffectiveItem | undefined): unknown {
+  if (!item || item.status === "invalid") return standardValue;
+  if (item.status === "looser" && item.accepted !== true) return standardValue;
+  return item.value;
 }
 
 export interface ResolvedComponent {
@@ -33,8 +46,6 @@ export interface Resolution {
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const fmt = (v: unknown): string => (Array.isArray(v) ? `[${v.map(fmt).join(", ")}]` : JSON.stringify(v));
-
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 interface Unwrapped {
   value: unknown;
@@ -179,7 +190,7 @@ function checkStandardVersion(
     const fixes = {
       malformed: undefined,
       "unknown-name": undefined,
-      "newer-than-cli": "scoop update devguard",
+      "newer-than-cli": `更新 devguard：${CLI_INSTALL_HINT}`,
       "no-longer-bundled": "devguard standard upgrade",
     };
     r.add("error", `standard/${found.reason}`, messages[found.reason], { ...at, fix: fixes[found.reason] });

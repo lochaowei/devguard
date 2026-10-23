@@ -77,6 +77,30 @@ describe("Java tests", () => {
     expect(r.findings[0]?.message).toBe("分支覆蓋率 75%（15/20）低於門檻 80%");
   });
 
+  it("adds up the JaCoCo reports of a multi-module Maven build", async () => {
+    const files = {
+      "core/pom.xml":
+        "<project><packaging>pom</packaging><modules><module>a</module><module>b</module></modules></project>",
+      "core/a/pom.xml": "<project/>",
+      "core/b/pom.xml": "<project/>",
+    };
+    const { dir, check } = setup(files);
+    const tools = fakeTools(() => {
+      for (const [module, xml] of [
+        ["a", jacocoXml([10, 90], [0, 10])],
+        ["b", jacocoXml([30, 70], [10, 30])],
+      ] as const) {
+        const path = join(dir, "core", module, "target/site/jacoco/jacoco.xml");
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, xml);
+      }
+      return ok("BUILD SUCCESS");
+    });
+    const r = await check(tools.tools);
+    // Lines 160/200 = 80% passes; branches 40/50 = 80% passes. Either module alone would differ.
+    expect(r.findings).toEqual([]);
+  });
+
   it("applies the declared threshold to both counters", async () => {
     const declaration = declare("core/", "java", '{coverage.lines: {value: 70, reason: "legacy", until: 2099-01-01}}');
     const { dir, check } = setup(MAVEN, declaration);

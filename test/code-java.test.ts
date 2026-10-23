@@ -52,6 +52,32 @@ function check(t: CodeTarget, tools: ToolRunner, texts: Record<string, string> =
 const only = (...c: CodeCategory[]) => new Set<CodeCategory>(c);
 const MAVEN = { "svc/pom.xml": "<project/>" };
 
+describe("java checker: Maven multi-module lint", () => {
+  it("reads each module's reports, not only the aggregator's", async () => {
+    const { tools, calls } = fakeWrapper();
+    const texts = {
+      "svc/pom.xml":
+        "<project><packaging>pom</packaging><modules><module>core</module><module>web</module></modules></project>",
+      "svc/core/pom.xml": "<project/>",
+      "svc/web/pom.xml": "<project><packaging>pom</packaging><modules><module>api</module></modules></project>",
+      "svc/web/api/pom.xml": "<project/>",
+      "svc/core/target/checkstyle-result.xml": sample("checkstyle-result.xml").replaceAll("svc", "svc/core"),
+      "svc/core/target/pmd.xml": '<pmd version="7"/>',
+      "svc/web/api/target/checkstyle-result.xml": '<checkstyle version="10"/>',
+      "svc/web/api/target/pmd.xml": sample("pmd.xml").replaceAll("svc", "svc/web/api"),
+    };
+    const findings = await check(target({ categories: only("lint") }), tools, texts);
+    expect(calls).toHaveLength(1);
+    expect(findings.some((f) => f.rule === "code/tool-failed")).toBe(false);
+    const files = [...new Set(findings.map((f) => f.file))];
+    expect(files.every((f) => f?.startsWith("svc/core/") === true || f?.startsWith("svc/web/api/") === true)).toBe(
+      true,
+    );
+    expect(files.some((f) => f?.startsWith("svc/core/") === true)).toBe(true);
+    expect(files.some((f) => f?.startsWith("svc/web/api/") === true)).toBe(true);
+  });
+});
+
 describe("java checker: Maven lint", () => {
   it("runs Checkstyle and PMD through the wrapper and reports their violations with file and line", async () => {
     const { tools, calls } = fakeWrapper();
@@ -85,8 +111,8 @@ describe("java checker: Maven lint", () => {
         component: "svc/ (Java)",
         file: "svc/src/main/java/com/example/App.java",
         line: 3,
-        fix: "devguard fix --code svc/src/main/java/com/example/App.java",
-        fixable: true,
+        fix: "依 Checkstyle 訊息手動修改",
+        fixable: false,
       },
       expect.objectContaining({ level: "error", rule: "checkstyle/CyclomaticComplexity", line: 12 }),
       expect.objectContaining({ level: "hint", rule: "checkstyle/MissingJavadocMethod", line: 20 }),
@@ -96,12 +122,15 @@ describe("java checker: Maven lint", () => {
         message: "Avoid unused local variables such as 'x'.",
         file: "svc/src/main/java/com/example/App.java",
         line: 15,
+        fix: "依 PMD 訊息手動修改",
+        fixable: false,
       }),
       expect.objectContaining({
         level: "error",
         rule: "pmd/processing-error",
         message: "ParseException: Parse exception in file",
         file: "svc/src/main/java/com/example/Broken.java",
+        fixable: false,
       }),
     ]);
   });

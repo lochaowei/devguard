@@ -25,8 +25,10 @@
 
 ```text
 src/
-├── cli.ts                  CLI 參數解析與子指令分派（check、fix、draft）
-├── check.ts                CHECK_LAYERS / FIX_LAYERS 註冊與 runCheck() 入口
+├── cli.ts                  指令列入口（只接上 process）
+├── main.ts                 runCli：參數解析與各子指令分派，可在程序內測試
+├── doctor.ts               devguard doctor：check 加上環境層
+├── check.ts                CHECK_LAYERS 註冊、FIX_LAYERS（fixable 的層）與 runCheck() 入口
 ├── draft.ts                devguard draft：掃描 repo 檔案、歸納元件並由設定檢查結果產生 .devguard.yaml 草稿
 ├── scope.ts                解析 check 的檔案範圍、--only (lint|format|typecheck) 與 --full
 ├── standard/
@@ -42,26 +44,38 @@ src/
 ├── layers/                 可插拔檢查層（實作 CheckLayer 介面）
 │   ├── declaration.ts      第 1 層：專案宣告檢查
 │   ├── uncovered.ts        第 2 層：未涵蓋程式檔提示
-│   ├── python-settings.ts  第 3 層：Python 設定檢查
+│   ├── settings-python.ts  第 3 層：Python 設定檢查
 │   ├── settings-go.ts      第 4 層：Go 設定檢查
 │   ├── settings-java.ts    第 5 層：Java 設定檢查
 │   ├── deps.ts             第 6 層：依賴規則（lockfile 提交狀態與禁用套件）
 │   ├── settings-typescript.ts 第 7 層：TypeScript 設定檢查
 │   ├── tool-versions.ts    第 8 層：工具版本範圍一致性檢查
 │   ├── gitattributes.ts    第 9 層：.gitattributes EOL 規則檢查
-│   ├── code.ts             第 10 層：四語言程式碼檢查（lint / format / typecheck）
-│   └── tests.ts            第 11 層：四語言測試與覆蓋率檢查（--full）
+│   ├── mirrors.ts          第 10 層：專案層級的鏡像設定
+│   ├── claude-code.ts      第 11 層：.claude/ 的 rules、hooks 與 /standards-doctor
+│   ├── vscode.ts           第 12 層：.vscode/ 的 extensions、settings、tasks
+│   ├── code.ts             第 13 層：四語言程式碼檢查（lint / format / typecheck）
+│   ├── tests.ts            第 14 層：四語言測試與覆蓋率檢查（--full）
+│   ├── vuln.ts             第 15 層：弱點掃描（--full）
+│   └── environment.ts      doctor 專用：環境檢查
 ├── settings/               各語言設定檔解析、比對（judge.ts）與產生器
 ├── deps/                   解析 pyproject.toml / package.json / go.mod / pom.xml / build.gradle 直接依賴
 ├── versions/               semver 版本範圍解析（range.ts）與 lockfile / 建置檔版本擷取（pinned.ts）
 ├── code/                   Python、Go、TypeScript、Java 程式碼檢查器（CodeChecker）
 ├── testing/                Python、Go、TypeScript、Java 測試與覆蓋率檢查器（TestChecker）
-├── fix/                    devguard fix：檔案分類（category.ts）、AST/格式保留修補（edit.ts）、LCS diff 預覽（plan.ts）
+├── fix/                    devguard fix：檔案分類（category.ts）、AST/格式保留修補（edit.ts）、LCS diff 預覽（plan.ts）、fix --code
+├── hooks/                  git 與 Claude Code hook、devguard install、既有 hook 框架（pre-commit / husky / lefthook）
+├── vscode/                 .vscode/ 的 settings、extensions、tasks
+├── claude/                 .claude/ 的 hooks、rules 與 /standards-doctor
+├── mirrors/                專案層級的鏡像設定（uv、npm、Maven、Gradle）
+├── environment/            只有 doctor 跑的環境檢查
+├── vuln/                   各語言的弱點掃描
+├── shared/                 共用的檔案讀取與型別守衛
 ├── tools/                  專案工具執行器（runner.ts）：封裝 uv run、node_modules/.bin、go tool、mvnw/gradlew
 ├── process/                子程序執行（exec.ts）與 Windows .cmd/.bat 透過 cmd.exe /d /s /c 呼叫（cmd-shim.ts）
 ├── repo/                   透過 git ls-files 列舉 repo 檔案並計算元件歸屬
 ├── report/                 Finding 結構與 text / json / sarif / vscode / claude 五種渲染器
-└── xml/                    輕量 XML 解析器
+└── xml/                    XML 解析（含行號，不讀外部 DTD）
 ```
 
 ---
@@ -87,16 +101,16 @@ src/
 | #13 | 程式碼檢查：Java | §6.4、§7.1 | ✅ 已完成（`feat/spec-implementation`） |
 | #14 | 測試與覆蓋率（`check --full`） | §6、§7.1 | ✅ 已完成（`feat/spec-implementation`） |
 | #15 | 報告格式：`sarif`、`vscode`、`claude` | §11 | ✅ 已完成（`feat/spec-implementation`） |
-| #16 | `fix --code`：自動修正程式碼 | §9.1 | 🚧 開發中 |
+| #16 | `fix --code`：自動修正程式碼 | §9.1 | ✅ 已完成（`feat/spec-implementation`） |
 | #17 | `fix`：依檔案類別修正設定檔 | §9 | ✅ 已完成（`feat/spec-implementation`） |
-| #18 | `devguard install` 與 pre-commit hook | §7.4 | 🚧 開發中 |
-| #19 | pre-push hook：完整測試與覆蓋率 | §7.4 | 📋 待實作 |
-| #20 | 注入既有 hook 框架（pre-commit / husky / lefthook） | §7.4 | 📋 待實作 |
-| #21 | `devguard doctor` 與 git hook 環境檢查 | §7.4、§11 | 📋 待實作 |
-| #22 | 第一道防線：VS Code workspace 設定（`.vscode/`） | §7.2 | 📋 待實作 |
-| #23 | 第二道防線：Claude Code（`.claude/` rules、hooks、skill） | §7.3 | 📋 待實作 |
-| #24 | 內部鏡像設定與帳密檢查 | §10 | 📋 待實作 |
-| #25 | 進階：弱點掃描 | §5.3 | 📋 待實作 |
-| #26 | `devguard standard upgrade` 與棄用版本 | §5.5 | 🚧 開發中 |
-| #27 | Bun 打包單一 `.exe`、smoke test 與 T2 探測腳本 | §3.1、§13 | ✅ 腳本與測試已完成（`feat/spec-implementation`） |
-| #28 | 簽章與內部 Scoop bucket 發佈 | §3.1、§12 | 👤 待人工與內部環境處理（`ready-for-human`） |
+| #18 | `devguard install` 與 pre-commit hook | §7.4 | ✅ 已完成（`feat/spec-implementation`） |
+| #19 | pre-push hook：完整測試與覆蓋率 | §7.4 | ✅ 已完成（`feat/spec-implementation`） |
+| #20 | 注入既有 hook 框架（pre-commit / husky / lefthook） | §7.4 | ✅ 已完成（`feat/spec-implementation`） |
+| #21 | `devguard doctor` 與 git hook 環境檢查 | §7.4、§11 | ✅ 已完成（`feat/spec-implementation`） |
+| #22 | 第一道防線：VS Code workspace 設定（`.vscode/`） | §7.2 | ✅ 已完成（`feat/spec-implementation`） |
+| #23 | 第二道防線：Claude Code（`.claude/` rules、hooks、skill） | §7.3 | ✅ 已完成（`feat/spec-implementation`） |
+| #24 | 內部鏡像設定與帳密檢查 | §10 | ✅ 已完成（`feat/spec-implementation`） |
+| #25 | 進階：弱點掃描 | §5.3 | ✅ 已完成（`feat/spec-implementation`） |
+| #26 | `devguard standard upgrade` 與棄用版本 | §5.5 | ✅ 已完成（`feat/spec-implementation`） |
+| #27 | Bun 打包單一 `.exe`、smoke test 與 T2 探測腳本 | §3.1、§13 | ✅ Bun 1.4.4 實機建置；smoke test、T1、T2 通過 |
+| #28 | 簽章與內部 Scoop bucket 發佈 | §3.1、§12 | 🚫 已取消：改以 GitHub Release 發佈 exe（`wontfix`） |

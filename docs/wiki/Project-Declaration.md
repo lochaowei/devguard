@@ -55,7 +55,8 @@ mirrors:
 | `list`（規則集 / 禁用清單） | 新增項目算收緊；移除預設項目算放寬 | `lint.rules`、`deps.banned`、`deps.bannedApis`、`typecheck.options` |
 | `choice`（工具選擇） | 改用 `allowed` 清單內的工具算合法替代；改用清單外的工具算放寬 | `lint.tool`、`typecheck.tool`、`test.tool`、`deps.manager`、`build.tool` |
 | `versionRange`（版本範圍） | 範圍落在預設範圍內算收緊或相同；超出預設上下界算放寬 | `tools.ruff`、`tools.eslint`、`tools.golangci-lint` 等 |
-| `style`（風格項目） | 無嚴格或寬鬆之分，可直接寫值，不算偏離 | `format.*`、`mirrors.pypi` / `npm` / `go` / `maven` 等 |
+| `style`（風格項目） | 無嚴格或寬鬆之分，可直接寫值，不算偏離 | `format.*`、`mirrors.auth` |
+| 鏡像網址 | 改成預設鏡像同一台主機上的其他 repository 視同風格；改成其他主機算放寬（必須寫理由） | `mirrors.pypi` / `npm` / `go` / `maven` 等 |
 
 此外，`ignoredVulns`（`deps.ignoredVulns`）中的每一筆忽略弱點都必須寫明 `{ id, reason, until }`，比照偏離與到期日規則檢查。
 

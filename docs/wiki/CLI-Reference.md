@@ -7,17 +7,28 @@
 
 指令：
   check [檔案…]  檢查專案宣告（.devguard.yaml）與程式碼；指定檔案時只檢查這些檔案
-  fix            修正設定：先預覽，確認後套用；--yes 直接套用
+  doctor         check 加上環境檢查（工具、git hook、VS Code、Claude Code、鏡像帳密、標準更新）；只回報並附上修正指令
+  fix            修正設定（工具設定檔、.vscode/、.claude/、git hook）：先預覽，確認後套用；--yes 直接套用
+  fix --code [檔案…]  修正程式碼（格式化與可自動修正的 lint），修正後回報剩餘問題
+  install        產生各防線的設定並安裝 git pre-commit 與 pre-push hook：先預覽，確認後套用；--yes 直接套用
+  hook <名稱>    給 hook 呼叫：git-pre-commit|git-pre-push|claude-session-start|claude-post-edit|claude-stop
   draft          沒有 .devguard.yaml 時，依偵測到的元件與工具設定產生宣告草稿（不覆寫既有檔案）
+  standard upgrade [目標版本]
+                 預覽標準升級；--apply 才修改宣告與設定檔，並透過內部鏡像執行套件管理指令
 
 選項：
+  --staged              check：只檢查 staged 的檔案，與 pre-commit hook 相同（不能與檔案、--full 或 --only 一起使用）
   --only <類別>         只跑一類程式碼檢查：lint|format|typecheck
-  --full                跑全部檢查（不能與檔案一起使用）
+  --full                跑全部檢查，包含測試、覆蓋率與弱點掃描（不能與檔案一起使用）
   --format <格式>       輸出格式：text|json|sarif|vscode|claude（預設 text）
   --strict              偏離也算失敗
   --verbose             展開所有提示
+  --quiet               doctor：只輸出有問題的項目（錯誤與偏離），沒有問題時不輸出
+  --exit-zero           doctor：有問題時也以 0 結束（給 Claude Code skill 嵌入結果用）
   --cwd <dir>           專案根目錄（預設為目前目錄）
-  --yes                 fix：不詢問，直接套用
+  --code                fix：修正程式碼而不是設定
+  --yes                 fix / install：不詢問，直接套用
+  --apply               standard upgrade：實際套用升級
   --version             顯示版本
   -h, --help            顯示用法說明
 ```
@@ -26,27 +37,31 @@
 
 ## `devguard check` 的檢查層（Check Layers）
 
-`devguard check` 會依序執行 [`CHECK_LAYERS`](../../src/check.ts) 中的 11 道可插拔檢查層，並將所有發現的問題（`Finding`）合併為單一報告：
+`devguard check` 會依序執行 [`CHECK_LAYERS`](../../src/check.ts) 中的 15 道可插拔檢查層，並將所有發現的問題（`Finding`）合併為單一報告；`devguard doctor` 再加上第 16 道 `environment` 層（工具、git hook、VS Code 擴充套件、Claude Code、鏡像帳密、標準更新）：
 
 | 順序 | 檢查層 ID | 分類（`layer`） | 檢查內容 |
 |---|---|---|---|
 | 1 | `declaration` | `config` | 解析 `.devguard.yaml`、驗證標準版本、比對覆寫項目與偏離理由/到期日、檢查同語言風格一致性 |
 | 2 | `uncovered-files` | `config` | 找出未被任何宣告元件涵蓋的四語言程式檔並發出提示 |
-| 3 | `python-settings` | `config` | 檢查 `pyproject.toml` 的 Ruff（`target-version`、`line-length`、`lint.select`、`mccabe`、`flake8-tidy-imports`）與 mypy / pyright 設定 |
+| 3 | `settings-python` | `config` | 檢查 `pyproject.toml` 的 Ruff（`target-version`、`line-length`、`lint.select`、`mccabe`、`flake8-tidy-imports`）與 mypy / pyright 設定 |
 | 4 | `settings-go` | `config` | 檢查 `go.mod` 的 Go 版本與 `.golangci.yml`（`version: "2"`、linters、formatters、`cyclop`、`gocognit`、`gomodguard`、`depguard`） |
 | 5 | `settings-java` | `config` | 檢查 Maven `pom.xml` / Gradle 建置檔版本與 plugin、Wrapper 是否存在、`checkstyle.xml`、PMD ruleset、`lombok.config` |
 | 6 | `deps` | `config` | 檢查各語言 lockfile 是否提交至 git（含 `go mod tidy -diff`、Maven Enforcer、Gradle `gradle.lockfile`），以及直接依賴是否違反 `deps.banned` |
 | 7 | `settings-typescript` | `config` | 檢查 `package.json`（`engines.node`）、`tsconfig.json`、ESLint flat config、Prettier、Biome、Vitest / Jest 覆蓋率門檻設定 |
 | 8 | `tool-versions` | `consistency` | 從 lockfile / 建置檔讀出鎖定的工具版本（以及 PATH 上的 `golangci-lint` 版本），核對是否落在標準的 `tools.*` 版本範圍內 |
 | 9 | `gitattributes` | `config` | 檢查 repo 根目錄 `.gitattributes` 是否包含 `* text=auto eol=lf` |
-| 10 | `code` | `code` | 呼叫各元件環境中的工具執行 `lint`、`format`、`typecheck`（支援 `[檔案…]` 與 `--only` 過濾） |
-| 11 | `tests` | `code` | **僅在 `--full`（且未指定 `--only`）時執行**：跑各元件的測試套件並驗證行 / 分支覆蓋率是否達標 |
+| 10 | `mirrors` | `config` | 檢查專案層級的鏡像設定（uv、npm、Maven、Gradle）是否指向宣告的內部鏡像（§10） |
+| 11 | `claude-code` | `config` | 檢查 `.claude/` 的 rules、hooks 與 `/standards-doctor` 是否與標準一致（§7.3） |
+| 12 | `vscode` | `config` | 檢查 `.vscode/` 的 extensions、settings、tasks（§7.2） |
+| 13 | `code` | `code` | 呼叫各元件環境中的工具執行 `lint`、`format`、`typecheck`（支援 `[檔案…]`、`--staged` 與 `--only` 過濾） |
+| 14 | `tests` | `code` | **僅在 `--full`（且未指定 `--only`）時執行**：跑各元件的測試套件並驗證行 / 分支覆蓋率是否達標 |
+| 15 | `vuln` | `code` | **僅在 `--full` 且標準開啟弱點掃描時執行**：各語言的弱點掃描（§5.3） |
 
 ---
 
 ## `devguard fix`：設定修正
 
-`devguard fix` 會執行設定相關檢查層（`FIX_LAYERS`：`declaration`、`python-settings`、`settings-go`、`settings-java`、`settings-typescript`、`gitattributes`），收集所有 `Finding` 附帶的修補指令（`Repair`），並依 **4 種檔案類別** 規劃變更：
+`devguard fix` 會執行標為 `fixable` 的設定相關檢查層（`FIX_LAYERS`：`declaration`、`settings-python`、`settings-go`、`settings-java`、`settings-typescript`、`gitattributes`、`mirrors`、`claude-code`、`vscode`），並加上被修改過的 devguard git hook，收集所有 `Finding` 附帶的修補指令（`Repair`），並依 **4 種檔案類別** 規劃變更：
 
 1. **CLI 全權產生（`generated`）**
    - 對象：`checkstyle.xml`、`pmd-ruleset.xml`（及 `pmd.xml`、`config/pmd/*.xml`）、`dependency-check-suppressions.xml`、`.mvn/settings.xml`、`.mvn/maven.config`、`.claude/rules/*`、`.claude/skills/standards-doctor/*`、`.githooks/*`

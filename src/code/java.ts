@@ -1,5 +1,6 @@
 import type { Finding, Level } from "../report/finding.ts";
 import { descendants, parseXmlText, type XmlEl } from "../xml/parse.ts";
+import { mavenReportDirs } from "../settings/java/modules.ts";
 import { codeFinding, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
 
@@ -26,6 +27,7 @@ function checkstyleFindings(target: CodeTarget, ctx: CodeCheckContext, root: Xml
         message: e.attrs.message ?? "",
         file: toRepoPath(ctx.cwd, target.dir, file.attrs.name ?? ""),
         line: lineOf(e.attrs.line),
+        fix: "依 Checkstyle 訊息手動修改",
       }),
     ),
   );
@@ -39,6 +41,7 @@ function pmdFindings(target: CodeTarget, ctx: CodeCheckContext, root: XmlEl): Fi
         message: v.text,
         file: toRepoPath(ctx.cwd, target.dir, file.attrs.name ?? ""),
         line: lineOf(v.attrs.beginline),
+        fix: "依 PMD 訊息手動修改",
       }),
     ),
   );
@@ -49,6 +52,7 @@ function pmdFindings(target: CodeTarget, ctx: CodeCheckContext, root: XmlEl): Fi
         rule: "pmd/processing-error",
         message: e.attrs.msg ?? "",
         file: toRepoPath(ctx.cwd, target.dir, e.attrs.filename ?? ""),
+        fix: "依 PMD 訊息手動修改",
       }),
     );
   return [...violations, ...errors];
@@ -133,10 +137,15 @@ async function lint(target: CodeTarget, ctx: CodeCheckContext, build: Build): Pr
     ],
   });
   if (result.code !== 0) return [toolFailed(target, "mvnw", result)];
-  return [
-    ...(await readReport(target, ctx, "Checkstyle", `${target.dir}target/checkstyle-result.xml`, checkstyleFindings)),
-    ...(await readReport(target, ctx, "PMD", `${target.dir}target/pmd.xml`, pmdFindings)),
-  ];
+  // A multi-module build writes the reports in each module's target/ (SPEC §6.4).
+  const findings: Finding[] = [];
+  for (const dir of await mavenReportDirs(ctx.readText, target.dir)) {
+    findings.push(
+      ...(await readReport(target, ctx, "Checkstyle", `${dir}target/checkstyle-result.xml`, checkstyleFindings)),
+      ...(await readReport(target, ctx, "PMD", `${dir}target/pmd.xml`, pmdFindings)),
+    );
+  }
+  return findings;
 }
 
 const SPOTLESS_HEADER = "The following files had format violations:";
@@ -204,6 +213,11 @@ async function format(target: CodeTarget, ctx: CodeCheckContext, build: Build): 
 /** Spotless, Checkstyle and PMD through the project's Maven or Gradle wrapper (SPEC §6.4). */
 export const javaChecker: CodeChecker = {
   language: "java",
+  // No stdin mode: the build reads the files on disk.
+  workingTreeTools(target) {
+    const lint = target.categories.has("lint") ? ["Checkstyle", "PMD"] : [];
+    return target.categories.has("format") ? ["Spotless", ...lint] : lint;
+  },
   async check(target, ctx) {
     const findings: Finding[] = [];
     const build = await buildOf(target, ctx);
@@ -213,5 +227,14 @@ export const javaChecker: CodeChecker = {
     if (target.files === undefined) return findings;
     const wanted = new Set(target.files.map((f) => toRepoPath(ctx.cwd, target.dir, f)));
     return findings.filter((f) => f.file === undefined || wanted.has(f.file));
+  },
+  /** Spotless formats the whole component; Checkstyle and PMD have no automatic fixes. */
+  async fixSteps(target, ctx) {
+    const maven = (await buildOf(target, ctx)) === "maven";
+    return [
+      maven
+        ? { tool: "mvnw", args: ["-B", "-ntp", "spotless:apply"], okUpTo: 0 }
+        : { tool: "gradlew", args: ["spotlessApply", "--console=plain", "-q"], okUpTo: 0 },
+    ];
   },
 };

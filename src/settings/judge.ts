@@ -23,38 +23,74 @@ export const setAt =
 
 const fmt = (v: unknown): string => (Array.isArray(v) ? `[${v.map(fmt).join(", ")}]` : JSON.stringify(v));
 
+export interface JudgeInput {
+  /** The standard item the setting carries out, e.g. "complexity.cyclomatic". */
+  key: string;
+  item: ItemDef;
+  /** The component's effective (declared) value; undefined means the standard's default. */
+  declared: EffectiveItem | undefined;
+  /** The value read from the file (or the tool's default when the file leaves it out, see `toolDefault`). */
+  actual: unknown;
+  site: ConfigSite;
+  /** Names the setting in the file; defaults to the item's label. */
+  label?: string;
+  /** How to put the declared value back. */
+  repair?: RepairFor;
+  /** Report a value of the wrong shape as an error (`settings/invalid-setting`) instead of ignoring it. */
+  reportInvalid?: boolean;
+  /** Set when the file leaves the setting out: the tool whose default `actual` is, e.g. "Ruff 預設". */
+  toolDefault?: string;
+  /** What the value is held to when the project, not the declaration, sets the bar (a higher requires-python). */
+  bar?: { value: unknown; source: string };
+}
+
 /**
- * Compares a value read from a tool config file with the component's declared (effective) value (SPEC §8):
- * looser than declared is an error that `fix` resets, stricter is a hint to sync the declaration, and a style
- * item that differs is an error because the declaration is the source of truth.
+ * The one place a value read from a tool config file is judged against the declaration (SPEC §4.2, §8): looser than
+ * declared is an error that `fix` resets (`settings/looser`), stricter is a hint to sync the declaration
+ * (`settings/stricter`), and a style item that differs is an error because the declaration is the source of truth.
  * Without a declaration entry the standard's default is the declared value; an invalid declaration (already
- * reported) and an unjudgeable value give nothing. `label` names the setting in the file (default: the item's label).
- * `repair` says how to put the declared value back; whether `devguard fix` writes it or only prints it follows the
- * file's category (SPEC §9.2).
+ * reported) gives nothing. `repair` says how to put the declared value back; whether `devguard fix` writes it or only
+ * prints it follows the file's category (SPEC §9.2).
  */
-export function judgeConfigValue(
-  key: string,
-  item: ItemDef,
-  declared: EffectiveItem | undefined,
-  actual: unknown,
-  site: ConfigSite,
-  label: string = item.label,
-  repair?: RepairFor,
-): Finding | undefined {
+export function judgeConfigValue(input: JudgeInput): Finding | undefined {
+  const { key, item, declared, actual, site, repair } = input;
   if (declared?.status === "invalid") return undefined;
-  const want = declared?.value ?? item.value;
+  const label = input.label ?? item.label;
+  const { want, basis } = held(input);
   const status = compareToDefault({ ...item, value: want as ItemValue }, actual);
-  const what = `${label} 為 ${fmt(actual)}`;
-  if (status === "stricter") return stricterHint(key, `${what}，比宣告的 ${fmt(want)} 嚴格`, actual, site);
+  const back = `把 ${site.file} 的 ${label} 改回${basis} ${fmt(want)}`;
+  if (status === "invalid") return input.reportInvalid ? invalidSetting(input, label, back, want) : undefined;
+  const what = `${label} 為 ${shownActual(input)}`;
+  if (status === "stricter") return stricterHint(key, `${what}，比${basis} ${fmt(want)} 嚴格`, actual, site);
   if (status !== "looser" && status !== "different") return undefined;
-  const why = status === "looser" ? `比宣告的 ${fmt(want)} 寬鬆` : `與宣告的 ${fmt(want)} 不同`;
+  const why = status === "looser" ? `比${basis} ${fmt(want)} 寬鬆` : `與${basis} ${fmt(want)} 不同`;
   const observed = { key, value: actual };
-  return withRepairs(
-    { level: "error", layer: "config", rule: "settings/looser", message: `${what}，${why}`, ...site, observed },
-    `把 ${site.file} 的 ${label} 改回宣告的 ${fmt(want)}`,
-    repair,
-    want,
-  );
+  const message = `${what}，${why}`;
+  const finding: Finding = { level: "error", layer: "config", rule: "settings/looser", message, ...site, observed };
+  return withRepairs(finding, back, repair, want);
+}
+
+/** The value the setting is held to and how messages name it: the declaration, or the project's own bar. */
+function held(input: JudgeInput): { want: unknown; basis: string } {
+  if (input.bar) return { want: input.bar.value, basis: `專案 ${input.bar.source} 的` };
+  return { want: input.declared?.value ?? input.item.value, basis: "宣告的" };
+}
+
+/** The value as read, or the tool's default standing in for a setting the file leaves out. */
+const shownActual = ({ actual, toolDefault }: JudgeInput): string =>
+  toolDefault ? `未設定（${toolDefault} ${fmt(actual)}）` : fmt(actual);
+
+/** A value of the wrong shape (a string where a number belongs, an unreadable version). */
+function invalidSetting(input: JudgeInput, label: string, back: string, want: unknown): Finding {
+  const message = `${label} 的值 ${fmt(input.actual)} 無法辨識`;
+  const finding: Finding = {
+    level: "error",
+    layer: "config",
+    rule: "settings/invalid-setting",
+    message,
+    ...input.site,
+  };
+  return withRepairs(finding, back, input.repair, want);
 }
 
 /** A config value stricter than declared: a hint to sync the declaration (SPEC §8). */
@@ -110,7 +146,8 @@ export class SettingsJudge {
     const item = this.defs[key];
     if (!item || this.declared(key) === undefined) return;
     const site = { component: this.component.name, file };
-    const finding = judgeConfigValue(key, item, this.component.effective[key], actual, site, label, repair);
+    const declared = this.component.effective[key];
+    const finding = judgeConfigValue({ key, item, declared, actual, site, ...(label ? { label } : {}), repair });
     if (finding) this.findings.push(finding);
   }
 

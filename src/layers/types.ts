@@ -24,6 +24,8 @@ export interface LayerContext {
   /** Repo-relative, forward-slash paths of the files in the repo; listed once, on first call. */
   files: () => Promise<readonly string[]>;
   scope: CheckScope;
+  /** Set by the pre-commit hook: the staged version of a repo-relative file, for tools that read stdin. */
+  stagedText?: (repoPath: string) => Promise<string | undefined>;
 }
 
 /** The files a layer should look at: those given on the command line, otherwise every file in the repo. */
@@ -41,4 +43,15 @@ export interface LayerResult {
 export interface CheckLayer {
   id: string;
   run(ctx: LayerContext): Promise<LayerResult>;
+  /**
+   * `devguard fix` runs this layer to find the repairs its findings carry (SPEC §9). A layer object means fix runs
+   * that variant instead (VS Code: also generate a workspace that has none of the files yet). Layers that run the
+   * project's tools (code, tests, dependencies, tool versions) are never fixable this way.
+   */
+  fixable?: true | CheckLayer;
+}
+
+/** The layers `devguard fix` runs, in check order: each fixable layer, or the variant it names. */
+export function fixLayers(layers: readonly CheckLayer[]): CheckLayer[] {
+  return layers.flatMap((l) => (l.fixable === undefined ? [] : [l.fixable === true ? l : l.fixable]));
 }

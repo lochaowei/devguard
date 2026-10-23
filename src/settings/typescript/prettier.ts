@@ -1,15 +1,9 @@
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import {
-  findFirst,
-  isRecord,
-  literalProperty,
-  parseJsonc,
-  readIfExists,
-  searchDirs,
-  type FoundFile,
-} from "../config-files.ts";
+import { findFirst, literalProperty, parseJsonc, searchDirs, type FoundFile } from "../config-files.ts";
 import { setAt, type SettingsJudge } from "../judge.ts";
+import { readIfExists } from "../../shared/fs.ts";
+import { isRecord } from "../../shared/guards.ts";
 
 /** Prettier's own search order for config files (package.json first). */
 const CONFIG_FILES = [

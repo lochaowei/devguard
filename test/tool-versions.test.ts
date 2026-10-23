@@ -44,6 +44,44 @@ async function check(files: Record<string, string>, tools: ToolRunner = fakeTool
   return runCheck({ cwd: project(files), today: TODAY, tools }, [declarationLayer, toolVersionsLayer]);
 }
 
+describe("pre-commit framework revs (SPEC §8)", () => {
+  const config = (rev: string) =>
+    [
+      "repos:",
+      "  - repo: https://github.com/astral-sh/ruff-pre-commit",
+      `    rev: ${rev}`,
+      "    hooks: [{id: ruff}]",
+      "  - repo: https://github.com/example/unknown",
+      "    rev: v9.9.9",
+      "    hooks: [{id: x}]",
+      "  - repo: local",
+      "    hooks: [{id: devguard, name: devguard, entry: devguard hook git-pre-commit, language: unsupported}]",
+      "",
+    ].join("\n");
+
+  it("hints when another tool's hook rev differs from the version the project locks", async () => {
+    const r = await check({
+      ".devguard.yaml": PYTHON,
+      "uv.lock": uvLock("0.17.2"),
+      ".pre-commit-config.yaml": config("v0.17.0"),
+    });
+    expect(rules(r.findings)).toEqual(["hint:tool-version/pre-commit-rev"]);
+    expect(r.findings[0]).toMatchObject({ layer: "consistency", file: ".pre-commit-config.yaml" });
+    expect(r.findings[0]?.message).toContain("0.17.2");
+    expect(r.findings[0]?.message).toContain("v0.17.0");
+  });
+
+  it("is quiet when the rev matches (with or without a leading v) or nothing is locked", async () => {
+    for (const rev of ["v0.17.2", "0.17.2"]) {
+      const files = { ".devguard.yaml": PYTHON, "uv.lock": uvLock("0.17.2"), ".pre-commit-config.yaml": config(rev) };
+      expect((await check(files)).findings).toEqual([]);
+    }
+    expect((await check({ ".devguard.yaml": PYTHON, ".pre-commit-config.yaml": config("v0.1.0") })).findings).toEqual(
+      [],
+    );
+  });
+});
+
 describe("tool version consistency (SPEC §8)", () => {
   it("reports a locked version outside the standard's range as an error", async () => {
     const r = await check({ ".devguard.yaml": PYTHON, "uv.lock": uvLock("0.19.0") });
@@ -110,11 +148,11 @@ describe("golangci-lint from PATH (SPEC §5.2 exception)", () => {
     expect(tools.calls).toEqual([{ language: "go", tool: "golangci-lint", dir: "svc/", args: ["--version"] }]);
   });
 
-  it("reports a version outside the range and suggests scoop update", async () => {
+  it("reports a version outside the range and asks for a binary in the range on PATH", async () => {
     const r = await check({ ".devguard.yaml": GO }, fakeTools("golangci-lint has version v2.11.4 built with go1.25"));
     expect(rules(r.findings)).toEqual(["error:tool-version/golangci-lint", "error:tool-version/golangci-lint"]);
     expect(r.findings[0]?.message).toContain("2.11.4");
-    expect(r.findings[0]?.fix).toBe("scoop update golangci-lint");
+    expect(r.findings[0]?.fix).toBe("把版本在 >=2.12,<3 內的 golangci-lint binary 放進 PATH");
     expect(r.findings[0]?.layer).toBe("environment");
   });
 

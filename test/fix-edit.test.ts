@@ -90,6 +90,32 @@ describe("editConfigText: JSONC", () => {
     ]);
     expect(JSON.parse(out)).toEqual({ printWidth: 120 });
   });
+
+  it("writes new short arrays of plain values on one line, as Prettier prints them", () => {
+    const long = Array.from({ length: 8 }, (_, i) => `entry-number-${String(i)}`);
+    const out = editConfigText(".vscode/tasks.json", "", [
+      { op: "add", path: ["recommendations"], value: "a.b" },
+      { op: "add", path: ["recommendations"], value: "c.d" },
+      { op: "add", path: ["tasks"], value: { label: "x", args: ["doctor", "--quiet"], long } },
+    ]);
+    expect(out).toContain('"recommendations": ["a.b", "c.d"]');
+    expect(out).toContain('      "args": ["doctor", "--quiet"],');
+    expect(out).toContain('      "long": [\n        "entry-number-0",');
+    expect(JSON.parse(out)).toMatchObject({ recommendations: ["a.b", "c.d"], tasks: [{ long }] });
+  });
+
+  it("lays arrays out for the print width the edit asks for", () => {
+    const value = ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "vitest.explorer"];
+    const edit = (printWidth?: number) =>
+      editConfigText("x.json", "", [{ op: "set", path: ["recommendations"], value, layout: { printWidth } }]);
+    expect(edit(120)).toContain('"recommendations": ["dbaeumer');
+    expect(edit()).toContain('"recommendations": [\n');
+  });
+
+  it("leaves arrays already in the file as they are", () => {
+    const text = '{\n  "a": [\n    1\n  ]\n}\n';
+    expect(editConfigText("x.json", text, [{ op: "set", path: ["b"], value: true }])).toContain('"a": [\n    1\n  ]');
+  });
 });
 
 describe("editConfigText: YAML", () => {
@@ -146,5 +172,27 @@ describe("editConfigText: line files", () => {
 
     const lineOut = editConfigText(".gitattributes", "*.png binary\r\n", [{ op: "line", value: "* text=auto eol=lf" }]);
     expect(lineOut).toBe("*.png binary\n* text=auto eol=lf\n");
+  });
+});
+
+describe("editConfigText: [[tool.uv.index]] and .npmrc (SPEC §10.2)", () => {
+  const nexus = { name: "nexus", url: "https://nexus.example.internal/repository/pypi-proxy/simple", default: true };
+
+  it("appends a new array of tables as a [[...]] block, also under an existing [tool.uv]", () => {
+    const add = { op: "add", path: ["tool", "uv", "index"], value: nexus } as const;
+    const expected = `[[tool.uv.index]]\nname = "nexus"\nurl = "${nexus.url}"\ndefault = true\n`;
+    expect(editConfigText("pyproject.toml", "", [add])).toBe(expected);
+    const text = '[project]\nname = "a"\n\n[tool.uv]\npackage = false\n';
+    expect(editConfigText("pyproject.toml", text, [add, add])).toBe(`${text}\n${expected}`);
+  });
+
+  it("sets and deletes .npmrc keys in place and keeps comments", () => {
+    const text = "# registry\nregistry=https://registry.npmjs.org/\r\nsave-exact=true\n";
+    const out = editConfigText(".npmrc", text, [
+      { op: "set", path: ["registry"], value: "https://nexus/" },
+      { op: "delete", path: ["save-exact"] },
+      { op: "set", path: ["//nexus/:_auth"], value: "${NEXUS_NPM_AUTH}" },
+    ]);
+    expect(out).toBe("# registry\nregistry=https://nexus/\n//nexus/:_auth=${NEXUS_NPM_AUTH}\n");
   });
 });

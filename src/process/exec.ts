@@ -8,6 +8,8 @@ export interface Command {
   cwd: string;
   /** Added on top of the inherited environment. */
   env?: Readonly<Record<string, string>>;
+  /** Written to the program's stdin; stdin is closed either way. */
+  stdin?: string;
 }
 
 export interface SpawnSpec extends Command {
@@ -48,6 +50,8 @@ export const nodeExec: Exec = (command) =>
     child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
     child.on("error", reject);
+    child.stdin.on("error", () => undefined);
+    child.stdin.end(spec.stdin);
     child.on("close", (code) => {
       resolve({
         code: code ?? 1,

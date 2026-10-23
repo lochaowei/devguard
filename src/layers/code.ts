@@ -1,12 +1,11 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { CODE_CHECKERS } from "../code/registry.ts";
-import { CODE_CATEGORIES, type CodeChecker, type CodeTarget } from "../code/types.ts";
+import { CODE_CATEGORIES, type CodeCheckContext, type CodeChecker, type CodeTarget } from "../code/types.ts";
 import type { Finding } from "../report/finding.ts";
 import { assignFiles, type OwnedFile } from "../repo/files.ts";
 import { BUNDLED_STANDARDS } from "../standard/registry.ts";
 import type { Language, Standard } from "../standard/types.ts";
 import { scopedFiles, type CheckScope, type LayerContext, type CheckLayer } from "./types.ts";
+import { repoReader } from "../shared/fs.ts";
 
 interface Group {
   owner: OwnedFile["owner"];
@@ -52,31 +51,42 @@ function toTarget(group: Group, scope: CheckScope, standard: Standard, global: R
   };
 }
 
-async function readText(cwd: string, repoPath: string): Promise<string | undefined> {
-  try {
-    return await readFile(join(cwd, repoPath), "utf8");
-  } catch {
-    return undefined;
-  }
+/** One code target with the checker for its language and the repo-relative files in scope that it owns. */
+export interface PlannedTarget {
+  checker: CodeChecker;
+  target: CodeTarget;
+  owned: readonly string[];
+}
+
+/** The code targets in scope: one per component, or per language for files no component covers. */
+export async function codeTargets(ctx: LayerContext): Promise<PlannedTarget[]> {
+  const standard = ctx.resolution?.standard ?? BUNDLED_STANDARDS[BUNDLED_STANDARDS.length - 1];
+  if (!standard) return [];
+  const global = values(ctx.resolution?.standard ? ctx.resolution.global : standard.global);
+  const owned = assignFiles(ctx.resolution?.components ?? [], await scopedFiles(ctx));
+  return groupFiles(owned).flatMap((group) => {
+    const checker: CodeChecker | undefined = CODE_CHECKERS[group.language];
+    return checker ? [{ checker, target: toTarget(group, ctx.scope, standard, global), owned: group.files }] : [];
+  });
+}
+
+/** What a CodeChecker sees of the layer context. */
+export function codeCheckContext(ctx: Pick<LayerContext, "cwd" | "tools" | "stagedText">): CodeCheckContext {
+  const base = { cwd: ctx.cwd, tools: ctx.tools, readText: (p: string) => repoReader(ctx.cwd)(p) };
+  return ctx.stagedText ? { ...base, staged: ctx.stagedText } : base;
+}
+
+/** Runs each target's checker in order. */
+export async function checkTargets(targets: readonly PlannedTarget[], ctx: CodeCheckContext): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  for (const { checker, target } of targets) findings.push(...(await checker.check(target, ctx)));
+  return findings;
 }
 
 /** Lint, format and type checks through each language's CodeChecker (SPEC §7.1). */
 export const codeLayer: CheckLayer = {
   id: "code",
   async run(ctx: LayerContext) {
-    const standard = ctx.resolution?.standard ?? BUNDLED_STANDARDS[BUNDLED_STANDARDS.length - 1];
-    if (!standard) return { findings: [] };
-    const global = values(ctx.resolution?.standard ? ctx.resolution.global : standard.global);
-    const owned = assignFiles(ctx.resolution?.components ?? [], await scopedFiles(ctx));
-    const findings: Finding[] = [];
-    for (const group of groupFiles(owned)) {
-      const checker: CodeChecker | undefined = CODE_CHECKERS[group.language];
-      if (!checker) continue;
-      const target = toTarget(group, ctx.scope, standard, global);
-      findings.push(
-        ...(await checker.check(target, { cwd: ctx.cwd, tools: ctx.tools, readText: (p) => readText(ctx.cwd, p) })),
-      );
-    }
-    return { findings };
+    return { findings: await checkTargets(await codeTargets(ctx), codeCheckContext(ctx)) };
   },
 };

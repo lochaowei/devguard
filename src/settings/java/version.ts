@@ -1,10 +1,12 @@
-import { compareToDefault } from "../../declaration/compare.ts";
+import type { Repair } from "../../fix/repair.ts";
 import type { Finding } from "../../report/finding.ts";
 import { child, descendants, parseXmlText, type XmlEl } from "../../xml/parse.ts";
 import { GRADLE_FILES } from "./build.ts";
+import { judgeConfigValue } from "../judge.ts";
 import { finding, findConfig, type JavaTarget } from "./common.ts";
 
 const KEY = "java.minVersion";
+const VERSION_LIKE = /^\d+(\.\d+)*$/;
 
 interface Found {
   raw: string;
@@ -58,7 +60,7 @@ const normalize = (v: string): string => v.replace(/^1\.(\d+)$/, "$1");
 
 function unreadable(t: JavaTarget, file: string, why: string, line?: number): Finding {
   const want = String(t.component.effective[KEY]?.value);
-  return finding(t, "hint", "java/version-unreadable", `${file}：${why}，請自行確認 Java 版本不低於 ${want}`, {
+  return finding(t, "hint", "settings/version-unreadable", `${file}：${why}，請自行確認 Java 版本不低於 ${want}`, {
     file,
     line,
   });
@@ -78,23 +80,29 @@ function checkPom(t: JavaTarget, file: string, text: string): Finding[] {
   }
   const value = resolve(found.raw, props);
   const item = t.defs[KEY];
-  const declared = t.component.effective[KEY]?.value;
   if (value === undefined || !item) {
     return [unreadable(t, file, `無法解析 Java 版本「${found.raw}」`, found.line)];
   }
   const version = normalize(value);
-  const status = compareToDefault({ ...item, value: declared as string }, version);
-  if (status === "invalid") return [unreadable(t, file, `無法判讀 Java 版本「${value}」`, found.line)];
-  if (status !== "looser") return [];
-  return [
-    finding(t, "error", "java/version-too-low", `${file}：Java 版本 ${version} 低於標準的 ${String(declared)}`, {
-      file,
-      line: found.line,
-      fix: `把 ${file} 的 maven.compiler.release 改為 ${String(declared)} 以上（建置檔不會自動修改；devguard fix 會印出片段）`,
-      repairs: [{ op: "snippet", file, text: `<maven.compiler.release>${String(declared)}</maven.compiler.release>` }],
-      observed: { key: KEY, value: version },
-    }),
+  const site = { component: t.component.name, file, line: found.line };
+  // pom.xml is a build file: fix only prints the snippet (SPEC §9.2).
+  const repair = (want: unknown): Repair[] => [
+    { op: "snippet", file, text: `<maven.compiler.release>${String(want)}</maven.compiler.release>` },
   ];
+  const declared = t.component.effective[KEY];
+  const judged = judgeConfigValue({
+    key: KEY,
+    item,
+    declared,
+    actual: version,
+    site,
+    label: "maven.compiler.release",
+    repair,
+  });
+  // A higher release is the project's own call, as with requires-python and go.mod (SPEC §6.1, §6.2): no hint.
+  if (judged) return judged.level === "hint" ? [] : [judged];
+  if (!VERSION_LIKE.test(version)) return [unreadable(t, file, `無法判讀 Java 版本「${value}」`, found.line)];
+  return [];
 }
 
 /**
@@ -107,7 +115,7 @@ export async function checkJavaVersion(t: JavaTarget): Promise<Finding[]> {
   const gradle = findConfig(t, GRADLE_FILES);
   if (gradle) return [unreadable(t, gradle, "Gradle 建置檔是程式碼，無法可靠讀取 toolchain 版本")];
   return [
-    finding(t, "hint", "java/build-file-missing", "找不到 pom.xml 或 build.gradle，無法讀取 Java 版本", {
+    finding(t, "hint", "settings/build-file-missing", "找不到 pom.xml 或 build.gradle，無法讀取 Java 版本", {
       fix: "以 Maven 或 Gradle 建置，並提交 wrapper",
     }),
   ];

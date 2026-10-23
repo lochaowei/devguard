@@ -1,12 +1,13 @@
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ResolvedComponent } from "../declaration/resolve.ts";
-import { directDependencies, isBanned, parentDirs } from "../deps/manifests.ts";
+import { directDependencies, isBanned } from "../deps/manifests.ts";
 import type { Finding, Level } from "../report/finding.ts";
 import { listTrackedFiles } from "../repo/files.ts";
 import type { ToolRunner } from "../tools/runner.ts";
 import type { CheckLayer } from "./types.ts";
+import { readIfExists } from "../shared/fs.ts";
+import { upwards } from "../repo/paths.ts";
 
 export interface DepsLayerDeps {
   /** Files git tracks (repo-relative, forward slashes), or undefined outside a git repo. Defaults to `git ls-files`. */
@@ -82,7 +83,7 @@ async function pythonLockfile(s: Scope, emit: Emit): Promise<void> {
   requireCommitted(
     s,
     emit,
-    parentDirs(dir).flatMap((d) => PYTHON_LOCKS.map((l) => d + l)),
+    upwards(dir).flatMap((d) => PYTHON_LOCKS.map((l) => d + l)),
     expected,
     note,
   );
@@ -92,7 +93,7 @@ function typescriptLockfile(s: Scope, emit: Emit): Promise<void> {
   const manager = effective(s.component, "deps.manager");
   // An unknown manager is already an error in the declaration; fall back to npm's lockfiles.
   const locks = (typeof manager === "string" ? TS_LOCKS[manager] : undefined) ?? NPM_LOCKS;
-  const candidates = parentDirs(s.component.dir).flatMap((d) => locks.map((l) => d + l));
+  const candidates = upwards(s.component.dir).flatMap((d) => locks.map((l) => d + l));
   requireCommitted(s, emit, candidates, `${s.component.dir}${locks[0] ?? ""}`);
   return Promise.resolve();
 }
@@ -177,15 +178,6 @@ async function checkComponent(s: Scope): Promise<Finding[]> {
   return findings;
 }
 
-async function readOrUndefined(path: string): Promise<string | undefined> {
-  try {
-    return await readFile(path, "utf8");
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw e;
-  }
-}
-
 /** Dependency rules (SPEC §5.4, §6 `deps.*`): lockfiles committed, banned packages absent from direct dependencies. */
 export function createDepsLayer(deps: DepsLayerDeps = {}): CheckLayer {
   const trackedFiles = deps.trackedFiles ?? ((cwd: string) => listTrackedFiles(cwd));
@@ -197,7 +189,7 @@ export function createDepsLayer(deps: DepsLayerDeps = {}): CheckLayer {
       const list = await trackedFiles(ctx.cwd);
       const base = {
         tools: ctx.tools,
-        read: (p: string) => readOrUndefined(join(ctx.cwd, p)),
+        read: (p: string) => readIfExists(join(ctx.cwd, p)),
         exists: (p: string) => existsSync(join(ctx.cwd, p)),
         tracked: list && new Set(list),
       };

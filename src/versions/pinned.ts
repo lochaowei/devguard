@@ -1,8 +1,12 @@
 import type { Language } from "../standard/types.ts";
+import { parseConfigText } from "../fix/edit.ts";
+import { upwards } from "../repo/paths.ts";
+import { isRecord } from "../shared/guards.ts";
+import { child, descendants, parseXmlText } from "../xml/parse.ts";
 
 /**
- * Exact versions a component pins through its own dependency manager (SPEC §5.2). Self-contained line readers:
- * they only pick out names and versions, and do not validate the files.
+ * Exact versions a component pins through its own dependency manager (SPEC §5.2). Lockfiles and pom.xml are read with
+ * the same TOML / XML parsers as the settings checks; go.mod and Gradle scripts (not TOML / XML) by line.
  */
 export interface Pinned {
   /** Repo-relative path of the file the versions came from. */
@@ -16,18 +20,17 @@ export type ReadRepoFile = (path: string) => string | undefined;
 
 /** `[[package]]` tables with `name` and `version` keys: uv.lock and poetry.lock. */
 export function readPackageTables(text: string): Map<string, string> {
-  const versions = new Map<string, string>();
-  for (const block of text.split(/^\[\[package\]\]\s*$/m).slice(1)) {
-    const field = (key: string) => new RegExp(`^${key}\\s*=\\s*"([^"]*)"`, "m").exec(block)?.[1];
-    const name = field("name");
-    const version = field("version");
-    if (name && version) versions.set(name, version);
-  }
-  return versions;
+  const doc = parseConfigText("x.lock.toml", text);
+  const packages = isRecord(doc) && Array.isArray(doc.package) ? doc.package : [];
+  return new Map(
+    packages.flatMap((p): [string, string][] =>
+      isRecord(p) && typeof p.name === "string" && typeof p.version === "string" ? [[p.name, p.version]] : [],
+    ),
+  );
 }
 
 function python(dir: string, read: ReadRepoFile): Pinned | undefined {
-  for (const base of ancestors(dir)) {
+  for (const base of upwards(dir)) {
     for (const name of ["uv.lock", "poetry.lock"]) {
       const file = base + name;
       const text = read(file);
@@ -35,12 +38,6 @@ function python(dir: string, read: ReadRepoFile): Pinned | undefined {
     }
   }
   return undefined;
-}
-
-/** `dir` and each parent directory, nearest first: "a/b/" → ["a/b/", "a/", ""]. */
-function ancestors(dir: string): string[] {
-  const parts = dir.split("/").filter((p) => p !== "");
-  return parts.map((_, i) => parts.slice(0, parts.length - i).join("/") + "/").concat("");
 }
 
 /**
@@ -70,31 +67,50 @@ function installedIn(packages: Record<string, { version?: unknown }>, dir: strin
   });
 }
 
-const PNPM_PKG = /^  ['"]?\/?((?:@[^/'":\s]+\/)?[^@/'":\s]+)@(\d[^('":\s]*)/gm;
-const PNPM_IMPORTER_DEP =
-  /^ {6}['"]?((?:@[^/'":\s]+\/)?[^/'":\s]+)['"]?:[ \t]*(?:(?:\r?\n {8}\S[^\r\n]*)*?\r?\n {8}version:[ \t]*)?['"]?(\d[^('"\s]*)/gm;
+/** A `packages` / `snapshots` key of pnpm-lock.yaml: `name@1.2.3`, `/name@1.2.3` (v6) or `name@1.2.3(peer@4)` (v9). */
+const PNPM_KEY = /^\/?((?:@[^/@]+\/)?[^/@]+)@(\d[^(]*)/;
+
+const DEPENDENCY_FIELDS = ["dependencies", "devDependencies", "optionalDependencies"];
+
+/** The direct dependencies of one pnpm workspace importer; `link:` / `workspace:` versions are not installs. */
+function pnpmImporter(importers: unknown, id: string): [string, string][] {
+  const importer: unknown = isRecord(importers) ? importers[id] : undefined;
+  if (!isRecord(importer)) return [];
+  return DEPENDENCY_FIELDS.flatMap((field) => {
+    const deps = importer[field];
+    return Object.entries(isRecord(deps) ? deps : {}).flatMap(([name, spec]): [string, string][] => {
+      const version: unknown = isRecord(spec) ? spec.version : spec;
+      const exact = typeof version === "string" ? /^\d[^(]*/.exec(version)?.[0] : undefined;
+      return exact ? [[name, exact]] : [];
+    });
+  });
+}
+
+/**
+ * Installed packages from a `pnpm-lock.yaml` (v6–v9), as seen from `sub` (the component directory relative to the
+ * lockfile): every `packages` / `snapshots` entry, then the root importer's direct dependencies, then `sub`'s.
+ */
+export function readPnpmLock(text: string, sub = ""): Map<string, string> {
+  const doc = parseConfigText("pnpm-lock.yaml", text);
+  if (!isRecord(doc)) return new Map();
+  const packages = [doc.packages, doc.snapshots].flatMap((table) =>
+    Object.keys(isRecord(table) ? table : {}).flatMap((key): [string, string][] => {
+      const m = PNPM_KEY.exec(key);
+      return m?.[1] && m[2] ? [[m[1], m[2]]] : [];
+    }),
+  );
+  const importer = sub.replace(/\/$/, "");
+  return new Map([
+    ...packages,
+    ...pnpmImporter(doc.importers, "."),
+    ...(importer ? pnpmImporter(doc.importers, importer) : []),
+  ]);
+}
+
 const YARN_ENTRY =
   /^["']?((?:@[^@/"',\s]+\/)?[^@/"',\s]+)@(?:npm:)?[^:\n]+:\r?\n\s+version(?::\s+|\s+)["']?([^\s"']+)/gm;
 
-function pnpmImporter(text: string, id: string): [string, string][] {
-  if (!id) return [];
-  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const start = new RegExp(`^  ['"]?${escaped}['"]?:[ \\t]*\\r?\\n`, "m").exec(text);
-  if (!start) return [];
-  const rest = text.slice(start.index + start[0].length);
-  const end = /^(?:  \S|\S)/m.exec(rest);
-  const block = end ? rest.slice(0, end.index) : rest;
-  return [...block.matchAll(PNPM_IMPORTER_DEP)].map(([, name = "", version = ""]) => [name, version]);
-}
-
-/** Installed packages from a `pnpm-lock.yaml` (v6–v9 `packages` / `snapshots` entries and `importers`). */
-export function readPnpmLock(text: string, sub = ""): Map<string, string> {
-  const packages = [...text.matchAll(PNPM_PKG)].map(([, name = "", version = ""]): [string, string] => [name, version]);
-  const importer = sub.replace(/\/$/, "");
-  return new Map([...packages, ...pnpmImporter(text, "."), ...pnpmImporter(text, importer)]);
-}
-
-/** Installed packages from a `yarn.lock` (v1 classic and Berry). */
+/** Installed packages from a `yarn.lock` (v1 classic, which is not YAML, and Berry), read by line. */
 export function readYarnLock(text: string): Map<string, string> {
   const versions = new Map<string, string>();
   for (const [, name = "", version = ""] of text.matchAll(YARN_ENTRY)) {
@@ -103,8 +119,9 @@ export function readYarnLock(text: string): Map<string, string> {
   return versions;
 }
 
+/** The lockfile a TypeScript component's packages are installed from: npm, pnpm or yarn, up to the workspace root. */
 function typescript(dir: string, read: ReadRepoFile): Pinned | undefined {
-  for (const base of ancestors(dir)) {
+  for (const base of upwards(dir)) {
     const sub = dir.slice(base.length);
     for (const name of ["package-lock.json", "npm-shrinkwrap.json"]) {
       const file = base + name;
@@ -154,33 +171,20 @@ function go(dir: string, read: ReadRepoFile): Pinned | undefined {
   return text === undefined ? undefined : { file, versions: readGoModTools(text) };
 }
 
-const tag = (xml: string, name: string): string | undefined =>
-  new RegExp(`<${name}>\\s*([^<]*?)\\s*</${name}>`).exec(xml)?.[1];
-
-/** `<plugin>` artifactId → version in a pom.xml; `${property}` versions resolve from `<properties>`. */
+/** `<plugin>` artifactId → version in a pom.xml; `${property}` versions resolve from the POM's `<properties>`. */
 export function readMavenPlugins(text: string): Map<string, string> {
-  const xml = text.replace(/<!--[\s\S]*?-->/g, "");
-  const properties = mavenProperties(xml);
+  const parsed = parseXmlText(text);
+  if (!parsed.ok) return new Map();
+  const properties = new Map((child(parsed.root, "properties")?.children ?? []).map((e) => [e.name, e.text.trim()]));
   const versions = new Map<string, string>();
-  for (const [, body = ""] of xml.matchAll(/<plugin>([\s\S]*?)<\/plugin>/g)) {
-    const own = body.replace(/<(dependencies|configuration|executions)>[\s\S]*?<\/\1>/g, "");
-    const artifact = tag(own, "artifactId");
-    const version = tag(own, "version")?.replace(
-      /^\$\{([^}]+)\}$/,
-      (whole, key: string) => properties.get(key) ?? whole,
-    );
+  for (const plugin of descendants(parsed.root, "plugin")) {
+    const artifact = child(plugin, "artifactId")?.text.trim();
+    const version = child(plugin, "version")
+      ?.text.trim()
+      .replace(/^\$\{([^}]+)\}$/, (whole, key: string) => properties.get(key) ?? whole);
     if (artifact && version && !version.startsWith("${")) versions.set(artifact, version);
   }
   return versions;
-}
-
-function mavenProperties(xml: string): Map<string, string> {
-  const properties = new Map<string, string>();
-  for (const block of xml.match(/<properties>[\s\S]*?<\/properties>/g) ?? []) {
-    for (const [, key = "", value = ""] of block.matchAll(/<([\w.-]+)>\s*([^<]*?)\s*<\/\1>/g))
-      properties.set(key, value);
-  }
-  return properties;
 }
 
 const GRADLE_PLUGIN = /\bid\s*\(?\s*["']([^"']+)["']\s*\)?\s*version\s*\(?\s*["']([^"']+)["']/g;

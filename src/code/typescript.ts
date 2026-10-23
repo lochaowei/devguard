@@ -1,6 +1,6 @@
 import type { Finding } from "../report/finding.ts";
 import type { ToolResult } from "../tools/runner.ts";
-import { codeFinding, runBatched, toolFailed, toRepoPath } from "./support.ts";
+import { codeFinding, firstDifferentLine, runBatched, splitStaged, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
 
 interface EslintMessage {
@@ -44,18 +44,18 @@ function eslintFindings(target: CodeTarget, ctx: CodeCheckContext, result: ToolR
   );
 }
 
+/** Staged files go through `eslint --stdin --stdin-filename` one by one; the rest are checked on disk. */
 async function lint(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
   const request = { language: "typescript", tool: "eslint", dir: target.dir } as const;
-  const results = await runBatched(ctx.tools, request, ["--format", "json", "--no-warn-ignored"], target.files);
+  const args = ["--format", "json", "--no-warn-ignored"];
+  const { staged, onDisk } = await splitStaged(target, ctx);
+  const results = await runBatched(ctx.tools, request, args, onDisk);
+  for (const { file, text } of staged) {
+    results.push(
+      await ctx.tools.run({ ...request, args: [...args, "--stdin", "--stdin-filename", file], stdin: text }),
+    );
+  }
   return results.flatMap((r) => eslintFindings(target, ctx, r));
-}
-
-/** 1-based number of the first line where `actual` and `expected` differ (1 when they are equal). */
-function firstDifferentLine(actual: string, expected: string): number {
-  const a = actual.split("\n");
-  const b = expected.split("\n");
-  const i = a.findIndex((line, n) => line !== b[n]);
-  return i === -1 ? Math.min(a.length, b.length) : i + 1;
 }
 
 /** Prettier only lists unformatted files; formatting each one again locates the first changed line. */
@@ -68,10 +68,22 @@ async function prettierLine(target: CodeTarget, ctx: CodeCheckContext, file: str
   return firstDifferentLine(original, formatted.stdout);
 }
 
+/** `prettier --stdin-filepath` prints the staged version formatted; any difference is a format finding. */
+async function formatStaged(target: CodeTarget, ctx: CodeCheckContext, file: string, text: string): Promise<Finding[]> {
+  const request = { language: "typescript", tool: "prettier", dir: target.dir, stdin: text } as const;
+  const result = await ctx.tools.run({ ...request, args: ["--stdin-filepath", file] });
+  if (result.code !== 0) return [toolFailed(target, "prettier", result)];
+  if (result.stdout === text) return [];
+  const at = { file: toRepoPath(ctx.cwd, target.dir, file), line: firstDifferentLine(text, result.stdout) };
+  return [codeFinding(target, { rule: "prettier/format", message: "格式不符合 Prettier", ...at })];
+}
+
 async function format(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
   const request = { language: "typescript", tool: "prettier", dir: target.dir } as const;
   const findings: Finding[] = [];
-  for (const result of await runBatched(ctx.tools, request, ["--list-different"], target.files)) {
+  const { staged, onDisk } = await splitStaged(target, ctx);
+  for (const { file, text } of staged) findings.push(...(await formatStaged(target, ctx, file, text)));
+  for (const result of await runBatched(ctx.tools, request, ["--list-different"], onDisk)) {
     if (result.code > 1) {
       findings.push(toolFailed(target, "prettier", result));
       continue;
@@ -126,33 +138,72 @@ function annotationFields(text: string): Record<string, string> {
   );
 }
 
+/** Biome's GitHub annotations in `text`; `stdinFile` is the file when Biome read it from stdin. */
+function biomeAnnotations(
+  target: CodeTarget,
+  ctx: CodeCheckContext,
+  text: string,
+  command: string,
+  stdinFile?: string,
+) {
+  return text.split(/\r?\n/).flatMap((line) => {
+    const m = GITHUB_ANNOTATION.exec(line);
+    if (!m) return [];
+    const fields = annotationFields(m[2] ?? "");
+    const named = fields.file ?? stdinFile;
+    return [
+      codeFinding(target, {
+        level: m[1] === "error" ? "error" : "hint",
+        rule: `biome/${fields.title ?? command}`,
+        message: m[3] ?? "",
+        file: named === undefined ? undefined : toRepoPath(ctx.cwd, target.dir, named),
+        line: fields.line === undefined ? undefined : Number(fields.line),
+        column: fields.col === undefined ? undefined : Number(fields.col),
+      }),
+    ];
+  });
+}
+
+/**
+ * A staged file through `--stdin-file-path` (SPEC §7.4): `format` prints the formatted text (any difference is a
+ * finding); `lint` echoes the code and reports its diagnostics, read from both streams.
+ */
+async function biomeStaged(
+  target: CodeTarget,
+  ctx: CodeCheckContext,
+  command: "lint" | "format",
+  { file, text }: { file: string; text: string },
+): Promise<Finding[]> {
+  const request = { language: "typescript", tool: "biome", dir: target.dir, stdin: text } as const;
+  if (command === "format") {
+    const result = await ctx.tools.run({ ...request, args: ["format", `--stdin-file-path=${file}`] });
+    if (result.code !== 0) return [toolFailed(target, "biome", result)];
+    if (result.stdout === text) return [];
+    const at = { file: toRepoPath(ctx.cwd, target.dir, file), line: firstDifferentLine(text, result.stdout) };
+    return [codeFinding(target, { rule: "biome/format", message: "格式不符合 Biome", ...at })];
+  }
+  const result = await ctx.tools.run({ ...request, args: ["lint", "--reporter=github", `--stdin-file-path=${file}`] });
+  const findings = biomeAnnotations(target, ctx, `${result.stdout}\n${result.stderr}`, command, file);
+  return findings.length === 0 && result.code !== 0 ? [toolFailed(target, "biome", result)] : findings;
+}
+
 async function biome(target: CodeTarget, ctx: CodeCheckContext, command: "lint" | "format"): Promise<Finding[]> {
   const request = { language: "typescript", tool: "biome", dir: target.dir } as const;
-  const results = await runBatched(ctx.tools, request, [command, "--reporter=github"], target.files);
-  return results.flatMap((result) => {
-    const findings = result.stdout.split(/\r?\n/).flatMap((text) => {
-      const m = GITHUB_ANNOTATION.exec(text);
-      if (!m) return [];
-      const fields = annotationFields(m[2] ?? "");
-      const file = fields.file === undefined ? undefined : toRepoPath(ctx.cwd, target.dir, fields.file);
-      return [
-        codeFinding(target, {
-          level: m[1] === "error" ? "error" : "hint",
-          rule: `biome/${fields.title ?? command}`,
-          message: m[3] ?? "",
-          file,
-          line: fields.line === undefined ? undefined : Number(fields.line),
-          column: fields.col === undefined ? undefined : Number(fields.col),
-        }),
-      ];
-    });
-    return findings.length === 0 && result.code !== 0 ? [toolFailed(target, "biome", result)] : findings;
+  const { staged, onDisk } = await splitStaged(target, ctx);
+  const results = await runBatched(ctx.tools, request, [command, "--reporter=github"], onDisk);
+  const findings = results.flatMap((result) => {
+    const found = biomeAnnotations(target, ctx, result.stdout, command);
+    return found.length === 0 && result.code !== 0 ? [toolFailed(target, "biome", result)] : found;
   });
+  for (const file of staged) findings.push(...(await biomeStaged(target, ctx, command, file)));
+  return findings;
 }
 
 /** ESLint + Prettier (or Biome) and `tsc --noEmit`, run from the component's node_modules (SPEC §6.3). */
 export const typescriptChecker: CodeChecker = {
   language: "typescript",
+  // ESLint, Prettier and Biome read the staged version from stdin; tsc reads the whole project from disk.
+  workingTreeTools: (target) => (target.categories.has("typecheck") ? ["tsc"] : []),
   async check(target, ctx) {
     const findings: Finding[] = [];
     const useBiome = target.effective["lint.tool"] === "biome";
@@ -164,5 +215,19 @@ export const typescriptChecker: CodeChecker = {
     }
     if (target.categories.has("typecheck")) findings.push(...(await typecheck(target, ctx)));
     return findings;
+  },
+  /** Lint fixes first, then the formatter, so the formatter has the last word on layout. */
+  fixSteps(target) {
+    const files = target.files ?? ["."];
+    if (target.effective["lint.tool"] === "biome") {
+      return Promise.resolve([
+        { tool: "biome", args: ["lint", "--write"], files, okUpTo: 1 },
+        { tool: "biome", args: ["format", "--write"], files, okUpTo: 1 },
+      ]);
+    }
+    return Promise.resolve([
+      { tool: "eslint", args: ["--fix", "--no-warn-ignored"], files, okUpTo: 1 },
+      { tool: "prettier", args: ["--write", "--log-level", "warn"], files, okUpTo: 0 },
+    ]);
   },
 };

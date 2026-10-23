@@ -1,4 +1,5 @@
 import type { Finding } from "../../report/finding.ts";
+import { upwards } from "../../repo/paths.ts";
 import { finding, type JavaTarget } from "./common.ts";
 
 export type BuildTool = "maven" | "gradle";
@@ -18,17 +19,6 @@ const WRAPPER: Record<BuildTool, { label: string; files: readonly string[]; fix:
 
 export const GRADLE_FILES = ["build.gradle", "build.gradle.kts"] as const;
 
-/** The component directory and every directory above it, nearest first ("" is the repo root). */
-function upwards(dir: string): string[] {
-  const out = [dir];
-  let d = dir;
-  while (d !== "") {
-    d = d.slice(0, d.slice(0, -1).lastIndexOf("/") + 1);
-    out.push(d);
-  }
-  return out;
-}
-
 /** Maven when the component has a pom.xml, Gradle when it has a build script, otherwise what the declaration says. */
 export function buildToolOf(t: JavaTarget): BuildTool {
   const { dir } = t.component;
@@ -46,7 +36,7 @@ export function checkWrapper(t: JavaTarget): Finding[] {
     finding(
       t,
       "error",
-      "java/wrapper-missing",
+      "settings/wrapper-missing",
       `沒有提交 ${wrapper.label} wrapper（${wrapper.files.join(" / ")}），CLI 一律透過 wrapper 呼叫建置工具`,
       { fix: wrapper.fix },
     ),

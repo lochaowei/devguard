@@ -1,9 +1,10 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { readIfExists } from "../settings/config-files.ts";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { redactSecrets } from "../report/redact.ts";
 import { fileCategory, type FileCategory } from "./category.ts";
 import { editConfigText } from "./edit.ts";
 import type { KeyEdit, Repair } from "./repair.ts";
+import { readIfExists } from "../shared/fs.ts";
 
 export { fileCategory } from "./category.ts";
 
@@ -13,12 +14,15 @@ export interface FileWrite {
   category: "generated" | "managed";
   before: string;
   after: string;
+  /** File mode set after writing, e.g. 0o755 for a git hook. */
+  mode?: number;
 }
 
 /** Something printed for a person to apply: build files, code-form config, user-level settings. */
 export interface Printed {
   file: string;
-  category: "snippet" | "user";
+  /** `conflict`: a setting that stops the git hooks from running (`core.hooksPath`, SPEC §7.4). */
+  category: "snippet" | "user" | "conflict";
   lines: string[];
 }
 
@@ -184,30 +188,35 @@ const WRITE_LABEL = { generated: "重新產生（由 CLI 產生）", managed: "�
 const PRINT_LABEL = {
   snippet: "建置檔或程式碼形式的設定，不會自動修改；請自行套用",
   user: "使用者層級的設定，不會修改；請自行套用",
+  conflict: "core.hooksPath 衝突，hook 不會執行；請自行處理",
 } as const;
 
-/** The preview: a diff per written file, then the printed snippets. */
+/** A diff line (`-` / `+` / ` ` marker) with any credential it shows masked (SPEC §10.3). */
+const redactedDiffLine = (line: string): string => line.slice(0, 1) + redactSecrets(line.slice(1));
+
+/** The preview: a diff per written file, then the printed snippets. Credentials are never printed (SPEC §10.3). */
 export function renderPlan(plan: ChangePlan): string {
   const out: string[] = [];
   for (const w of plan.writes) {
     out.push(
       `${w.file}：${w.before === "" ? "新增，" : ""}${WRITE_LABEL[w.category]}`,
-      ...diffLines(w.before, w.after),
+      ...diffLines(w.before, w.after).map(redactedDiffLine),
       "",
     );
   }
   for (const p of plan.printed) {
-    out.push(`${p.file}：${PRINT_LABEL[p.category]}`, ...p.lines.map((l) => `    ${l}`), "");
+    out.push(`${p.file}：${PRINT_LABEL[p.category]}`, ...p.lines.map((l) => `    ${redactSecrets(l)}`), "");
   }
   if (out.length === 0) return "沒有需要修正的設定。\n";
   return out.join("\n");
 }
 
-/** Writes the planned files. Printed items are never written. */
+/** Writes the planned files: repo-relative, or absolute (a hooks directory outside the work tree). Printed items are never written. */
 export async function applyPlan(cwd: string, plan: ChangePlan): Promise<void> {
   for (const w of plan.writes) {
-    const path = join(cwd, w.file);
+    const path = resolve(cwd, w.file);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, w.after);
+    if (w.mode !== undefined) await chmod(path, w.mode);
   }
 }

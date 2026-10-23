@@ -1,3 +1,4 @@
+import { CLI_INSTALL_HINT } from "../src/distribution.ts";
 import { describe, expect, it } from "vitest";
 import { resolveText, rules } from "./helpers.ts";
 
@@ -102,10 +103,16 @@ describe("resolveDeclaration — other rules", () => {
     expect(rules(r.findings)).toEqual(["error:declaration/unknown-language", "error:declaration/duplicate-component"]);
   });
 
-  it("applies mirrors as global items: style URLs are free, auth must be none or env", () => {
-    const ok = resolveText(`${head}  - path: ./\n    language: go\nmirrors:\n  auth: env\n  npm: https://other/\n`);
+  it("applies mirrors as global items: same-host URLs are free, other hosts looser, auth must be none or env", () => {
+    const internal = "https://nexus.example.internal/repository/npm-group/";
+    const ok = resolveText(`${head}  - path: ./\n    language: go\nmirrors:\n  auth: env\n  npm: ${internal}\n`);
     expect(ok.findings).toEqual([]);
     expect(ok.global["mirrors.auth"]?.status).toBe("alternative");
+    expect(ok.global["mirrors.npm"]?.status).toBe("different");
+    const external = resolveText(`${head}  - path: ./\n    language: go\nmirrors:\n  npm: https://other/\n`);
+    expect(rules(external.findings)).toEqual(["error:declaration/looser-without-reason"]);
+    const notUrl = resolveText(`${head}  - path: ./\n    language: go\nmirrors:\n  npm: other\n`);
+    expect(rules(notUrl.findings)).toEqual(["error:declaration/invalid-value"]);
     const bad = resolveText(`${head}  - path: ./\n    language: go\nmirrors:\n  auth: kerberos\n  ftp: x\n`);
     expect(rules(bad.findings)).toEqual(["error:declaration/looser-without-reason", "error:declaration/unknown-item"]);
   });
@@ -113,7 +120,7 @@ describe("resolveDeclaration — other rules", () => {
   it.each([
     ["team@1", "standard/malformed", undefined],
     ["acme@1.0.0", "standard/unknown-name", undefined],
-    ["team@9.0.0", "standard/newer-than-cli", "scoop update devguard"],
+    ["team@9.0.0", "standard/newer-than-cli", `更新 devguard：${CLI_INSTALL_HINT}`],
     ["team@0.1.0", "standard/no-longer-bundled", "devguard standard upgrade"],
   ])("standard %s → %s", (id, rule, fix) => {
     const r = resolveText(`standard: ${id}\ncomponents: []\n`);

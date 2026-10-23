@@ -64,12 +64,15 @@
 
 - **語言**：TypeScript。CLI 本身也遵守 §6.3 的 TypeScript 預設標準。
 - **打包**：用 Bun `--compile` 打包成單一 `.exe`（windows-x64、windows-arm64），這是唯一的發佈形式。
-  - Bun 必須 **≥1.2.23**。這個版本起，嵌入的資料放在獨立的 PE section，簽章後 exe 不會損壞（PR #22960）。
-  - 在 **Windows runner 上建置**，因為交叉編譯時無法設定 `--windows-icon` 與版本資訊。
-  - 編譯完成後用 signtool 簽章，接著執行 `signtool verify /pa`，再跑一次 `devguard --version` 確認可以正常執行。
-  - 目前沒有找到 Bun 編譯的 exe 被防毒誤判的回報，但 Bun 在 Windows 上仍有幾個尚未修正的子程序 bug（#32011、#40846、#43660），見 §13。
-- **分發**：Scoop bucket 是一個放在公司內部 git 伺服器的 repo，裡面的 manifest 指向 Nexus raw repository（`mirrors.tools`）中的 exe。開發者執行 `scoop install devguard` 安裝、`scoop update devguard` 更新，不需要管理員權限。Scoop 產生的 shim 是真正的 `.exe`，Claude Code 的 exec form hook 可以直接呼叫。
-- 同一個 bucket 也提供預設標準指定版本的 **golangci-lint** binary。
+  - Bun 必須 **≥1.2.23**（已在 1.4.4 驗證，見 §13 T1、T2）。
+  - 在 **Windows runner 上建置**，因為交叉編譯時無法設定 `--windows-icon` 與版本資訊。windows-arm64 在 x64 主機上交叉編譯時，Bun 會從外網下載 arm64 runtime，所以在無法連外的環境必須改在 arm64 的 Windows 上建置。
+  - 建置後執行 smoke test：在 PATH 中沒有 Node 的情況下跑 `devguard --version` 與 `devguard check`。
+  - exe **不簽章**（原本規劃的 signtool 簽章已取消，見 #28）。
+- **分發**：以 **GitHub Release** 發佈建置好的 exe。推送 `v<版本>` tag 時，`.github/workflows/release.yml` 在 Windows runner 上執行測試、建置兩個 exe、跑 smoke test，並把 `devguard-windows-x64.exe`、`devguard-windows-arm64.exe` 與 `SHA256SUMS.txt` 附加到 release。tag 必須和 `package.json` 的版本相同。
+  - 開發者下載 exe、改名為 `devguard.exe` 並放進 PATH；更新時用新版取代。CLI 找不到或版本過舊時，訊息會指向 release 頁面。
+  - 放在 PATH 上的是真正的 `.exe`，Claude Code 的 exec form hook 可以直接呼叫。
+  - 原本規劃的內部 Scoop bucket 與 Nexus raw repository 已取消（#28）。
+- **golangci-lint** 仍是 §5.2 的例外：使用預設標準指定版本的 binary，由開發者放到 PATH，CLI 從 PATH 呼叫並核對版本。
 - **預設標準內建在 CLI 中**（見 §5.5），所以 CLI 不需要連網就能解析專案宣告。
 
 來源：[CLI 實作語言與 Windows 分發選項研究](.scratch/coding-standards-guard/research/01-cli-runtime-options.md)、[CLI 實作語言與分發方式決策](.scratch/coding-standards-guard/issues/05-cli-runtime-decision.md)、[內部鏡像設定檢查](.scratch/coding-standards-guard/issues/16-internal-mirror-config.md)
@@ -79,17 +82,18 @@
 | 指令 | 用途 |
 |---|---|
 | `devguard install` | 在專案中產生各防線的設定（`.vscode/`、`.claude/`、git hook、工具設定檔、鏡像設定），並安裝 pre-commit 與 pre-push hook |
-| `devguard draft [--cwd <dir>]` | 專案尚無 `.devguard.yaml` 時，依偵測到的元件與既有工具設定產生宣告草稿（§4.3，不覆寫既有檔案） |
-| `devguard check [files] [--staged] [--full] [--only <類別>] [--format text\|json\|sarif\|vscode\|claude] [--strict] [--verbose]` | 執行設定、一致性與程式碼檢查，不含環境檢查。指定檔案時只對這些檔案跑程式碼檢查。供 CI 與 git hook 使用 |
-| `devguard doctor [--quiet] [--format …]` | `check` 加上環境檢查（擴充套件、hook 是否安裝、Claude Code、鏡像、帳密變數是否存在） |
+| `devguard check [檔案…] [--staged] [--full] [--only <類別>] [--format text\|json\|sarif\|vscode\|claude] [--strict] [--verbose]` | 執行設定、一致性與程式碼檢查，不含環境檢查。指定檔案時只對這些檔案跑程式碼檢查。供 CI 與 git hook 使用。`--staged` 只檢查 staged 的檔案，內容與 pre-commit hook 相同 |
+| `devguard doctor [--quiet] [--exit-zero] [--format …]` | `check` 加上環境檢查（擴充套件、hook 是否安裝、Claude Code、鏡像、帳密變數是否存在）。`--exit-zero`：有問題時也以 0 結束，給 `/standards-doctor` skill 嵌入結果用（§7.3） |
+| `devguard draft` | 專案尚無 `.devguard.yaml` 時，依偵測到的元件與既有工具設定產生宣告草稿（§4.3），不覆寫既有檔案 |
 | `devguard fix [--yes]` | 修正**設定**（§9） |
 | `devguard fix --code [files] [--yes]` | 修正**程式碼**：格式化與可自動修正的 lint |
 | `devguard standard upgrade [目標版本] [--apply]` | 預覽或套用標準升級（§5.5） |
 | `devguard hook git-pre-commit` / `git-pre-push` | 給 git hook 呼叫 |
 | `devguard hook claude-post-edit` / `claude-stop` / `claude-session-start` | 給 Claude Code hook 呼叫，從 stdin 讀取 hook 的 JSON 輸入 |
 
+- 每個指令都接受 `--cwd <dir>`，指定專案根目錄（預設為目前目錄）。
 - 各 `hook` 子指令自行處理該防線的輸入格式與 exit code 語意。
-- CLI 執行 Go 工具時，一律帶入 `GOTOOLCHAIN=local` 與鏡像相關的環境變數。
+- CLI 執行 Go 工具時，一律帶入 `GOTOOLCHAIN=local`。golangci-lint 與套件管理指令另外帶入鏡像相關的環境變數；`go tool <名稱>` 與 `go mod` 等檢查用的指令則帶入 `GOPROXY=off`，確保檢查時不會下載任何模組（模組不在快取中時，該次執行失敗，而不是改為下載）。
 - **`.cmd` / `.bat` 檔一律透過 `cmd.exe /d /s /c` 執行**，例如 `code.cmd`、`mvnw.cmd`、`gradlew.bat`、`npm.cmd`。這類檔案無法直接當作程序啟動。
 
 ---
@@ -139,13 +143,15 @@ mirrors:
 | 禁用清單 / 規則集 | 移除項目算放寬，新增項目算收緊 | `deps.banned`、`lint.rules` |
 | 工具選擇 | 改用允許清單內的工具算替代，不算偏離；改用清單外的工具算放寬 | `lint.tool` |
 | 版本範圍 | 超出範圍算放寬 | 各工具的版本範圍 |
-| **風格** | 沒有嚴格或寬鬆之分，可以直接覆寫，不算偏離 | `format.*`、`mirrors.*` |
+| **風格** | 沒有嚴格或寬鬆之分，可以直接覆寫，不算偏離 | `format.*`、`mirrors.auth` |
+| **鏡像** | 改成預設鏡像同一台主機上的其他 repository 視同風格；改成其他主機算放寬 | `mirrors.pypi`、`mirrors.npm` 等網址 |
 
 - **放寬**時必須寫成 `{value, reason, until?}`。
   - 沒有理由，或理由仍是 `TODO`：**錯誤**。
   - 有理由：標示為**偏離**，不擋人，但一直列在報告中。
   - 超過 `until`：再變回**錯誤**。
 - 覆寫不存在的項目、值的型別錯誤、重複宣告同一個元件：**錯誤**。
+- 鏡像網址改到內部主機以外屬於放寬，必須寫理由並一直列為偏離；這樣 §10.2「設定指向外部來源是錯誤」不會被宣告悄悄繞過。
 - 同一個 repo 裡，同語言的元件風格不一致時：**提示**。
 - `deps.ignoredVulns` 中的每一項都比照偏離處理，必須有 `reason` 與 `until`。
 
@@ -174,7 +180,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | `deps.vulnScan` | **`false`**（進階項目，見 §5.3） | 布林 |
 | `deps.ignoredVulns` | 空 | 新增項目算放寬 |
 | `claude.minVersion` | `2.1.295`（`onFailure: block` 需要此版本） | 下限 |
-| `mirrors.pypi` / `npm` / `go` / `maven` / `vscode` / `tools` | 見 §10.1 | 風格 |
+| `mirrors.pypi` / `npm` / `go` / `maven` / `vscode` / `tools` 等 | 見 §10.1 | 鏡像（§4.2） |
 | `mirrors.auth` | `none` | 風格 |
 | 各工具的版本範圍 | 發佈 `team@1.0.0` 時訂定，例如 `ruff >=0.17,<0.18`、`golangci-lint >=2.12`（`gomodguard_v2` 從 v2.12.0 才有） | 版本範圍 |
 
@@ -188,7 +194,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
   - TypeScript：`devDependencies` 加上 lockfile
   - Go：`go.mod` 的 `tool`
   - Java：`pom.xml` / `build.gradle` 中的 plugin 版本
-- **golangci-lint 例外**：不放進 `go.mod` 的 `tool`。由內部 Scoop bucket 提供指定版本的 binary，CLI 從 PATH 呼叫並核對版本。
+- **golangci-lint 例外**：不放進 `go.mod` 的 `tool`。使用指定版本的 binary，由開發者放到 PATH，CLI 從 PATH 呼叫並核對版本。
 - CLI 執行工具的方式：
   - Python：`uv run <tool>`
   - TypeScript：`node_modules/.bin/<tool>`
@@ -210,7 +216,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | 工具 | 可行性 | 做法 |
 |---|---|---|
 | govulncheck | ✅ 可行 | `-db` 指向 `mirrors.govulndb`（Nexus raw proxy，指向 `https://vuln.go.dev`），或解壓 `vulndb.zip` 後使用 `file://` 路徑。Nexus 的 Go proxy 無法提供這份資料。 |
-| OWASP Dependency-Check | ⚠ 有條件 | `nvdDatafeedUrl` 指向 Nexus raw hosted repo 中的 NVD 鏡像。IT 需要一台能連到 NVD API 的機器，每天執行 `vulnz cve --cache` 並上傳結果。KEV 與 RetireJS 要指向鏡像，或用 `--disableKnownExploited`、`--disableRetireJs` 關閉。OSS Index 與 Node Audit 一律關閉（`--disableOssIndex`、`--disableNodeAudit`）。 |
+| OWASP Dependency-Check | ⚠ 有條件 | `nvdDatafeedUrl` 指向 Nexus raw hosted repo 中的 NVD 鏡像。IT 需要一台能連到 NVD API 的機器，每天執行 `vulnz cve --cache` 並上傳結果。KEV 與 RetireJS 要指向鏡像，或用 `--disableKnownExploited`、`--disableRetireJs` 關閉。OSS Index、Node Audit 與 Maven Central analyzer 一律關閉（`--disableOssIndex`、`--disableNodeAudit`、`-DcentralAnalyzerEnabled=false`）。plugin 一律以確切版本呼叫（pom 鎖定的版本，否則用標準指定的版本），不讓 Maven 自行挑選最新版。 |
 | npm audit | ⚠ 有條件 | 需要 Sonatype Repository Firewall 授權、Nexus ≥3.82、npm ≥8（或 pnpm ≥11）。舊的 `/audits` 端點已於 2026-07-15 退役，只能使用 bulk 端點。doctor 會探測 bulk 端點，無法使用時給提示，不算錯誤。 |
 | pip-audit | ❌ 無法透過 Nexus PyPI | pip-audit 的 pypi 來源寫死為 pypi.org；若回應中缺少 `vulnerabilities` 欄位，它會直接回報「沒有弱點」而不發出警告。可行的替代：`-s osv --osv-url <內部端點>`，或改用 osv-scanner 的離線模式（讀取 Nexus raw 上的 `all.zip`），見 §13。 |
 
@@ -236,7 +242,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
   - **patch**：只修改說明。
 - **專案宣告寫確切版本**。
   - 有 minor 或 patch 更新時，doctor 建議升級。
-  - 宣告的版本比 CLI 內建的新：**錯誤**，提示執行 `scoop update devguard`。
+  - 宣告的版本比 CLI 內建的新：**錯誤**，提示從 GitHub Release 下載新版 devguard（§3.1）。
   - 宣告的版本已經不在 CLI 中：**錯誤**，提示升級標準。
 - **`devguard standard upgrade`**：預設只預覽，內容包括：
   - 標準項目的差異
@@ -390,9 +396,10 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 由 `devguard install` 產生並提交以下檔案。開發者信任資料夾後才會生效。
 
 - **`.claude/settings.json` 的 hooks**：全部以 exec form 呼叫 `devguard`。`SessionStart` 與 `PostToolUse` 設定 `onFailure: "block"`；`Stop` 不設定，因為 `onFailure` 對 `Stop` 無效。
-  - `SessionStart`：`devguard hook claude-session-start`。執行 `doctor --quiet`（結果進入 Claude 的 context），並寫入 `.git/standards-guard/claude-last-seen`。
+  - `SessionStart`：`devguard hook claude-session-start`。執行 `doctor --quiet`（結果進入 Claude 的 context），並寫入 `.git/devguard/claude-last-seen`（舊版寫入的 `.git/standards-guard/claude-last-seen` 仍然承認）。
   - `PostToolUse`（matcher `Edit|Write`）：`devguard hook claude-post-edit`。只對被編輯的那個檔案做 lint 與格式檢查。
-  - `Stop`：`devguard hook claude-stop`。用 `git diff` 找出這一輪改過的所有檔案（包含透過 Bash 改的），做 lint、格式與型別檢查。
+  - `Stop`：`devguard hook claude-stop`。用 `git status` 找出工作目錄中所有尚未 commit 的修改與新檔案（包含透過 Bash 改的），做 lint、格式與型別檢查。
+- 專案的工具尚未安裝時，各 hook 把它當成一項錯誤回報（附安裝指令），不會讓 hook 本身失敗，其餘檢查照常執行。
 - **回饋給 Claude 的方式**
   - exit 0 加上 JSON：`decision: "block"` 與 `reason`。
   - `reason` 最多列 20 項，其餘寫「還有 N 項」，總長度少於 4,000 字元。
@@ -403,7 +410,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
   - 開頭標註「由 CLI 產生」。
 - **`.claude/skills/standards-doctor/SKILL.md`**
   - 設定 `disable-model-invocation: true`，只有開發者能呼叫。
-  - 以 `` !`devguard doctor --format claude` `` 嵌入檢查結果；經開發者同意後，Claude 再執行 `fix --yes`。
+  - 以 `` !`devguard doctor --format claude --exit-zero` `` 嵌入檢查結果（`!` 指令以非 0 結束時整個 skill 會中止，所以必須加 `--exit-zero`）；經開發者同意後，Claude 再執行 `fix --yes`。
   - `allowed-tools` 同時允許 `Bash(devguard *)` 與 `PowerShell(devguard *)`。沒有安裝 Git Bash 的機器會改用 PowerShell 執行；若指令不被允許，整個 skill 呼叫都會中止。
 - **環境檢查**
   - Claude Code 版本必須達到 `claude.minVersion`。
@@ -420,16 +427,16 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 - **既有 hook 框架**：專案已經在用這類框架時，CLI 不覆寫它的 hook，而是在它的設定中注入一條呼叫 `devguard` 的項目：
   - pre-commit：一條 `language: unsupported` 的 local hook
   - husky：`.husky/pre-commit` 中加一行
-  - lefthook：加一個 job
+  - lefthook：加一個 job（YAML、TOML、JSON / JSONC 設定檔都支援）
 - **找不到 CLI**：擋下 commit。錯誤訊息附上安裝指令，並提示可用 `--no-verify` 暫時略過。
 - **部分 staged 的檔案**：不做 stash，也不還原任何檔案。
-  - formatter 與單檔 linter 改用 `git show :<path>` 取出 **staged 版本**，再以 stdin 交給工具檢查，例如 `ruff check|format --stdin-filename`、`eslint --stdin --stdin-filename`、`prettier --stdin-filepath`、`biome --stdin-file-path`、gofmt / gofumpt。這可以避免最常見的誤判：工作目錄已經格式化，但 commit 進去的版本沒有。
+  - formatter 與單檔 linter 改用 `git show :<path>` 取出 **staged 版本**，再以 stdin 交給工具檢查，例如 `ruff check|format --stdin-filename`、`eslint --stdin --stdin-filename`、`prettier --stdin-filepath`、`biome lint|format --stdin-file-path`，以及 Go 的格式檢查 `golangci-lint fmt --stdin`（套用設定中的 gofumpt、goimports）。這可以避免最常見的誤判：工作目錄已經格式化，但 commit 進去的版本沒有。
   - 型別檢查（mypy、pyright、tsc）、golangci-lint 與 Java 工具（Spotless、Checkstyle、PMD）沒有 stdin 模式，而且本來就會讀磁碟上的其他檔案，所以仍然檢查工作目錄的版本。
   - 印出的警告要說明哪些檢查用的是工作目錄版本。
 - **hook 只做檢查、不做修正**：失敗時印出 `devguard fix --code <files>`。
 - **「已安裝」的環境檢查**
   1. 讀取 `core.hooksPath` 及其設定來源。
-  2. 若使用既有框架，確認其設定中有呼叫 CLI 的項目；否則確認 hook 檔存在、有 CLI 標記，且 checksum 正確。
+  2. 若使用既有框架，確認其設定中有呼叫 CLI 的項目；使用 pre-commit 框架時，另外確認 `pre-commit install --hook-type pre-commit --hook-type pre-push` 已執行（hooks 目錄中有 pre-commit 產生的 hook）。沒有使用框架時，確認 hook 檔存在、有 CLI 標記，且 checksum 正確。
   3. `core.hooksPath` 指向 `/dev/null` 或不存在的目錄時，回報錯誤。
 - **促使開發者安裝**：VS Code 的 folderOpen task 與 Claude Code 的 SessionStart 都會執行 doctor。doctor 只回報問題並附上 `devguard install` 指令，不會自動安裝。
 
@@ -458,7 +465,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 ### 9.1 範圍
 
-- `devguard fix`：修正**設定**，包括工具設定檔、`.claude/`、`.vscode/`、git hook，以及 `.gitattributes` 與 `.gitignore` 中屬於標準的規則。
+- `devguard fix`：修正**設定**，包括工具設定檔、`.claude/`、`.vscode/`、git hook（重新產生被修改過的 devguard hook；尚未安裝的 hook 由 `install` 安裝），以及 `.gitattributes`、`.gitignore`、`lombok.config` 中屬於標準的規則。
 - `devguard fix --code [files]`：修正**程式碼**，包括 `ruff format`、`gofumpt`、`prettier --write`、`spotless:apply`，以及 `ruff check --fix`、`eslint --fix`、`golangci-lint run --fix`。
 - **使用者層級的設定一律不修改**，只印出修改說明，例如 `~/.m2/settings.xml`、使用者的 `.npmrc`、`go env`、環境變數。
 
@@ -492,6 +499,8 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 | `mirrors.go` | `https://nexus.example.internal/repository/go-proxy/` |
 | `mirrors.gosumdb` | `https://nexus.example.internal/repository/go-sumdb-proxy/`（raw proxy，指向 `https://sum.golang.org`，需關閉 Strict Content Type Validation） |
 | `mirrors.govulndb` | `https://nexus.example.internal/repository/go-vulndb-proxy/`（raw proxy，指向 `https://vuln.go.dev`；只在開啟弱點掃描時使用） |
+| `mirrors.osv` | `https://osv.example.internal/v1/query`（OSV 相容的查詢端點，給 `pip-audit -s osv --osv-url` 使用；Nexus raw proxy 無法代理 POST，需自架或由轉送代理放行；只在開啟弱點掃描時使用） |
+| `mirrors.nvd` | `https://nexus.example.internal/repository/nvd-mirror/`（raw hosted，放 vulnz 產生的 `nvdcve-*.json.gz`；Dependency-Check 的 `nvdDatafeedUrl` 為 `<mirrors.nvd>nvdcve-{0}.json.gz`；只在開啟弱點掃描時使用） |
 | `mirrors.maven` | `https://nexus.example.internal/repository/maven-public/` |
 | `mirrors.tools` | `https://nexus.example.internal/repository/raw-tools/` |
 | `mirrors.vscode` | `https://vsmarketplace.example.internal`（公司內部 marketplace） |
@@ -526,7 +535,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
   | Gradle | repository 的 `name` 設為 `nexus`，並加上 `credentials(PasswordCredentials)`，即可讀取 `ORG_GRADLE_PROJECT_nexusUsername` / `ORG_GRADLE_PROJECT_nexusPassword`（或 `~/.gradle/gradle.properties`） |
   | Go | `NETRC` 環境變數所指的檔案；沒有設定時用 `%USERPROFILE%\_netrc`。只寫主機名稱，僅適用 HTTPS |
 
-- 帳密**絕不進 repo**，CLI 也不保存。
+- 帳密**絕不進 repo**，CLI 也不保存。`fix`、`install` 與 `standard upgrade` 的預覽、印出的片段與報告中，一律遮蔽帳密的值（`.npmrc` 的 `_auth` / `_authToken` / `_password`、Maven 的 `<username>` / `<password>`、網址中的 `user:password@`）；只引用環境變數（`${…}`）的值照常顯示。
 - doctor 只檢查這些變數或 netrc 檔是否存在（Go 先看 `NETRC`，再看 `_netrc`），**不讀取也不印出它們的值**。這一點對 npm 特別重要：`.npmrc` 引用的變數不存在時，npm 不會報錯，而是把 `${VAR}` 原樣送出，最後得到 401。
 
 來源：[內部鏡像設定檢查](.scratch/coding-standards-guard/issues/16-internal-mirror-config.md)
@@ -553,6 +562,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 - `0`：通過（只有偏離或提示時也算通過）。
 - `1`：有錯誤。
 - `2`：CLI 本身出錯，例如參數錯誤、找不到工具、內部例外。
+  - 找不到工具：`check` 以 `2` 結束並印出安裝指令。`doctor` 與各 hook 則把它回報成一項**錯誤**（環境層，附安裝指令），其餘檢查照常執行，所以剛 clone 的專案也能看到缺少的 hook 與 `devguard install` 提示（§7.3、§7.4）。
 - 加上 `--strict` 時，偏離也算失敗，回傳 `1`。
 
 來源：[fix 行為與檢查報告格式](.scratch/coding-standards-guard/issues/17-fix-and-report-format.md)
@@ -563,12 +573,12 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 1. 以真實的 Nexus 網址取代 §10.1 的 dummy 網址。
 2. §7.2 推薦的 VS Code 擴充套件，都能在公司內部 marketplace 取得。
-3. 內部 git 伺服器上建立 Scoop bucket repo，Nexus 上建立 raw repository，放置 CLI 與 golangci-lint。
+3. 開發者能從 GitHub Release 下載 devguard 的 exe（§3.1），並取得預設標準指定版本的 golangci-lint binary。
 4. 在 Nexus 上建立 `mirrors.gosumdb` raw proxy（指向 `https://sum.golang.org`，關閉 Strict Content Type Validation）。
 5. 訂出 `team@1.0.0` 中各工具的確切版本範圍，以及 golangci-lint 的指定版本。
 6. 開發者的機器上有 Git for Windows（git hook 的 sh 依賴它）。
 7. 確認公司內部 marketplace 的類型。Microsoft 的私有 marketplace 需要 GitHub Enterprise，透過 `ExtensionGalleryServiceUrl` policy 設定；依原始碼推斷，`code --install-extension` 不會讀這個 policy（尚未實機確認）。
-8. **法務確認**：`eslint-plugin-sonarjs` 的授權是 LGPL-3.0-only。如果不允許使用，TypeScript 的認知複雜度要改用其他方式檢查。
+8. **法務確認**：`eslint-plugin-sonarjs` 的授權是 LGPL-3.0-only。如果不允許使用，TypeScript 的認知複雜度要改用其他方式檢查。確認之前，devguard 自己的原始碼也沒有加入這個 plugin，認知複雜度暫不檢查（`devguard check` 對自己會一直顯示這一項提示）。
 9. 只在打算開啟進階弱點掃描時才需要：
    - 一台能連到 NVD API 的機器，每天更新 Nexus raw hosted repo 中的 NVD 鏡像（給 Dependency-Check 使用）
    - `mirrors.govulndb` raw proxy
@@ -584,13 +594,18 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 **已決定**：Python 的覆蓋率改由 CLI 解析 `coverage json`，行與分支各自檢查是否達到 80%，與其他語言一致（§6.1）。
 
-**待實機測試（實作初期進行）**
+**已完成的實機測試（2026-10-24）**
+
+| # | 項目 | 結果 |
+|---|---|---|
+| T1 | `@decimalturn/toml-patch` 在 Bun 編譯後的 exe 中的 round-trip 測試：註解、空行、`[[tool.uv.index]]` | ✅ Bun 1.4.4 exe 中通過：註解、行尾註解、空行與 `[[tool.uv.index]]` 都保留（#17） |
+| T2 | Bun 在 Windows 上尚未修正的子程序 bug（#32011、#40846、#43660），對執行 `.cmd`、stdin 管線、hook 的影響 | ✅ Bun 1.4.4 exe 中 7 項 probe 全部通過，與 Node 相同（#27） |
+| T3 | 在團隊實際使用的 Claude Code 版本上，驗證 `onFailure`、exec form、`stop_hook_active` 的行為 | ✅ Claude Code 2.1.309 與規格一致；另加入 `doctor --exit-zero` 給 skill 使用（#23） |
+
+**待實機測試**
 
 | # | 項目 | 失敗時的退路 |
 |---|---|---|
-| T1 | `@decimalturn/toml-patch` 在 Bun 編譯後的 exe 中的 round-trip 測試：註解、空行、`[[tool.uv.index]]` | `pyproject.toml` 改為「只印片段」 |
-| T2 | Bun 在 Windows 上尚未修正的子程序 bug（#32011、#40846、#43660），對執行 `.cmd`、stdin 管線、hook 的影響 | 針對受影響的呼叫改用替代寫法，或等待修正 |
-| T3 | 在團隊實際使用的 Claude Code 版本上，驗證 `onFailure`、exec form、`stop_hook_active` 的行為 | 調整 `claude.minVersion` |
 | T4 | `code --install-extension` 在公司內部 marketplace 下的行為 | doctor 的提示改為只附上 marketplace 連結 |
 | T5 | 沒有 Firewall 授權時，Nexus 對 npm audit bulk 端點的回應 | 維持「無法使用時給提示」 |
 | T6 | 評估 osv-scanner 離線模式（讀取 Nexus raw 上的 `all.zip`），是否能用一個工具取代 npm audit 與 pip-audit | 維持 §5.3 現有的做法 |

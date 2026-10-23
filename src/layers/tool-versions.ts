@@ -1,34 +1,19 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import type { EffectiveItem, ResolvedComponent } from "../declaration/resolve.ts";
+import { pathToolHint } from "../distribution.ts";
+import { valueInForce, type EffectiveItem, type ResolvedComponent } from "../declaration/resolve.ts";
 import { DECLARATION_FILE } from "../declaration/types.ts";
 import type { Finding } from "../report/finding.ts";
 import type { ItemDef } from "../standard/types.ts";
 import type { ToolRunner } from "../tools/runner.ts";
 import { pinnedVersions } from "../versions/pinned.ts";
+import { preCommitRevHints } from "../versions/pre-commit-revs.ts";
 import { inRange } from "../versions/range.ts";
 import type { CheckLayer } from "./types.ts";
+import { repoReaderSync } from "../shared/fs.ts";
 
-/**
- * The range a component is held to: its override when that is not looser or is an accepted deviation, otherwise the
- * standard's own range (the declaration layer already reports the unjustified widening).
- */
-function rangeInForce(item: ItemDef, effective: EffectiveItem | undefined): string {
-  const standard = typeof item.value === "string" ? item.value : "";
-  const value = effective?.value;
-  if (typeof value !== "string") return standard;
-  const ok = effective?.status === "same" || effective?.status === "stricter" || effective?.accepted === true;
-  return ok ? value : standard;
-}
-
-function readRepoFile(cwd: string): (path: string) => string | undefined {
-  return (path) => {
-    try {
-      return readFileSync(join(cwd, path), "utf8");
-    } catch {
-      return undefined;
-    }
-  };
+/** The version range a component is held to (`valueInForce`), as text. */
+export function rangeInForce(item: ItemDef, effective: EffectiveItem | undefined): string {
+  const value = valueInForce(item.value, effective);
+  return typeof value === "string" ? value : typeof item.value === "string" ? item.value : "";
 }
 
 interface RangeItem {
@@ -44,7 +29,7 @@ function rangeItems(defs: Readonly<Record<string, ItemDef>>): RangeItem[] {
 
 /** Locked versions of the component's tools against the ranges in force (SPEC §5.2, §8). */
 function checkPinned(c: ResolvedComponent, items: RangeItem[], cwd: string): Finding[] {
-  const pinned = pinnedVersions(c.language, c.dir, readRepoFile(cwd));
+  const pinned = pinnedVersions(c.language, c.dir, repoReaderSync(cwd));
   if (!pinned) return [];
   const findings: Finding[] = [];
   for (const { key, item } of items) {
@@ -97,7 +82,7 @@ async function checkOnPath(
             ? `無法從 ${tool} --version 的輸出讀出版本，無法確認是否在 ${range} 內`
             : `PATH 上的 ${tool} 是 ${version}，不在允許的版本範圍 ${range} 內`,
         component: c.name,
-        fix: `scoop update ${tool}`,
+        fix: pathToolHint(tool, range),
       });
     }
   }
@@ -113,6 +98,7 @@ export const toolVersionsLayer: CheckLayer = {
     const defs = (c: ResolvedComponent) => rangeItems(standard.languages[c.language]);
     const pinned = resolution.components.flatMap((c) => checkPinned(c, defs(c), cwd));
     const onPath = await checkOnPath(resolution.components, defs, tools);
-    return { findings: [...pinned, ...onPath] };
+    const revs = preCommitRevHints(resolution.components, repoReaderSync(cwd));
+    return { findings: [...pinned, ...onPath, ...revs] };
   },
 };

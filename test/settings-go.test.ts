@@ -67,15 +67,15 @@ describe("checkGoSettings", () => {
 
   it("errors when cyclop or gocognit is looser than declared, hints when stricter", () => {
     const looser = check(GOOD.replace("max-complexity: 10", "max-complexity: 12"));
-    expect(rules(looser)).toEqual(["error:settings/golangci-looser"]);
+    expect(rules(looser)).toEqual(["error:settings/looser"]);
     expect(looser[0]).toMatchObject({ file: "backend/.golangci.yml", line: 6 });
     const stricter = check(GOOD.replace("min-complexity: 15", "min-complexity: 12"));
-    expect(rules(stricter)).toEqual(["hint:settings/golangci-stricter"]);
+    expect(rules(stricter)).toEqual(["hint:settings/stricter"]);
   });
 
   it("compares against the declared override, not the default", () => {
     const cyclo = "      complexity.cyclomatic: 8\n";
-    expect(rules(check(GOOD, GOMOD, cyclo))).toEqual(["error:settings/golangci-looser"]);
+    expect(rules(check(GOOD, GOMOD, cyclo))).toEqual(["error:settings/looser"]);
     expect(check(GOOD.replace("max-complexity: 10", "max-complexity: 8"), GOMOD, cyclo)).toEqual([]);
   });
 

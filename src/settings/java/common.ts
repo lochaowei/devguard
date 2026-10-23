@@ -44,7 +44,7 @@ export function judgeNumber(
       finding(
         t,
         "hint",
-        "java/config-value-unreadable",
+        "settings/config-value-unreadable",
         `${where.file}：無法判讀 ${where.setting} 的值「${raw}」，請確認不比宣告的 ${item.label} 寬鬆`,
         { file: where.file, line: where.line },
       ),
@@ -52,7 +52,8 @@ export function judgeNumber(
   }
   const site = { component: t.component.name, file: where.file, line: where.line };
   const repair = () => regenerate(t, where.file);
-  const judged = judgeConfigValue(key, item, t.component.effective[key], Number(raw), site, undefined, repair);
+  const declared = t.component.effective[key];
+  const judged = judgeConfigValue({ key, item, declared, actual: Number(raw), site, repair });
   return judged ? [judged] : [];
 }
 
@@ -67,7 +68,7 @@ export function generated(t: JavaTarget, file: string): Partial<Finding> {
 export async function readXmlConfig(t: JavaTarget, file: string): Promise<XmlEl | Finding> {
   const parsed = parseXmlText(await t.read(file));
   if (parsed.ok) return parsed.root;
-  return finding(t, "error", "java/config-unparseable", `${file}：XML 格式錯誤：${parsed.message}`, {
+  return finding(t, "error", "settings/config-unparseable", `${file}：XML 格式錯誤：${parsed.message}`, {
     file,
     line: parsed.line,
     ...generated(t, file),

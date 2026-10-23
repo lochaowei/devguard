@@ -1,6 +1,8 @@
 import { dirname, extname, join } from "node:path";
-import { at, isRecord, parseJsonc, readIfExists, searchDirs } from "../config-files.ts";
+import { at, parseJsonc, searchDirs } from "../config-files.ts";
 import { setAt, type SettingsJudge } from "../judge.ts";
+import { readIfExists } from "../../shared/fs.ts";
+import { isRecord } from "../../shared/guards.ts";
 
 interface Loaded {
   options: Record<string, unknown>;
