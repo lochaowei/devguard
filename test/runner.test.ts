@@ -212,3 +212,71 @@ describe("ToolMissingError", () => {
     await expect(runner.run(req({ language: "python", tool: "ruff" }))).rejects.toThrow("boom");
   });
 });
+
+describe("tool runner: package-manager commands go through the internal mirror (SPEC §5.5)", () => {
+  const MIRROR = "https://nexus.example.internal/repository/proxy/";
+
+  it("Python: uv with the mirror as its default index", async () => {
+    const { runner, started } = fakeRunner({});
+    await runner.manage({
+      language: "python",
+      dir: "api/",
+      args: ["add", "--dev", "ruff>=0.18,<0.19"],
+      mirror: MIRROR,
+    });
+    expect(started).toEqual([
+      {
+        file: "uv",
+        args: ["add", "--dev", "ruff>=0.18,<0.19"],
+        cwd: "C:\\repo\\api",
+        env: { UV_DEFAULT_INDEX: MIRROR },
+      },
+    ]);
+  });
+
+  it("TypeScript: npm from PATH with the mirror as its registry", async () => {
+    const { runner, started } = fakeRunner({ "C:\\scoop\\shims\\npm.cmd": "" });
+    await runner.manage({
+      language: "typescript",
+      dir: "",
+      args: ["install", "-D", "eslint@>=10 <11"],
+      mirror: MIRROR,
+    });
+    expect(started).toEqual([
+      {
+        file: "C:\\scoop\\shims\\npm.cmd",
+        args: ["install", "-D", "eslint@>=10 <11"],
+        cwd: "C:\\repo",
+        env: { npm_config_registry: MIRROR },
+      },
+    ]);
+  });
+
+  it("TypeScript: reports a missing npm", async () => {
+    const { runner } = fakeRunner({});
+    const m = await missing(runner.manage({ language: "typescript", dir: "", args: ["install"], mirror: MIRROR }));
+    expect(m.message).toContain("npm");
+  });
+
+  it("Go: go with GOPROXY and the checksum database through the mirror, never the toolchain download", async () => {
+    const { runner, started } = fakeRunner({});
+    await runner.manage({
+      language: "go",
+      dir: "",
+      args: ["get", "-tool", "x@v1"],
+      mirror: MIRROR,
+      sumdb: "https://s/",
+    });
+    expect(started[0]).toMatchObject({
+      file: "go",
+      env: { GOTOOLCHAIN: "local", GOPROXY: MIRROR, GOSUMDB: "sum.golang.org https://s/" },
+    });
+  });
+
+  it("refuses to run without a mirror, and for Java (build files are edited by hand)", async () => {
+    const { runner, started } = fakeRunner({});
+    await expect(runner.manage({ language: "python", dir: "", args: ["add"], mirror: "" })).rejects.toThrow("鏡像");
+    await expect(runner.manage({ language: "java", dir: "", args: [], mirror: MIRROR })).rejects.toThrow("Java");
+    expect(started).toEqual([]);
+  });
+});

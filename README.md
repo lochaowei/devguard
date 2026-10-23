@@ -178,7 +178,7 @@ GLOSSARY.md              用語定義
 - [ ] Claude Code：`.claude/` 的 rules、hooks 與 `/standards-doctor`（§7.3）
 - [ ] VS Code：`.vscode/` 的 extensions、settings、tasks（§7.2）
 - [ ] `devguard doctor`、內部鏡像與帳密檢查（§10）
-- [ ] `devguard standard upgrade`（§5.5）
+- [x] `devguard standard upgrade`（§5.5）
 - [ ] Bun 打包、簽章與 Scoop bucket（§3.1）
 
 導入前需要團隊或 IT 確認的事項見 SPEC §12，實作初期要實機測試的項目見 SPEC §13。

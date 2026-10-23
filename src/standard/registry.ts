@@ -10,7 +10,7 @@ export type StandardLookup =
 
 const ID_PATTERN = /^([a-z][a-z0-9-]*)@(\d+)\.(\d+)\.(\d+)$/;
 
-function parseId(id: string): { name: string; version: [number, number, number] } | undefined {
+export function parseStandardId(id: string): { name: string; version: [number, number, number] } | undefined {
   const m = ID_PATTERN.exec(id);
   if (!m) return undefined;
   return { name: m[1] ?? "", version: [Number(m[2]), Number(m[3]), Number(m[4])] };
@@ -25,11 +25,11 @@ function compareVersion(a: readonly number[], b: readonly number[]): number {
 }
 
 export function findStandard(id: string, bundled: readonly Standard[] = BUNDLED_STANDARDS): StandardLookup {
-  const wanted = parseId(id);
+  const wanted = parseStandardId(id);
   if (!wanted) return { ok: false, reason: "malformed" };
   const exact = bundled.find((s) => s.id === id);
   if (exact) return { ok: true, standard: exact };
-  const sameName = bundled.map((s) => parseId(s.id)).filter((p) => p?.name === wanted.name);
+  const sameName = bundled.map((s) => parseStandardId(s.id)).filter((p) => p?.name === wanted.name);
   if (sameName.length === 0) return { ok: false, reason: "unknown-name" };
   const newest = sameName.reduce((a, b) => (a && b && compareVersion(a.version, b.version) >= 0 ? a : b));
   if (newest && compareVersion(wanted.version, newest.version) > 0) return { ok: false, reason: "newer-than-cli" };

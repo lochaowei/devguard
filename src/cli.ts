@@ -14,6 +14,7 @@ import { exitCodeFor, renderJson, renderText, type ReportInput } from "./report/
 import { renderSarif } from "./report/sarif.ts";
 import { renderVscode } from "./report/vscode.ts";
 import { checkScope } from "./scope.ts";
+import { runStandardUpgrade } from "./standard/upgrade-run.ts";
 
 const VERSION = "0.1.0";
 
@@ -26,6 +27,8 @@ const USAGE = `用法：devguard <指令> [選項]
   install        產生各防線的設定並安裝 git pre-commit hook：先預覽，確認後套用；--yes 直接套用
   hook <名稱>    給 hook 呼叫：git-pre-commit
   draft          沒有 .devguard.yaml 時，依偵測到的元件與工具設定產生宣告草稿（不覆寫既有檔案）
+  standard upgrade [目標版本]
+                 預覽標準升級；--apply 才修改宣告與設定檔，並透過內部鏡像執行套件管理指令
 
 選項：
   --only <類別>         只跑一類程式碼檢查：lint|format|typecheck
@@ -36,6 +39,7 @@ const USAGE = `用法：devguard <指令> [選項]
   --cwd <dir>           專案根目錄（預設為目前目錄）
   --code                fix：修正程式碼而不是設定
   --yes                 fix / install：不詢問，直接套用
+  --apply               standard upgrade：實際套用升級
   --version             顯示版本
 `;
 
@@ -76,6 +80,7 @@ async function main(argv: string[]): Promise<number> {
       version: { type: "boolean", default: false },
       yes: { type: "boolean", default: false },
       code: { type: "boolean", default: false },
+      apply: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -91,7 +96,12 @@ async function main(argv: string[]): Promise<number> {
   return dispatch(command, resolve(values.cwd ?? process.cwd()), values, positionals.slice(1));
 }
 
-function dispatch(command: string, cwd: string, values: CheckFlags & { code: boolean; yes: boolean }, args: string[]) {
+function dispatch(
+  command: string,
+  cwd: string,
+  values: CheckFlags & { code: boolean; yes: boolean; apply: boolean },
+  args: string[],
+) {
   switch (command) {
     case "draft":
       return draft(cwd);
@@ -101,6 +111,8 @@ function dispatch(command: string, cwd: string, values: CheckFlags & { code: boo
       return runInstall({ cwd, today: localDate(), io: terminalInteraction(values.yes) });
     case "hook":
       return hook(cwd, args[0]);
+    case "standard":
+      return standard(cwd, args, values.apply);
     case "check":
       return check(cwd, values, args);
     default:
@@ -144,6 +156,14 @@ function hook(cwd: string, name: string | undefined): Promise<number> {
     throw new UsageError(`不認得的 hook「${name ?? ""}」，可用的有 ${Object.keys(HOOK_HANDLERS).join("|")}`);
   }
   return handler({ cwd, today: localDate(), write: (text) => process.stderr.write(text) });
+}
+
+function standard(cwd: string, args: string[], apply: boolean): Promise<number> {
+  const [sub, target, ...rest] = args;
+  if (sub !== "upgrade" || rest.length > 0)
+    throw new UsageError("用法：devguard standard upgrade [目標版本] [--apply]");
+  const write = (text: string) => process.stdout.write(text);
+  return runStandardUpgrade({ cwd, today: localDate(), target, apply, write });
 }
 
 async function draft(cwd: string): Promise<number> {

@@ -13,7 +13,7 @@ import type { CheckLayer } from "./types.ts";
  * The range a component is held to: its override when that is not looser or is an accepted deviation, otherwise the
  * standard's own range (the declaration layer already reports the unjustified widening).
  */
-function rangeInForce(item: ItemDef, effective: EffectiveItem | undefined): string {
+export function rangeInForce(item: ItemDef, effective: EffectiveItem | undefined): string {
   const standard = typeof item.value === "string" ? item.value : "";
   const value = effective?.value;
   if (typeof value !== "string") return standard;
