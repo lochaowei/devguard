@@ -1,0 +1,12 @@
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':spotlessJavaCheck'.
+> The following files had format violations:
+      src\main\java\com\example\App.java
+          @@ -2,4 +2,4 @@
+
+          -import·java.util.*;
+          +import·java.util.List;
+  Run './gradlew :spotlessApply' to fix these violations.

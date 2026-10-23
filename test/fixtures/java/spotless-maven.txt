@@ -1,0 +1,16 @@
+[INFO] Scanning for projects...
+[ERROR] Failed to execute goal com.diffplug.spotless:spotless-maven-plugin:2.43.0:check (default-cli) on project svc: The following files had format violations:
+[ERROR]     src\main\java\com\example\App.java
+[ERROR]         @@ -4,7 +4,7 @@
+[ERROR]          import·java.util.Map;
+[ERROR]
+[ERROR]          public·class·App·{
+[ERROR]         -··void·run(){
+[ERROR]         +····void·run()·{
+[ERROR]          ····}
+[ERROR]     src\test\java\com\example\AppTest.java
+[ERROR]         @@ -1,3 +1,3 @@
+[ERROR]         -package·com.example;··
+[ERROR]         +package·com.example;
+[ERROR] Run 'mvnw spotless:apply' to fix these violations.
+[ERROR] -> [Help 1]

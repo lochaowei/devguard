@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="10.17.0">
+<file name="@ROOT@/svc/src/main/java/com/example/App.java">
+<error line="3" column="1" severity="warning" message="Unused import - java.util.List." source="com.puppycrawl.tools.checkstyle.checks.imports.UnusedImportsCheck"/>
+<error line="12" severity="error" message="Cyclomatic Complexity is 12 (max allowed is 10)." source="com.puppycrawl.tools.checkstyle.checks.metrics.CyclomaticComplexityCheck"/>
+<error line="20" column="5" severity="info" message="Missing a Javadoc comment." source="com.puppycrawl.tools.checkstyle.checks.javadoc.MissingJavadocMethodCheck"/>
+</file>
+<file name="@ROOT@/svc/src/main/java/com/example/Clean.java">
+</file>
+</checkstyle>

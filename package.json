@@ -17,9 +17,16 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "build:exe": "node scripts/build-exe.ts",
+    "smoke:exe": "node scripts/smoke-exe.ts",
+    "t2:probe": "node scripts/t2-probe.ts",
+    "build:t2-probe": "node scripts/build-exe.ts --entry scripts/t2-probe.ts --name t2-probe"
   },
   "dependencies": {
+    "@decimalturn/toml-patch": "^3.3.1",
+    "@rgrove/parse-xml": "^5.0.0",
+    "jsonc-parser": "^3.3.1",
     "yaml": "^2.9.1"
   },
   "devDependencies": {

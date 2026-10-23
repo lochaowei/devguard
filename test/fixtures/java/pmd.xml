@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pmd xmlns="http://pmd.sourceforge.net/report/2.0.0" version="7.3.0" timestamp="2026-10-23T10:00:00.000">
+<file name="@ROOT@/svc/src/main/java/com/example/App.java">
+<violation beginline="15" endline="15" begincolumn="9" endcolumn="20" rule="UnusedLocalVariable" ruleset="Best Practices" package="com.example" class="App" method="run" externalInfoUrl="https://docs.pmd-code.org/" priority="3">
+Avoid unused local variables such as 'x'.
+</violation>
+</file>
+<error filename="@ROOT@/svc/src/main/java/com/example/Broken.java" msg="ParseException: Parse exception in file">
+<![CDATA[net.sourceforge.pmd.lang.ast.ParseException]]>
+</error>
+</pmd>

@@ -1,49 +1,108 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { parseDeclaration } from "./declaration/parse.ts";
-import { resolveDeclaration, type Resolution } from "./declaration/resolve.ts";
-import { DECLARATION_FILE } from "./declaration/types.ts";
+import type { Resolution } from "./declaration/resolve.ts";
+import { codeLayer } from "./layers/code.ts";
+import { declarationLayer } from "./layers/declaration.ts";
+import { depsLayer } from "./layers/deps.ts";
+import { gitattributesLayer } from "./layers/gitattributes.ts";
+import { pythonSettingsLayer } from "./layers/python-settings.ts";
+import { goSettingsLayer } from "./layers/settings-go.ts";
+import { javaSettingsLayer } from "./layers/settings-java.ts";
+import { testsLayer } from "./layers/tests.ts";
+import { typescriptSettingsLayer } from "./layers/settings-typescript.ts";
+import { toolVersionsLayer } from "./layers/tool-versions.ts";
+import type { CheckLayer, CheckScope, LayerContext } from "./layers/types.ts";
+import { uncoveredFilesLayer } from "./layers/uncovered.ts";
+import type { Finding } from "./report/finding.ts";
 import type { ReportInput } from "./report/render.ts";
+import { listRepoFiles } from "./repo/files.ts";
+import { createToolRunner, type ToolRunner } from "./tools/runner.ts";
+
+export type { CheckLayer, CheckScope, LayerContext, LayerResult } from "./layers/types.ts";
 
 export interface CheckResult extends ReportInput {
   resolution?: Resolution;
 }
 
-async function readDeclaration(cwd: string): Promise<string | undefined> {
-  try {
-    return await readFile(join(cwd, DECLARATION_FILE), "utf8");
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw e;
-  }
+/** The layers of `devguard check`, in order. A new layer only needs to be added here. */
+export const CHECK_LAYERS: readonly CheckLayer[] = [
+  declarationLayer,
+  uncoveredFilesLayer,
+  pythonSettingsLayer,
+  goSettingsLayer,
+  javaSettingsLayer,
+  depsLayer,
+  typescriptSettingsLayer,
+  toolVersionsLayer,
+  gitattributesLayer,
+  // Layers above check the setup; code checks run last.
+  codeLayer,
+  // Tests and coverage run only with --full.
+  testsLayer,
+];
+
+/**
+ * The layers `devguard fix` runs to find what to repair: the config checks, without the ones that run the project's
+ * tools (dependencies, tool versions). A settings layer whose findings carry repairs belongs here too.
+ */
+export const FIX_LAYERS: readonly CheckLayer[] = [
+  declarationLayer,
+  pythonSettingsLayer,
+  goSettingsLayer,
+  javaSettingsLayer,
+  typescriptSettingsLayer,
+  gitattributesLayer,
+];
+
+export interface CheckOptions {
+  cwd: string;
+  today: string;
+  /** Defaults to the real runner; tests pass a fake. */
+  tools?: ToolRunner;
+  /** Defaults to listing the repo with git. */
+  listFiles?: (cwd: string) => Promise<string[]>;
+  /** Defaults to the whole repo and every category. */
+  scope?: CheckScope;
 }
 
-/** The declaration layer of `devguard check`: parse `.devguard.yaml` and resolve it against the bundled standard. */
-export async function checkDeclaration(cwd: string, today: string): Promise<CheckResult> {
-  const text = await readDeclaration(cwd);
-  if (text === undefined) {
-    return {
-      components: [],
-      findings: [
-        {
-          level: "error",
-          layer: "config",
-          rule: "declaration/missing",
-          message: `找不到 ${DECLARATION_FILE}`,
-          fix: `在 repo 根目錄建立 ${DECLARATION_FILE}（格式見 SPEC §4）`,
-        },
-      ],
-    };
-  }
-  const parsed = parseDeclaration(text, DECLARATION_FILE);
-  if (!parsed.declaration) return { components: [], findings: parsed.findings };
-  const resolution = resolveDeclaration(parsed.declaration, today);
+function layerContext(options: CheckOptions): LayerContext {
+  const { cwd, today } = options;
+  const listFiles = options.listFiles ?? ((dir: string) => listRepoFiles(dir));
+  let files: Promise<string[]> | undefined;
   return {
-    standard: resolution.standard?.id,
-    components: resolution.components,
-    findings: [...parsed.findings, ...resolution.findings],
-    resolution,
+    cwd,
+    today,
+    tools: options.tools ?? createToolRunner({ cwd }),
+    files: () => (files ??= listFiles(cwd)),
+    scope: options.scope ?? { full: false },
   };
+}
+
+/** Runs the layers in order and merges their findings into one report. */
+export async function runCheck(
+  options: CheckOptions,
+  layers: readonly CheckLayer[] = CHECK_LAYERS,
+): Promise<CheckResult> {
+  const ctx = layerContext(options);
+  const findings: Finding[] = [];
+  for (const layer of layers) {
+    const result = await layer.run(ctx);
+    findings.push(...result.findings);
+    if (result.resolution) ctx.resolution = result.resolution;
+  }
+  const { resolution } = ctx;
+  return { standard: resolution?.standard?.id, components: resolution?.components ?? [], findings, resolution };
+}
+
+/** The declaration layer alone: parse `.devguard.yaml` and resolve it against the bundled standard. */
+export function checkDeclaration(cwd: string, today: string): Promise<CheckResult> {
+  return runCheck({ cwd, today }, [declarationLayer]);
+}
+
+/**
+ * Tests and coverage alone, as `check --full` runs them (SPEC §7.1, for the pre-push hook): the declaration layer,
+ * then each component's tests. Test failures and coverage below the declared threshold are separate errors.
+ */
+export function checkTestsAndCoverage(options: Omit<CheckOptions, "scope">): Promise<CheckResult> {
+  return runCheck({ ...options, scope: { full: true } }, [declarationLayer, testsLayer]);
 }
 
 export function localDate(now = new Date()): string {

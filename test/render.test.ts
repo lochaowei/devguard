@@ -58,7 +58,38 @@ describe("renderJson", () => {
     expect(json).toEqual({
       standard: null,
       components: [{ path: "./", language: "go" }],
-      findings: [{ level: "error", layer: "config", rule: "r/error", message: "error message" }],
+      findings: [{ level: "error", layer: "config", rule: "r/error", message: "error message", fixable: false }],
     });
+  });
+
+  it("gives every finding its layer and whether fix resolves it", () => {
+    const json = JSON.parse(
+      renderJson({
+        components: [],
+        findings: [f("error", { layer: "code", fix: "devguard fix --code a.ts" }), f("hint", { layer: "environment" })],
+      }),
+    ) as { findings: Finding[] };
+    expect(json.findings.map((x) => [x.layer, x.fixable])).toEqual([
+      ["code", true],
+      ["environment", false],
+    ]);
+  });
+});
+
+describe("renderText fixability", () => {
+  it("marks whether each finding can be fixed with devguard fix", () => {
+    const text = renderText({
+      components: [],
+      findings: [
+        f("error", { rule: "a", fix: "devguard fix" }),
+        f("error", { rule: "b", fix: "手動修正型別錯誤" }),
+        f("error", { rule: "c" }),
+        f("error", { rule: "d", fix: "改寫 pom.xml", fixable: true }),
+      ],
+    });
+    expect(text).toContain("[a]\n        可用 fix 修正：devguard fix\n");
+    expect(text).toContain("[b]\n        需手動修正：手動修正型別錯誤\n");
+    expect(text).toContain("[c]\n        需手動修正\n");
+    expect(text).toContain("[d]\n        可用 fix 修正：改寫 pom.xml\n");
   });
 });

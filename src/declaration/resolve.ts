@@ -10,6 +10,8 @@ export interface EffectiveItem {
   source: "default" | "override";
   status: Status;
   reason?: string;
+  /** Set on a looser override whose reason and until are valid: a deviation that is in force. */
+  accepted?: boolean;
   until?: string;
 }
 
@@ -104,6 +106,7 @@ class Resolver {
       this.judgeIgnoredVulns(value as unknown[], at);
     } else if (status === "looser") {
       if (this.checkJustification(reason, until, what, at)) {
+        effective.accepted = true;
         const tail = typeof until === "string" ? `｜到期：${until}` : "｜未設到期日";
         this.add("deviation", "declaration/deviation", `${what}｜理由：${String(reason)}${tail}`, at);
       }

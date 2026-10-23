@@ -7,6 +7,7 @@ export type Kind =
   | "severity" // lower level is stricter
   | "list" // removing entries is looser, adding is stricter (banned lists, rule sets)
   | "choice" // value in `allowed` is an alternative, anything else is looser
+  | "versionRange" // tool version range such as ">=0.17,<0.18"; admitting any version outside it is looser
   | "style" // no strictness: overriding is never a deviation
   | "ignoredVulns"; // each entry is looser and needs reason + until
 
@@ -25,6 +26,13 @@ export interface ItemDef {
   value: ItemValue;
   /** Only for kind "choice": the alternatives that are not deviations. */
   allowed?: readonly string[];
+  /**
+   * Only for kind "versionRange": the names the project's dependency manager pins the tool under (uv.lock package,
+   * npm package, go.mod tool path, Maven artifactId / Gradle plugin id or toolVersion block). See src/versions/pinned.ts.
+   */
+  pinnedAs?: readonly string[];
+  /** Only for kind "versionRange": the tool is a binary on PATH (golangci-lint), not pinned by the project. */
+  onPath?: true;
 }
 
 export type Language = "python" | "go" | "typescript" | "java";
