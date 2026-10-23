@@ -79,6 +79,7 @@ function checkPom(t: JavaTarget, file: string, text: string): Finding[] {
       file,
       line: found.line,
       fix: `把 ${file} 的 maven.compiler.release 改為 ${String(declared)} 以上（建置檔不會自動修改）`,
+      observed: { key: KEY, value: version },
     }),
   ];
 }

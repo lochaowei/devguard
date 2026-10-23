@@ -69,6 +69,22 @@ mirrors:
 
 可以覆寫的項目與預設值，見 [src/standard/team-1.0.0.ts](src/standard/team-1.0.0.ts) 或 SPEC §5、§6。
 
+### 還沒有宣告：`devguard draft`
+
+專案還沒有 `.devguard.yaml` 時（`check` 會回報「找不到 .devguard.yaml」並建議這個指令），執行：
+
+```bash
+devguard draft [--cwd <dir>]
+```
+
+依偵測到的元件與既有的工具設定產生**草稿**並寫入 `.devguard.yaml`（SPEC §4.3）：
+
+- **元件**：每個 `.py`、`.go`、`.ts`、`.java` 檔歸屬於最近一層有該語言建置或工具檔（`pyproject.toml` / `setup.py` / `setup.cfg` / `requirements.txt`、`go.mod`、`package.json` / `tsconfig.json`、`pom.xml` / `build.gradle(.kts)` / `settings.gradle(.kts)`）的目錄，沒有的話歸屬 repo 根目錄；monorepo 會產生多個元件。Java 的多模組建置以最外層的建置檔為一個元件。
+- **覆寫**：沿用設定檢查讀取的工具設定（`pyproject.toml`、`.golangci.yml` / `go.mod`、`pom.xml`、tsconfig / ESLint / Prettier / Biome / Vitest 等）。與預設相同的值省略；比預設嚴格的值、風格項目直接寫入；比預設寬鬆的值寫成 `{value, reason: "TODO: …"}`，**填寫理由之前 `check` 會回報錯誤**。
+- **不覆寫**：`.devguard.yaml` 已存在時不做任何修改，以 exit code `2` 結束。
+
+產生後請確認元件是否正確、填寫所有 `TODO` 理由（可加 `until`），再執行 `devguard check`。
+
 ### 工具版本範圍
 
 `check` 會讀出各元件用依賴管理鎖定的工具版本（`uv.lock` / `poetry.lock`、`package-lock.json`、`go.mod` 的 `tool`、`pom.xml` / `build.gradle(.kts)` 中的 plugin 版本），超出標準的版本範圍（`tools.<工具>` 項目，例如 `tools.ruff: ">=0.17,<0.18"`）就回報錯誤。golangci-lint 例外：從 PATH 呼叫 `golangci-lint --version` 核對，不符時提示 `scoop update golangci-lint`。
@@ -89,6 +105,7 @@ mirrors:
 
 ```
 devguard check [--format text|json] [--strict] [--verbose] [--cwd <dir>]
+devguard draft [--cwd <dir>]
 devguard --version
 ```
 
