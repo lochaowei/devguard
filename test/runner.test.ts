@@ -85,6 +85,21 @@ describe("tool runner: TypeScript", () => {
     await runner.run(req({ language: "typescript", tool: "tsc" }));
     expect(started[0]?.file).toBe("/repo/node_modules/.bin/tsc");
   });
+
+  it("finds hoisted node_modules/.bin, .venv, and build wrappers in ancestor directories", async () => {
+    const rootBin = "C:\\repo\\node_modules\\.bin\\eslint.cmd";
+    const rootVenv = "C:\\repo\\.venv\\Scripts\\ruff.exe";
+    const rootMvnw = "C:\\repo\\mvnw.cmd";
+    const { runner, started } = fakeRunner({ [rootBin]: "", [rootVenv]: "", [rootMvnw]: "" });
+    await runner.run(req({ language: "typescript", tool: "eslint", dir: "packages/web/", args: ["."] }));
+    await runner.run(req({ language: "python", tool: "ruff", dir: "services/api/", args: ["check"] }));
+    await runner.run(req({ language: "java", tool: "spotless", dir: "modules/core/", args: ["spotless:check"] }));
+    expect(started).toEqual([
+      { file: rootBin, args: ["."], cwd: "C:\\repo\\packages\\web" },
+      { file: "uv", args: ["run", "--no-sync", "ruff", "check"], cwd: "C:\\repo\\services\\api" },
+      { file: rootMvnw, args: ["spotless:check"], cwd: "C:\\repo\\modules\\core" },
+    ]);
+  });
 });
 
 describe("tool runner: Go", () => {

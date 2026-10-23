@@ -117,8 +117,8 @@ export async function planChanges(cwd: string, repairs: readonly Repair[]): Prom
 
 /** Line diff (longest common subsequence) with `-` / `+` markers and up to two lines of context. */
 export function diffLines(before: string, after: string): string[] {
-  const a = before === "" ? [] : before.replace(/\n$/, "").split("\n");
-  const b = after.replace(/\n$/, "").split("\n");
+  const a = before === "" ? [] : before.replace(/\r?\n$/, "").split(/\r?\n/);
+  const b = after.replace(/\r?\n$/, "").split(/\r?\n/);
   const ops = lineOps(a, b);
   const near = (k: number) => ops.slice(Math.max(0, k - 2), k + 3).some((o) => !o.startsWith(" "));
   return ops.filter((_, k) => near(k));

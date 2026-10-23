@@ -77,11 +77,22 @@ function inDir(dir: string, command: string): string {
   return dir === "" ? command : `cd ${dir.replace(/\/$/, "")} && ${command}`;
 }
 
-function python(req: ToolRequest, cwd: string, env: Env): Resolved {
-  const venv = env.windows
-    ? env.path.join(cwd, ".venv", "Scripts", `${req.tool}.exe`)
-    : env.path.join(cwd, ".venv", "bin", req.tool);
-  if (!env.exists(venv)) {
+/** `dir` and each ancestor directory up to the repo root `root`, nearest first. */
+function searchDirs(root: string, dir: string, path: typeof win32): string[] {
+  const parts = dir.split("/").filter((p) => p !== "");
+  return parts.map((_, i) => path.join(root, ...parts.slice(0, parts.length - i))).concat(root);
+}
+
+function python(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
+  const cwd = dirs[0] ?? "";
+  const bin = dirs
+    .map((d) =>
+      env.windows
+        ? env.path.join(d, ".venv", "Scripts", `${req.tool}.exe`)
+        : env.path.join(d, ".venv", "bin", req.tool),
+    )
+    .find((p) => env.exists(p));
+  if (!bin) {
     return {
       ok: false,
       message: `找不到 ${req.tool}：專案環境（.venv）中沒有安裝`,
@@ -91,9 +102,11 @@ function python(req: ToolRequest, cwd: string, env: Env): Resolved {
   return { ok: true, command: { file: "uv", args: ["run", "--no-sync", req.tool, ...(req.args ?? [])], cwd } };
 }
 
-function typescript(req: ToolRequest, cwd: string, env: Env): Resolved {
-  const bin = env.path.join(cwd, "node_modules", ".bin", env.windows ? `${req.tool}.cmd` : req.tool);
-  if (!env.exists(bin)) {
+function typescript(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
+  const cwd = dirs[0] ?? "";
+  const name = env.windows ? `${req.tool}.cmd` : req.tool;
+  const bin = dirs.map((d) => env.path.join(d, "node_modules", ".bin", name)).find((p) => env.exists(p));
+  if (!bin) {
     return { ok: false, message: `找不到 ${req.tool}：node_modules 中沒有安裝`, install: inDir(req.dir, "npm ci") };
   }
   return { ok: true, command: { file: bin, args: [...(req.args ?? [])], cwd } };
@@ -129,7 +142,8 @@ function onPath(name: string, env: Env): string | undefined {
 /** GOPROXY=off: running a check must never download modules. */
 const GO_ENV = { GOTOOLCHAIN: "local", GOPROXY: "off" };
 
-function go(req: ToolRequest, cwd: string, env: Env): Resolved {
+function go(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
+  const cwd = dirs[0] ?? "";
   const args = req.args ?? [];
   const goEnv = { ...req.env, ...GO_ENV };
   // `go` itself, for module commands such as `go mod tidy -diff`.
@@ -153,9 +167,10 @@ function go(req: ToolRequest, cwd: string, env: Env): Resolved {
   return { ok: true, command: { file: "go", args: ["tool", req.tool, ...args], cwd, env: goEnv } };
 }
 
-function java(req: ToolRequest, cwd: string, env: Env): Resolved {
+function java(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
+  const cwd = dirs[0] ?? "";
   const wrappers = env.windows ? ["mvnw.cmd", "gradlew.bat"] : ["mvnw", "gradlew"];
-  const wrapper = wrappers.map((w) => env.path.join(cwd, w)).find((w) => env.exists(w));
+  const wrapper = dirs.flatMap((d) => wrappers.map((w) => env.path.join(d, w))).find((w) => env.exists(w));
   if (!wrapper) {
     return {
       ok: false,
@@ -166,7 +181,7 @@ function java(req: ToolRequest, cwd: string, env: Env): Resolved {
   return { ok: true, command: { file: wrapper, args: [...(req.args ?? [])], cwd } };
 }
 
-const RESOLVERS: Readonly<Record<Language, (req: ToolRequest, cwd: string, env: Env) => Resolved>> = {
+const RESOLVERS: Readonly<Record<Language, (req: ToolRequest, dirs: readonly string[], env: Env) => Resolved>> = {
   python,
   typescript,
   go,
@@ -198,7 +213,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
   const exec = deps.exec ?? nodeExec;
   return {
     async run(req) {
-      const resolved = RESOLVERS[req.language](req, env.path.join(deps.cwd, req.dir.replace(/\/$/, "")), env);
+      const resolved = RESOLVERS[req.language](req, searchDirs(deps.cwd, req.dir, env.path), env);
       if (!resolved.ok) throw new ToolMissingError(resolved.message, resolved.install);
       try {
         return await exec(resolved.command);

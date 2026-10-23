@@ -16,11 +16,28 @@ function cognitiveRule(json: Record<string, unknown>): { enabled: boolean; max: 
   return { enabled: level !== "off", max: typeof max === "number" ? max : DEFAULT_COGNITIVE };
 }
 
+function missingBiomeRepairs(file: string, judge: SettingsJudge): Repair[] {
+  const width = judge.declared("format.printWidth");
+  const ending = judge.declared("format.endOfLine");
+  const cognitive = judge.declared("complexity.cognitive");
+  return [
+    ...(width === undefined ? [] : setAt(file, ["formatter", "lineWidth"])(width)),
+    ...(ending === undefined ? [] : setAt(file, ["formatter", "lineEnding"])(ending)),
+    ...(cognitive === undefined
+      ? []
+      : setAt(file, ["linter", "rules", "complexity", "noExcessiveCognitiveComplexity"], (max) => ({
+          level: "error",
+          options: { maxAllowedComplexity: max },
+        }))(cognitive)),
+  ];
+}
+
 /** Line width, line ending and cognitive complexity against biome.json(c), when Biome replaces ESLint and Prettier. */
 export async function checkBiome(root: string, judge: SettingsJudge): Promise<void> {
   const found = await findFirst(root, ["biome.json", "biome.jsonc"]);
   if (!found) {
-    judge.missingFile(judge.path("biome.json"), " Biome 設定檔（biome.json）");
+    const file = judge.path("biome.json");
+    judge.missingFile(file, " Biome 設定檔（biome.json）", missingBiomeRepairs(file, judge));
     return;
   }
   const file = judge.path(found.name);

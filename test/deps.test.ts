@@ -241,6 +241,11 @@ describe("deps layer: Java", () => {
     const ok = await check({ declaration: gradle, files: { "api/build.gradle": "", "api/gradle.lockfile": "" } });
     expect(ok.findings).toEqual([]);
   });
+
+  it("treats a Java component with build.gradle and no pom.xml as Gradle even without a build.tool override", async () => {
+    const missing = await check({ declaration: decl("java", "api/"), files: { "api/build.gradle.kts": "" } });
+    expect(summary(missing.findings)).toEqual(["error:deps/lockfile-missing:api/ (Java):api/gradle.lockfile"]);
+  });
 });
 
 describe("deps layer: banned packages", () => {

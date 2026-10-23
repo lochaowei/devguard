@@ -154,4 +154,38 @@ pmd {
     expect(pinnedVersions("python", "", files({}))).toBeUndefined();
     expect(pinnedVersions("typescript", "", files({ "package-lock.json": "{oops" }))?.versions.size).toBe(0);
   });
+
+  it("reads TypeScript versions from npm-shrinkwrap.json, pnpm-lock.yaml, and yarn.lock", () => {
+    const shrinkwrap = JSON.stringify({
+      packages: { "node_modules/eslint": { version: "10.2.0" } },
+    });
+    expect(pinnedVersions("typescript", "", files({ "npm-shrinkwrap.json": shrinkwrap }))?.versions.get("eslint")).toBe(
+      "10.2.0",
+    );
+
+    const pnpm = [
+      "lockfileVersion: '9.0'",
+      "packages:",
+      "  '@biomejs/biome@2.3.1':",
+      "    resolution: {integrity: sha512-x}",
+      "  vitest@4.1.6(@types/node@25.8.0):",
+      "    resolution: {integrity: sha512-y}",
+    ].join("\n");
+    const fromPnpm = pinnedVersions("typescript", "web/", files({ "pnpm-lock.yaml": pnpm }));
+    expect(fromPnpm?.file).toBe("pnpm-lock.yaml");
+    expect(Object.fromEntries(fromPnpm?.versions ?? [])).toEqual({
+      "@biomejs/biome": "2.3.1",
+      vitest: "4.1.6",
+    });
+
+    const yarn = ['"@biomejs/biome@npm:^2.0.0":', "  version: 2.3.1", "", "eslint@^10.0.0:", '  version "10.1.0"'].join(
+      "\n",
+    );
+    const fromYarn = pinnedVersions("typescript", "", files({ "yarn.lock": yarn }));
+    expect(fromYarn?.file).toBe("yarn.lock");
+    expect(Object.fromEntries(fromYarn?.versions ?? [])).toEqual({
+      "@biomejs/biome": "2.3.1",
+      eslint: "10.1.0",
+    });
+  });
 });

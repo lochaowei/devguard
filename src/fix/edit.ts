@@ -154,5 +154,5 @@ const EDITORS: Record<EditFormat, (text: string, edits: readonly KeyEdit[]) => s
 export function editConfigText(file: string, text: string, edits: readonly KeyEdit[]): string {
   const format = editFormat(file, text);
   if (!format) throw new Error(`${file} 不是 CLI 能修改的結構化設定檔`);
-  return EDITORS[format](text, edits);
+  return EDITORS[format](text.replace(/\r\n/g, "\n"), edits);
 }

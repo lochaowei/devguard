@@ -73,7 +73,12 @@ async function readConfig(root: string): Promise<Read | undefined> {
 export async function checkPrettier(root: string, judge: SettingsJudge): Promise<void> {
   const config = await readConfig(root);
   if (!config) {
-    judge.missingFile(judge.path(".prettierrc"), " Prettier 設定檔");
+    const file = judge.path(".prettierrc");
+    const repairs = SETTINGS.flatMap(({ key, option }) => {
+      const want = judge.declared(key);
+      return want === undefined ? [] : setAt(file, [option])(want);
+    });
+    judge.missingFile(file, " Prettier 設定檔", repairs);
     return;
   }
   const file = judge.path(config.file);

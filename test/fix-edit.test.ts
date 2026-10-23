@@ -112,4 +112,17 @@ describe("editConfigText: line files", () => {
     ]);
     expect(out).toBe("*.png binary\n* text=auto eol=lf\n");
   });
+
+  it("normalizes CRLF input to LF when editing JSONC, TOML, YAML, and line files", () => {
+    const jsonOut = editConfigText(
+      "tsconfig.json",
+      '{\r\n  "compilerOptions": {\r\n    "strict": false\r\n  }\r\n}\r\n',
+      [{ op: "set", path: ["compilerOptions", "strict"], value: true }],
+    );
+    expect(jsonOut).not.toContain("\r");
+    expect(jsonOut).toContain('"strict": true');
+
+    const lineOut = editConfigText(".gitattributes", "*.png binary\r\n", [{ op: "line", value: "* text=auto eol=lf" }]);
+    expect(lineOut).toBe("*.png binary\n* text=auto eol=lf\n");
+  });
 });

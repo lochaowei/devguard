@@ -90,6 +90,19 @@ describe("TypeScript settings check: tsconfig extends", () => {
     expect(await check(dir)).toEqual([]);
   });
 
+  it("follows a package extends from an ancestor node_modules and chained extends", async () => {
+    const dir = project({
+      ".devguard.yaml": "standard: team@1.0.0\ncomponents:\n  - path: packages/web/\n    language: typescript\n",
+      "node_modules/@company/tsconfig/base.json": STRICT_TSCONFIG,
+      "node_modules/@company/tsconfig/tsconfig.json": '{ "extends": "./base.json" }',
+      "packages/web/tsconfig.json": '{ "extends": "@company/tsconfig" }',
+      "packages/web/.prettierrc": '{ "printWidth": 120, "endOfLine": "lf" }',
+      "packages/web/eslint.config.js": ESLINT,
+      "packages/web/vitest.config.ts": VITEST,
+    });
+    expect(await check(dir)).toEqual([]);
+  });
+
   it("only hints when a base cannot be read, since it may set the options", async () => {
     const dir = project({
       "tsconfig.json": '{ "extends": "@company/tsconfig", "compilerOptions": { "strict": true } }',
