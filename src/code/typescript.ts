@@ -165,4 +165,18 @@ export const typescriptChecker: CodeChecker = {
     if (target.categories.has("typecheck")) findings.push(...(await typecheck(target, ctx)));
     return findings;
   },
+  /** Lint fixes first, then the formatter, so the formatter has the last word on layout. */
+  fixSteps(target) {
+    const files = target.files ?? ["."];
+    if (target.effective["lint.tool"] === "biome") {
+      return Promise.resolve([
+        { tool: "biome", args: ["lint", "--write"], files, okUpTo: 1 },
+        { tool: "biome", args: ["format", "--write"], files, okUpTo: 1 },
+      ]);
+    }
+    return Promise.resolve([
+      { tool: "eslint", args: ["--fix", "--no-warn-ignored"], files, okUpTo: 1 },
+      { tool: "prettier", args: ["--write", "--log-level", "warn"], files, okUpTo: 0 },
+    ]);
+  },
 };

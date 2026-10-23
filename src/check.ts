@@ -63,7 +63,8 @@ export interface CheckOptions {
   scope?: CheckScope;
 }
 
-function layerContext(options: CheckOptions): LayerContext {
+/** The context the layers share; `resolution` is filled in once the declaration layer has run. */
+export function layerContext(options: CheckOptions): LayerContext {
   const { cwd, today } = options;
   const listFiles = options.listFiles ?? ((dir: string) => listRepoFiles(dir));
   let files: Promise<string[]> | undefined;

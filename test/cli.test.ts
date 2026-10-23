@@ -196,9 +196,39 @@ describe("devguard fix", { timeout: 60_000 }, () => {
     expect(run(["fix", "--cwd", dir, "--yes"]).code).toBe(0);
     expect(run(["check", "--cwd", dir]).code).toBe(0);
   });
+});
 
-  it("does not take --code yet", () => {
-    expect(run(["fix", "--code"]).code).toBe(2);
+describe("devguard fix --code", { timeout: 120_000 }, () => {
+  const MESSY = "let  answer = 42;\nexport { answer };\n";
+
+  /** A TypeScript project that meets team@1.0.0 except for a.ts, which ESLint and Prettier can fix. */
+  function messyProject(): string {
+    const dir = project("standard: team@1.0.0\ncomponents:\n  - { path: ./, language: typescript }\n");
+    writeTsConfigs(dir, 80);
+    writeFileSync(join(dir, "a.ts"), MESSY);
+    return dir;
+  }
+
+  it("only previews and exits 1 when not interactive and without --yes", () => {
+    const dir = messyProject();
+    const r = run(["fix", "--code", "--cwd", dir, join(dir, "a.ts")]);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("[eslint/prefer-const]");
+    expect(r.out).toContain("prettier --write --log-level warn a.ts");
+    expect(readFileSync(join(dir, "a.ts"), "utf8")).toBe(MESSY);
+  });
+
+  it("fixes the given file with --yes, after which check passes", () => {
+    const dir = messyProject();
+    const r = run(["fix", "--code", "--yes", "--cwd", dir, join(dir, "a.ts")]);
+    expect(r.out).toContain("通過");
+    expect(r.code).toBe(0);
+    expect(readFileSync(join(dir, "a.ts"), "utf8")).toBe("const answer = 42;\nexport { answer };\n");
+    expect(run(["check", "--cwd", dir]).code).toBe(0);
+  });
+
+  it("takes files only together with --code", () => {
+    expect(run(["fix", "a.ts"]).code).toBe(2);
   });
 });
 

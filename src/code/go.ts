@@ -8,7 +8,11 @@ interface GolangciIssue {
   FromLinter: string;
   Text: string;
   Severity?: string;
-  Pos: { Filename: string; Line?: number };
+  Pos: { Filename: string; Line?: number; Column?: number };
+  /** golangci-lint v2: the fixes `run --fix` can apply. */
+  SuggestedFixes?: unknown[] | null;
+  /** golangci-lint v1: the replacement `run --fix` applies. */
+  Replacement?: unknown;
 }
 
 function parseIssues(stdout: string): GolangciIssue[] | undefined {
@@ -28,6 +32,13 @@ function categoryOf(linter: string): CodeCategory {
   return linter === "typecheck" ? "typecheck" : "lint";
 }
 
+/** The manual fix for an issue `golangci-lint run --fix` cannot resolve; undefined when it can. */
+function manualFix(issue: GolangciIssue): string | undefined {
+  if (FORMATTERS.has(issue.FromLinter)) return undefined;
+  if ((issue.SuggestedFixes?.length ?? 0) > 0 || (issue.Replacement ?? null) !== null) return undefined;
+  return issue.FromLinter === "typecheck" ? "手動修正型別錯誤" : "依 golangci-lint 訊息手動修改";
+}
+
 function issueFindings(target: CodeTarget, ctx: CodeCheckContext, result: ToolResult): Finding[] {
   const issues = result.code <= 1 ? parseIssues(result.stdout) : undefined;
   if (!issues) return [toolFailed(target, "golangci-lint", result)];
@@ -39,6 +50,8 @@ function issueFindings(target: CodeTarget, ctx: CodeCheckContext, result: ToolRe
       message: i.Text,
       file: toRepoPath(ctx.cwd, target.dir, i.Pos.Filename),
       line: i.Pos.Line,
+      column: i.Pos.Column,
+      fix: manualFix(i),
     }),
   );
 }
@@ -81,5 +94,14 @@ export const goChecker: CodeChecker = {
     // Other files of the same packages are not what was asked for.
     const asked = new Set(target.files.map((f) => toRepoPath(ctx.cwd, target.dir, f)));
     return findings.filter((f) => f.file === undefined || asked.has(f.file));
+  },
+  /** `run --fix` applies the linters' suggested fixes and the configured formatters (gofumpt, goimports...). */
+  fixSteps(target) {
+    const packages = packageDirs(target.files);
+    if (packages?.length === 0) return Promise.resolve([]);
+    const args = ["run", "--fix", "--show-stats=false"];
+    return Promise.resolve([
+      { tool: "golangci-lint", args, files: packages ?? ["./..."], env: goEnv(target), okUpTo: 1 },
+    ]);
   },
 };

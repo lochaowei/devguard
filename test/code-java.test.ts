@@ -85,8 +85,8 @@ describe("java checker: Maven lint", () => {
         component: "svc/ (Java)",
         file: "svc/src/main/java/com/example/App.java",
         line: 3,
-        fix: "devguard fix --code svc/src/main/java/com/example/App.java",
-        fixable: true,
+        fix: "依 Checkstyle 訊息手動修改",
+        fixable: false,
       },
       expect.objectContaining({ level: "error", rule: "checkstyle/CyclomaticComplexity", line: 12 }),
       expect.objectContaining({ level: "hint", rule: "checkstyle/MissingJavadocMethod", line: 20 }),
@@ -96,12 +96,15 @@ describe("java checker: Maven lint", () => {
         message: "Avoid unused local variables such as 'x'.",
         file: "svc/src/main/java/com/example/App.java",
         line: 15,
+        fix: "依 PMD 訊息手動修改",
+        fixable: false,
       }),
       expect.objectContaining({
         level: "error",
         rule: "pmd/processing-error",
         message: "ParseException: Parse exception in file",
         file: "svc/src/main/java/com/example/Broken.java",
+        fixable: false,
       }),
     ]);
   });

@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 import { localDate, runCheck } from "./check.ts";
 import { DeclarationExistsError, writeDraft } from "./draft.ts";
 import { terminalInteraction } from "./fix/interaction.ts";
+import { runCodeFix } from "./fix/code.ts";
 import { runFix } from "./fix/run.ts";
 import { failureMessage, UsageError } from "./report/failure.ts";
 import { claudeFeedback } from "./report/claude.ts";
@@ -19,6 +20,7 @@ const USAGE = `用法：devguard <指令> [選項]
 指令：
   check [檔案…]  檢查專案宣告（.devguard.yaml）與程式碼；指定檔案時只檢查這些檔案
   fix            修正設定：先預覽，確認後套用；--yes 直接套用
+  fix --code [檔案…]  修正程式碼（格式化與可自動修正的 lint），修正後回報剩餘問題
   draft          沒有 .devguard.yaml 時，依偵測到的元件與工具設定產生宣告草稿（不覆寫既有檔案）
 
 選項：
@@ -28,6 +30,7 @@ const USAGE = `用法：devguard <指令> [選項]
   --strict              偏離也算失敗
   --verbose             展開所有提示
   --cwd <dir>           專案根目錄（預設為目前目錄）
+  --code                fix：修正程式碼而不是設定
   --yes                 fix：不詢問，直接套用
   --version             顯示版本
 `;
@@ -68,6 +71,7 @@ async function main(argv: string[]): Promise<number> {
       cwd: { type: "string" },
       version: { type: "boolean", default: false },
       yes: { type: "boolean", default: false },
+      code: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -82,7 +86,7 @@ async function main(argv: string[]): Promise<number> {
   }
   const cwd = resolve(values.cwd ?? process.cwd());
   if (command === "draft") return draft(cwd);
-  if (command === "fix") return runFix({ cwd, today: localDate(), io: terminalInteraction(values.yes) });
+  if (command === "fix") return fix(cwd, values, positionals.slice(1));
   if (command !== "check") throw new UsageError(`不認得的指令「${command}」`);
   return check(cwd, values, positionals.slice(1));
 }
@@ -102,6 +106,18 @@ async function check(cwd: string, flags: CheckFlags, files: string[]): Promise<n
   const result = await runCheck({ cwd, today: localDate(), scope });
   process.stdout.write(render(format, result, flags.verbose));
   return exitCodeFor(result.findings, flags.strict);
+}
+
+/** `fix` repairs the settings; `fix --code [files]` fixes the code (SPEC §9.1). */
+function fix(cwd: string, flags: { code: boolean; yes: boolean }, files: string[]): Promise<number> {
+  const io = terminalInteraction(flags.yes);
+  const today = localDate();
+  if (!flags.code) {
+    if (files.length > 0) throw new UsageError("只有 fix --code 可以指定檔案");
+    return runFix({ cwd, today, io });
+  }
+  const scope = checkScope({ files, full: false }, cwd, process.cwd());
+  return runCodeFix({ cwd, today, io, scope });
 }
 
 async function draft(cwd: string): Promise<number> {
