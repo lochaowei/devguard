@@ -109,6 +109,22 @@ describe("devguard check", { timeout: 60_000 }, () => {
     expect(json.findings.map((x) => x.level)).toEqual(["deviation"]);
   });
 
+  it("prints sarif, vscode and claude formats with the same exit code as text", () => {
+    const dir = project();
+    const out = (format: string) => {
+      const r = run(["check", "--cwd", dir, "--format", format]);
+      expect(r.code).toBe(1);
+      return r.out;
+    };
+    expect(out("vscode")).toMatch(/^\.devguard\.yaml:1:1: error: 找不到 \.devguard\.yaml.* \[[^\]]+\]$/m);
+    expect(out("claude")).toMatch(/^devguard：1 個錯誤.*\n- 錯誤 .*找不到 \.devguard\.yaml/);
+    // The missing declaration is not a code finding, so SARIF has no results.
+    const sarif = JSON.parse(out("sarif")) as { version: string; runs: { results: unknown[] }[] };
+    expect(sarif.version).toBe("2.1.0");
+    expect(sarif.runs[0]?.results).toEqual([]);
+    expect(run(["check", "--cwd", deviatingProject(), "--format", "vscode", "--strict"]).code).toBe(1);
+  });
+
   it("exits 2 on usage errors", () => {
     expect(run(["frobnicate"]).code).toBe(2);
     expect(run(["check", "--format", "xml"]).code).toBe(2);
