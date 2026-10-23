@@ -98,6 +98,11 @@ describe("VS Code workspace settings are generated for the languages in use (SPE
     expect(tasks.every((t) => t.type === "process")).toBe(true);
     expect(tasks[0]).toMatchObject({ args: ["doctor", "--quiet"], runOptions: { runOn: "folderOpen" } });
     expect(tasks[1]).toMatchObject({ args: ["check", "--format", "vscode"], problemMatcher: { owner: "devguard" } });
+    // The test task's output feeds the same matcher, so it prints the vscode format too.
+    expect(tasks[3]).toMatchObject({
+      args: ["check", "--full", "--format", "vscode"],
+      problemMatcher: { owner: "devguard" },
+    });
   });
 
   it("the check task's problem matcher reads what `check --format vscode` prints", () => {

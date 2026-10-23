@@ -86,6 +86,7 @@ export async function runPreCommit(ctx: HookContext): Promise<number> {
   const result = await runCheck(
     {
       ...ctx,
+      missingTools: "report",
       scope: { files, full: false },
       listFiles: () => Promise.resolve(files),
       stagedText: async (path) => (staged.has(path) ? git(ctx, ["show", `:${path}`]) : undefined),

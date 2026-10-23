@@ -211,7 +211,9 @@ async function tasks(resolution: Resolution, read: ReadRepoText): Promise<Task[]
     devguardTask("standards: doctor", ["doctor", "--quiet"], { runOptions: { runOn: "folderOpen" } }),
     devguardTask("standards: check", ["check", "--format", "vscode"], { problemMatcher: PROBLEM_MATCHER }),
     devguardTask("standards: fix", ["fix"]),
-    devguardTask("standards: test & coverage", ["check", "--full"], { problemMatcher: PROBLEM_MATCHER }),
+    devguardTask("standards: test & coverage", ["check", "--full", "--format", "vscode"], {
+      problemMatcher: PROBLEM_MATCHER,
+    }),
   ];
   const java = resolution.components.filter((c) => c.language === "java");
   for (const c of java) {

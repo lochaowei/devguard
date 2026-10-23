@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { IgnoredVuln } from "../standard/types.ts";
+import { readMavenPlugins } from "../versions/pinned.ts";
 import { isRecord, mirrorOf, noMirror, parseJson, scanFailed, scanFinding, str } from "./support.ts";
 import type { Vuln, VulnScanner, VulnSeverity } from "./types.ts";
 
@@ -78,12 +79,27 @@ async function readText(path: string): Promise<string | undefined> {
   }
 }
 
+/**
+ * The Dependency-Check Maven plugin version devguard runs when the pom does not pin one: the plugin is never invoked
+ * unversioned, which would let Maven pick (and download) whatever is newest (SPEC §5.2). Placeholder until the team
+ * fixes team@1.0.0's tool versions (SPEC §12 #5).
+ */
+export const DEPENDENCY_CHECK_VERSION = "12.1.0";
+
+/** The plugin version the component's pom.xml pins, otherwise the bundled one. */
+function pluginVersion(pom: string | undefined): string {
+  return (
+    (pom === undefined ? undefined : readMavenPlugins(pom).get("dependency-check-maven")) ?? DEPENDENCY_CHECK_VERSION
+  );
+}
+
 /** The NVD data feed URL template under the internal mirror; Dependency-Check fills `{0}` with the year. */
 const datafeed = (base: string) => `${base.endsWith("/") ? base : `${base}/`}nvdcve-{0}.json.gz`;
 
 /**
  * OWASP Dependency-Check through the Maven wrapper (SPEC §5.3, §6.4), reading NVD only from the internal mirror.
- * Sources that would go out to the internet (OSS Index, Node Audit, CISA KEV, RetireJS, hosted suppressions) are off.
+ * Sources that would go out to the internet (Maven Central, OSS Index, Node Audit, CISA KEV, RetireJS, hosted
+ * suppressions) are off.
  */
 export const javaScanner: VulnScanner = {
   language: "java",
@@ -108,11 +124,12 @@ export const javaScanner: VulnScanner = {
       args: [
         "-B",
         "-ntp",
-        "org.owasp:dependency-check-maven:check",
+        `org.owasp:dependency-check-maven:${pluginVersion(await readText(join(ctx.cwd, target.dir, "pom.xml")))}:check`,
         "-Dformat=JSON",
         `-Dodc.outputDirectory=${ctx.workDir}`,
         `-DsuppressionFile=${suppression}`,
         `-DnvdDatafeedUrl=${datafeed(nvd)}`,
+        "-DcentralAnalyzerEnabled=false",
         "-DossindexAnalyzerEnabled=false",
         "-DnodeAuditAnalyzerEnabled=false",
         "-DknownExploitedEnabled=false",

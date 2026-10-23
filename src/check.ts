@@ -11,14 +11,14 @@ import { javaSettingsLayer } from "./layers/settings-java.ts";
 import { testsLayer } from "./layers/tests.ts";
 import { typescriptSettingsLayer } from "./layers/settings-typescript.ts";
 import { toolVersionsLayer } from "./layers/tool-versions.ts";
-import type { CheckLayer, CheckScope, LayerContext } from "./layers/types.ts";
+import type { CheckLayer, CheckScope, LayerContext, LayerResult } from "./layers/types.ts";
 import { uncoveredFilesLayer } from "./layers/uncovered.ts";
 import { vscodeFixLayer, vscodeLayer } from "./layers/vscode.ts";
 import { vulnLayer } from "./layers/vuln.ts";
 import type { Finding } from "./report/finding.ts";
 import type { ReportInput } from "./report/render.ts";
 import { listRepoFiles } from "./repo/files.ts";
-import { createToolRunner, type ToolRunner } from "./tools/runner.ts";
+import { createToolRunner, ToolMissingError, type ToolRunner } from "./tools/runner.ts";
 
 export type { CheckLayer, CheckScope, LayerContext, LayerResult } from "./layers/types.ts";
 
@@ -74,6 +74,18 @@ export interface CheckOptions {
   scope?: CheckScope;
   /** The staged version of a file (pre-commit hook); formatters and single-file linters check it via stdin. */
   stagedText?: (repoPath: string) => Promise<string | undefined>;
+  /**
+   * A tool that is not installed: `throw` (plain `check`: the CLI exits 2, SPEC §11) or `report` it as an error with
+   * the install command and run the remaining layers (doctor and the hooks, so the environment checks still run).
+   */
+  missingTools?: "throw" | "report";
+}
+
+export const TOOL_MISSING_RULE = "environment/tool-missing";
+
+/** A tool that is not installed, as doctor and the hooks report it (SPEC §5.2: the install command, never a download). */
+export function toolMissingFinding(e: ToolMissingError): Finding {
+  return { level: "error", layer: "environment", rule: TOOL_MISSING_RULE, message: e.message, fix: e.install };
 }
 
 /** The context the layers share; `resolution` is filled in once the declaration layer has run. */
@@ -91,6 +103,20 @@ export function layerContext(options: CheckOptions): LayerContext {
   };
 }
 
+/** One layer's result; a missing tool becomes a finding when the options say so (doctor, hooks). */
+async function runLayer(layer: CheckLayer, ctx: LayerContext, options: CheckOptions): Promise<LayerResult> {
+  try {
+    return await layer.run(ctx);
+  } catch (e) {
+    if (!(e instanceof ToolMissingError) || options.missingTools !== "report") throw e;
+    return { findings: [toolMissingFinding(e)] };
+  }
+}
+
+/** The same missing tool reported by another layer is reported once. */
+const repeated = (f: Finding, seen: readonly Finding[]) =>
+  f.rule === TOOL_MISSING_RULE && seen.some((g) => g.rule === f.rule && g.message === f.message);
+
 /** Runs the layers in order and merges their findings into one report. */
 export async function runCheck(
   options: CheckOptions,
@@ -99,8 +125,8 @@ export async function runCheck(
   const ctx = layerContext(options);
   const findings: Finding[] = [];
   for (const layer of layers) {
-    const result = await layer.run(ctx);
-    findings.push(...result.findings);
+    const result = await runLayer(layer, ctx, options);
+    findings.push(...result.findings.filter((f) => !repeated(f, findings)));
     if (result.resolution) ctx.resolution = result.resolution;
   }
   const { resolution } = ctx;

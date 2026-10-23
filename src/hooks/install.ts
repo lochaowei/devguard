@@ -85,6 +85,31 @@ export async function planHooks(
   return plan;
 }
 
+/** The command a devguard hook starts the CLI with, when the file still says so plainly; otherwise the default. */
+function hookCommandOf(text: string): string | undefined {
+  const program = /command -v (\S+) /.exec(text)?.[1];
+  const command = /; exec (.+?) hook git-/.exec(text)?.[1];
+  return program && command?.startsWith(program) ? command : undefined;
+}
+
+/**
+ * What `devguard fix` does for the git hooks (SPEC §9.1): regenerate devguard's own hook files that were modified,
+ * keeping the command they start the CLI with. Hooks never installed are `install`'s to add; outside a git repo, or
+ * when no hook is devguard's, there is nothing to do.
+ */
+export async function planFixHooks(cwd: string, exec: Exec = nodeExec): Promise<ChangePlan> {
+  const plan: ChangePlan = { writes: [], printed: [] };
+  if ((await exec({ file: "git", args: ["rev-parse", "--git-dir"], cwd })).code !== 0) return plan;
+  for (const hook of INSTALLED_HOOKS) {
+    const installed = await installedHook(cwd, hook, exec);
+    if (installed.status.kind !== "devguard" || installed.text === undefined) continue;
+    const command = hookCommandOf(installed.text);
+    const refreshed = await planHooks(cwd, [hook], { exec, ...(command ? { command } : {}) });
+    plan.writes.push(...refreshed.writes);
+  }
+  return plan;
+}
+
 /**
  * What `install` does for the git hooks: inject into the hook framework the repo already uses, or write devguard's own
  * hook files; plus a `core.hooksPath` conflict that would keep them from running (SPEC §7.4).

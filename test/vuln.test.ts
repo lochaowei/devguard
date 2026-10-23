@@ -5,6 +5,7 @@ import { CHECK_LAYERS, checkTestsAndCoverage, runCheck } from "../src/check.ts";
 import { declarationLayer } from "../src/layers/declaration.ts";
 import type { CheckScope } from "../src/layers/types.ts";
 import { vulnLayer } from "../src/layers/vuln.ts";
+import { DEPENDENCY_CHECK_VERSION } from "../src/vuln/java.ts";
 import type { PackageRequest, ToolRequest, ToolResult, ToolRunner } from "../src/tools/runner.ts";
 import { rules, TODAY } from "./helpers.ts";
 import { argValue, declare, fakeTools, ok, project } from "./tests-helpers.ts";
@@ -212,12 +213,15 @@ function fakeManager(answer: () => ToolResult) {
   return { tools, calls };
 }
 
-function scanWith(declaration: string, tools: ToolRunner, files: string[]) {
+function scanWith(
+  declaration: string,
+  tools: ToolRunner,
+  files: string[],
+  contents: Readonly<Record<string, string>> = {},
+) {
   const listFiles = () => Promise.resolve(files);
-  return runCheck({ cwd: project(declaration), today: TODAY, tools, listFiles, scope: { full: true } }, [
-    declarationLayer,
-    vulnLayer,
-  ]);
+  const cwd = project(declaration, contents);
+  return runCheck({ cwd, today: TODAY, tools, listFiles, scope: { full: true } }, [declarationLayer, vulnLayer]);
 }
 
 describe("vulnerability scan: TypeScript", () => {
@@ -375,7 +379,7 @@ describe("vulnerability scan: Java", () => {
     const [req] = calls;
     expect(req?.language).toBe("java");
     expect(req?.dir).toBe("svc/");
-    expect(req?.args).toContain("org.owasp:dependency-check-maven:check");
+    expect(req?.args).toContain(`org.owasp:dependency-check-maven:${DEPENDENCY_CHECK_VERSION}:check`);
     expect(argValue(req as ToolRequest, "-DnvdDatafeedUrl")).toBe(
       "https://nexus.example.internal/repository/nvd-mirror/nvdcve-{0}.json.gz",
     );
@@ -392,6 +396,21 @@ describe("vulnerability scan: Java", () => {
       "hint:vuln/below-threshold",
     ]);
     expect(findings.find((f) => f.rule === "vuln/found")?.message).toContain("log4j-core-2.14.1.jar");
+  });
+
+  it("stays offline and runs a pinned plugin: the bundled version, or the one the pom pins (SPEC §5.2, §5.3)", async () => {
+    const { tools, calls } = fakeMaven(DEPENDENCY_CHECK);
+    await scanWith(SVC, tools, ["svc/pom.xml", "svc/src/A.java"]);
+    const goal = (calls[0]?.args ?? []).find((a) => a.startsWith("org.owasp:"));
+    expect(goal).toBe(`org.owasp:dependency-check-maven:${DEPENDENCY_CHECK_VERSION}:check`);
+    expect(argValue(calls[0] as ToolRequest, "-DcentralAnalyzerEnabled")).toBe("false");
+
+    const pinned = fakeMaven(DEPENDENCY_CHECK);
+    const pom =
+      "<project><build><plugins><plugin><groupId>org.owasp</groupId><artifactId>dependency-check-maven</artifactId>" +
+      "<version>11.0.1</version></plugin></plugins></build></project>";
+    await scanWith(SVC, pinned.tools, ["svc/pom.xml", "svc/src/A.java"], { "svc/pom.xml": pom });
+    expect(pinned.calls[0]?.args).toContain("org.owasp:dependency-check-maven:11.0.1:check");
   });
 
   it("judges a v2-only CVSS score when the vulnerability is not ignored", async () => {

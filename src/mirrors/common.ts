@@ -67,6 +67,4 @@ export function internal(url: string, mirror: string): boolean {
 export const USERINFO = /^([a-z][a-z0-9+.-]*:\/\/)[^/@\s]+@/i;
 
 /** Text (URLs) as it may be printed: never with the credentials a URL embeds. */
-export function redact(text: string): string {
-  return text.replace(/([a-z][a-z0-9+.-]*:\/\/)[^/@\s]+@/gi, "$1***@");
-}
+export { redactUrl as redact } from "../report/redact.ts";

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runPreCommit } from "../src/hooks/pre-commit.ts";
-import type { ToolRequest, ToolRunner } from "../src/tools/runner.ts";
+import { ToolMissingError, type ToolRequest, type ToolRunner } from "../src/tools/runner.ts";
 import { TODAY } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -56,6 +56,17 @@ async function preCommit(dir: string, tools: ToolRunner) {
 }
 
 describe("runPreCommit (SPEC §7.4)", () => {
+  it("blocks with the install command when a tool is not installed", async () => {
+    const { dir, git, write } = repo();
+    write("app.py", "x = 2\n");
+    git("add", "app.py");
+    const tools: ToolRunner = { run: () => Promise.reject(new ToolMissingError("找不到 ruff", "uv sync")) };
+    const { code, out } = await preCommit(dir, tools);
+    expect(code).toBe(1);
+    expect(out).toContain("找不到 ruff");
+    expect(out).toContain("uv sync");
+  });
+
   it("passes when nothing is staged, without running any tool", async () => {
     const { dir } = repo();
     const { tools, calls } = fakeTools();

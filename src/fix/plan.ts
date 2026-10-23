@@ -1,5 +1,6 @@
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { redactSecrets } from "../report/redact.ts";
 import { readIfExists } from "../settings/config-files.ts";
 import { fileCategory, type FileCategory } from "./category.ts";
 import { editConfigText } from "./edit.ts";
@@ -169,18 +170,21 @@ const PRINT_LABEL = {
   conflict: "core.hooksPath 衝突，hook 不會執行；請自行處理",
 } as const;
 
-/** The preview: a diff per written file, then the printed snippets. */
+/** A diff line (`-` / `+` / ` ` marker) with any credential it shows masked (SPEC §10.3). */
+const redactedDiffLine = (line: string): string => line.slice(0, 1) + redactSecrets(line.slice(1));
+
+/** The preview: a diff per written file, then the printed snippets. Credentials are never printed (SPEC §10.3). */
 export function renderPlan(plan: ChangePlan): string {
   const out: string[] = [];
   for (const w of plan.writes) {
     out.push(
       `${w.file}：${w.before === "" ? "新增，" : ""}${WRITE_LABEL[w.category]}`,
-      ...diffLines(w.before, w.after),
+      ...diffLines(w.before, w.after).map(redactedDiffLine),
       "",
     );
   }
   for (const p of plan.printed) {
-    out.push(`${p.file}：${PRINT_LABEL[p.category]}`, ...p.lines.map((l) => `    ${l}`), "");
+    out.push(`${p.file}：${PRINT_LABEL[p.category]}`, ...p.lines.map((l) => `    ${redactSecrets(l)}`), "");
   }
   if (out.length === 0) return "沒有需要修正的設定。\n";
   return out.join("\n");

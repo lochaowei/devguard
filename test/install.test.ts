@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Interaction } from "../src/fix/interaction.ts";
 import { inspectHookFile } from "../src/hooks/file.ts";
 import { runInstall } from "../src/hooks/install.ts";
+import { runFix } from "../src/fix/run.ts";
 import { TODAY } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -90,6 +91,23 @@ describe("devguard install (SPEC §3.2, §7.4)", () => {
     const again = io();
     expect(await runInstall({ cwd: dir, today: TODAY, io: again })).toBe(0);
     expect(again.out).not.toContain("pre-commit");
+  });
+
+  it("devguard fix regenerates a modified devguard hook, keeping its command, but never installs one (SPEC §9.1)", async () => {
+    const dir = repo({ ".devguard.yaml": DECL });
+    const command = 'node "C:/x/cli.ts"';
+    await runInstall({ cwd: dir, today: TODAY, io: io(), hookCommand: command });
+    const path = join(dir, ".git/hooks/pre-commit");
+    const original = readFileSync(path, "utf8");
+    writeFileSync(path, original.replace("# devguard-hook", "echo hi\n# devguard-hook"));
+    const out = io();
+    expect(await runFix({ cwd: dir, today: TODAY, io: out })).toBe(0);
+    expect(readFileSync(path, "utf8")).toBe(original);
+    expect(out.out).toContain(".git/hooks/pre-commit");
+
+    const fresh = repo({ ".devguard.yaml": DECL });
+    await runFix({ cwd: fresh, today: TODAY, io: io() });
+    expect(existsSync(join(fresh, ".git/hooks/pre-commit"))).toBe(false);
   });
 
   it("also installs .git/hooks/pre-push with the CLI marker and checksum", async () => {

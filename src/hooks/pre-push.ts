@@ -8,7 +8,7 @@ import type { HookContext } from "./pre-commit.ts";
  * non-zero, which blocks the push. Git's arguments (remote name, URL) and the refs on stdin are not needed.
  */
 export async function runPrePush(ctx: HookContext): Promise<number> {
-  const result = await checkTestsAndCoverage(ctx);
+  const result = await checkTestsAndCoverage({ ...ctx, missingTools: "report" });
   const code = exitCodeFor(result.findings, false);
   if (code !== 0) ctx.write(renderText(result));
   return code;

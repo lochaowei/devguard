@@ -3,7 +3,10 @@ import { createEnvironmentLayer, type EnvironmentLayerOptions } from "./layers/e
 
 export interface DoctorOptions extends CheckOptions, EnvironmentLayerOptions {}
 
-/** `devguard doctor` (SPEC §3.2, §11): every `check` layer, then the environment layer. */
+/**
+ * `devguard doctor` (SPEC §3.2, §11): every `check` layer, then the environment layer. A tool that is not installed is
+ * an environment error with its install command, so the remaining checks still run (§7.3, §7.4).
+ */
 export function runDoctor(options: DoctorOptions): Promise<CheckResult> {
-  return runCheck(options, [...CHECK_LAYERS, createEnvironmentLayer(options)]);
+  return runCheck({ missingTools: "report", ...options }, [...CHECK_LAYERS, createEnvironmentLayer(options)]);
 }

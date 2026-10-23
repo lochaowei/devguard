@@ -295,11 +295,15 @@ function checkTypecheck(r: Report, doc: Table): void {
   const strictValue = pyright ? "strict" : true;
   const table = at(doc, "tool", section);
   if (!table) {
+    // mypy's python_version carries python.minVersion (SPEC §6.1); a higher requires-python is the project's bar.
+    const { floor, higher } = pythonFloor(r, doc);
+    const version = higher ? floor : r.want(MIN_VERSION);
+    const versionRepairs = pyright ? [] : [r.set(["tool", "mypy", "python_version"], version)];
     r.fixable(
       "typecheck-missing",
       `pyproject.toml 沒有 [tool.${section}] 設定`,
       `新增 [tool.${section}] ${String(path[2])} = ${fmt(strictValue)}`,
-      [r.set(path, strictValue)],
+      [r.set(path, strictValue), ...versionRepairs],
     );
     return;
   }
@@ -318,9 +322,36 @@ function checkCoverage(r: Report, doc: Table): void {
   );
 }
 
+/** Test files where pytest's `assert` is how tests are written: Ruff S101 is relaxed there (SPEC §6.1). */
+const TEST_FILE_PATTERNS = ["**/tests/**", "**/test_*.py"];
+const PER_FILE_IGNORES: KeyPath = [...RUFF, "lint", "per-file-ignores"];
+
+/** Whether the declared rule groups include S101 (assert), so test files need it relaxed. */
+function wantsTestAsserts(r: Report): boolean {
+  const declared = r.want("lint.rules");
+  return isStringArray(declared) && declared.some((g) => covers(g, "S101"));
+}
+
+const testAssertRepairs = (r: Report): Repair[] =>
+  TEST_FILE_PATTERNS.map((p) => r.set([...PER_FILE_IGNORES, p], ["S101"]));
+
+/** Some per-file-ignores entry relaxes S101 (or a broader selector); devguard does not judge which files it names. */
+function checkTestAsserts(r: Report, ruff: Table, lint: Table): void {
+  if (!wantsTestAsserts(r)) return;
+  const ignores = at(lint, "per-file-ignores") ?? at(ruff, "per-file-ignores") ?? {};
+  if (Object.values(ignores).some((codes) => isStringArray(codes) && codes.some((c) => covers(c, "S101")))) return;
+  r.fixable(
+    "ruff-test-asserts",
+    "Ruff 沒有在測試檔放寬 S101（assert），pytest 的每個 assert 都會被回報",
+    `在 [tool.ruff.lint.per-file-ignores] 加上 ${TEST_FILE_PATTERNS.map((p) => `"${p}" = ["S101"]`).join("、")}`,
+    testAssertRepairs(r),
+  );
+}
+
 function checkRuff(r: Report, ruff: Table): void {
   const lint = at(ruff, "lint") ?? {};
   checkRuffRules(r, ruff, lint);
+  checkTestAsserts(r, ruff, lint);
   const mccabeTable = at(lint, "mccabe") ? "lint" : at(ruff, "mccabe") ? undefined : "lint";
   const mccabe = at(lint, "mccabe") ?? at(ruff, "mccabe") ?? {};
   const mccabePath = [...RUFF, ...(mccabeTable ? [mccabeTable] : []), "mccabe", "max-complexity"];
@@ -336,6 +367,7 @@ function newRuff(r: Report, doc: Table): Repair[] {
     r.set([...RUFF, "target-version"], toRuffTarget(higher ? floor : r.want(MIN_VERSION))),
     r.set([...RUFF, "lint", "select"], r.want("lint.rules")),
     r.set([...RUFF, "lint", "mccabe", "max-complexity"], r.want("complexity.cyclomatic")),
+    ...(wantsTestAsserts(r) ? testAssertRepairs(r) : []),
   ];
 }
 

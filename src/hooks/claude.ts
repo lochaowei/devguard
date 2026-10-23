@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { runCheck } from "../check.ts";
+import { runCheck, TOOL_MISSING_RULE } from "../check.ts";
 import { CODE_CATEGORIES, type CodeCategory } from "../code/types.ts";
 import { lastSeenPath } from "../claude/setup.ts";
 import { normalizePath } from "../declaration/path.ts";
@@ -50,11 +50,9 @@ async function checkFiles(
 ): Promise<Finding[]> {
   if (files.length === 0) return [];
   const scope = { files, full: false };
-  const result = await runCheck({ ...ctx, scope, listFiles: () => Promise.resolve([...files]) }, [
-    declarationLayer,
-    codeChecks(categories),
-  ]);
-  return result.findings.filter((f) => f.layer === "code");
+  const options = { ...ctx, scope, missingTools: "report" as const, listFiles: () => Promise.resolve([...files]) };
+  const result = await runCheck(options, [declarationLayer, codeChecks(categories)]);
+  return result.findings.filter((f) => f.layer === "code" || f.rule === TOOL_MISSING_RULE);
 }
 
 /** A path from the hook input as a repo-relative path, or undefined when it lies outside the project. */

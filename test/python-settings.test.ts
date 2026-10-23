@@ -33,6 +33,10 @@ select = ["E", "W", "F", "I", "B", "UP", "C90", "SIM", "N", "S", "TID"]
 [tool.ruff.lint.mccabe]
 max-complexity = 10
 
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101"]
+"**/test_*.py" = ["S101"]
+
 [tool.mypy]
 strict = true
 
@@ -234,6 +238,53 @@ describe("python settings layer", () => {
       const findings = await check({ ".devguard.yaml": decl, "pyproject.toml": GOOD });
       expect(findings).toContainEqual(expect.objectContaining({ level: "hint", rule: "python-settings/stricter" }));
       expect(findings.filter((f) => f.level === "error")).toEqual([]);
+    });
+  });
+
+  describe("asserts in tests (SPEC §6.1: test files relax S101)", () => {
+    const IGNORES = '"**/tests/**" = ["S101"]\n"**/test_*.py" = ["S101"]\n';
+
+    it("reports per-file-ignores without S101 for test files and repairs it", async () => {
+      const toml = edit(IGNORES, "");
+      const r = await runCheck({ cwd: project({ ".devguard.yaml": PY, "pyproject.toml": toml }), today: TODAY }, [
+        declarationLayer,
+        pythonSettingsLayer,
+      ]);
+      expect(r.findings).toEqual([
+        expect.objectContaining({ level: "error", rule: "python-settings/ruff-test-asserts" }),
+      ]);
+      const ignores = ["tool", "ruff", "lint", "per-file-ignores"];
+      expect(r.findings[0]?.repairs).toEqual([
+        { op: "set", file: "pyproject.toml", path: [...ignores, "**/tests/**"], value: ["S101"] },
+        { op: "set", file: "pyproject.toml", path: [...ignores, "**/test_*.py"], value: ["S101"] },
+      ]);
+    });
+
+    it("accepts any test pattern that ignores S101 (or all of S)", async () => {
+      const own = edit(IGNORES, '"t/*.py" = ["S", "E501"]\n');
+      expect(await check({ ".devguard.yaml": PY, "pyproject.toml": own })).toEqual([]);
+    });
+
+    it("does not ask for it when the declaration drops the S rules", async () => {
+      const rules = '["E", "W", "F", "I", "B", "UP", "C90", "SIM", "N", "TID"]';
+      const decl = withOverrides(`lint.rules: {value: ${rules}, reason: 舊程式碼}`);
+      const toml = edit('"N", "S", "TID"]', '"N", "TID"]', edit(IGNORES, ""));
+      const findings = await check({ ".devguard.yaml": decl, "pyproject.toml": toml });
+      expect(findings.filter((f) => f.level === "error")).toEqual([]);
+    });
+  });
+
+  it("writes mypy's python_version from python.minVersion when it creates [tool.mypy] (SPEC §6.1)", async () => {
+    const toml = edit("[tool.mypy]\nstrict = true\n", "");
+    const r = await runCheck({ cwd: project({ ".devguard.yaml": PY, "pyproject.toml": toml }), today: TODAY }, [
+      declarationLayer,
+      pythonSettingsLayer,
+    ]);
+    expect(r.findings[0]?.repairs).toContainEqual({
+      op: "set",
+      file: "pyproject.toml",
+      path: ["tool", "mypy", "python_version"],
+      value: "3.11",
     });
   });
 

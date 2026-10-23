@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { HOOK_HANDLERS, type HookContext } from "../src/hooks/registry.ts";
-import type { ToolRequest, ToolRunner } from "../src/tools/runner.ts";
+import { ToolMissingError, type ToolRequest, type ToolRunner } from "../src/tools/runner.ts";
 import { TODAY } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -97,6 +97,24 @@ const ruffFiles = (calls: ToolRequest[]) =>
     .flatMap((c) => (c.args ?? []).filter((a) => a.endsWith(".py")));
 
 describe("devguard hook claude-post-edit (SPEC §7.3)", () => {
+  it("tells Claude which tool is missing and how to install it instead of failing the hook", async () => {
+    const { dir } = repo();
+    let stdout = "";
+    const tools: ToolRunner = { run: () => Promise.reject(new ToolMissingError("找不到 ruff", "cd api && uv sync")) };
+    const code = await HOOK_HANDLERS["claude-post-edit"]?.({
+      cwd: dir,
+      today: TODAY,
+      tools,
+      write: () => undefined,
+      stdout: (t) => (stdout += t),
+      stdin: () => Promise.resolve(JSON.stringify(postEdit(dir, "api/app.py"))),
+    });
+    expect(code).toBe(0);
+    const json = JSON.parse(stdout) as Record<string, unknown>;
+    expect(json.decision).toBe("block");
+    expect(json.reason).toContain("cd api && uv sync");
+  });
+
   it("blocks with the edited file's lint problems as JSON on exit 0, checking only that file", async () => {
     const { dir, write } = repo();
     write("api/app.py", "import os\n");
