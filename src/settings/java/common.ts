@@ -3,6 +3,7 @@ import type { Finding, Level } from "../../report/finding.ts";
 import type { ItemDef } from "../../standard/types.ts";
 import { parseXmlText, type XmlEl } from "../../xml/parse.ts";
 import { judgeConfigValue } from "../judge.ts";
+import { regenerate } from "./generate.ts";
 
 /** One Java component under check, with what the checks need to read and judge its config files. */
 export interface JavaTarget {
@@ -50,11 +51,17 @@ export function judgeNumber(
     ];
   }
   const site = { component: t.component.name, file: where.file, line: where.line };
-  const judged = judgeConfigValue(key, item, t.component.effective[key], Number(raw), site);
+  const repair = () => regenerate(t, where.file);
+  const judged = judgeConfigValue(key, item, t.component.effective[key], Number(raw), site, undefined, repair);
   return judged ? [judged] : [];
 }
 
 export const FIX_GENERATE = "devguard fix（由 CLI 重新產生）";
+
+/** What a finding that `fix` resolves by regenerating the CLI-owned `file` carries. */
+export function generated(t: JavaTarget, file: string): Partial<Finding> {
+  return { fix: FIX_GENERATE, repairs: regenerate(t, file) };
+}
 
 /** Reads and parses a CLI-generated XML config; malformed XML is an error that `fix` resolves by regenerating. */
 export async function readXmlConfig(t: JavaTarget, file: string): Promise<XmlEl | Finding> {
@@ -63,7 +70,7 @@ export async function readXmlConfig(t: JavaTarget, file: string): Promise<XmlEl 
   return finding(t, "error", "java/config-unparseable", `${file}：XML 格式錯誤：${parsed.message}`, {
     file,
     line: parsed.line,
-    fix: FIX_GENERATE,
+    ...generated(t, file),
   });
 }
 

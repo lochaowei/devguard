@@ -1,6 +1,7 @@
 import type { Resolution } from "./declaration/resolve.ts";
 import { declarationLayer } from "./layers/declaration.ts";
 import { depsLayer } from "./layers/deps.ts";
+import { gitattributesLayer } from "./layers/gitattributes.ts";
 import { pythonSettingsLayer } from "./layers/python-settings.ts";
 import { goSettingsLayer } from "./layers/settings-go.ts";
 import { javaSettingsLayer } from "./layers/settings-java.ts";
@@ -27,6 +28,20 @@ export const CHECK_LAYERS: readonly CheckLayer[] = [
   depsLayer,
   typescriptSettingsLayer,
   toolVersionsLayer,
+  gitattributesLayer,
+];
+
+/**
+ * The layers `devguard fix` runs to find what to repair: the config checks, without the ones that run the project's
+ * tools (dependencies, tool versions). A settings layer whose findings carry repairs belongs here too.
+ */
+export const FIX_LAYERS: readonly CheckLayer[] = [
+  declarationLayer,
+  pythonSettingsLayer,
+  goSettingsLayer,
+  javaSettingsLayer,
+  typescriptSettingsLayer,
+  gitattributesLayer,
 ];
 
 export interface CheckOptions {

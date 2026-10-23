@@ -48,13 +48,20 @@ export function renderText(input: ReportInput, verbose = false): string {
   return out.join("\n") + "\n";
 }
 
+/** A finding as reported: without the internal repairs. */
+function publicFinding(f: Finding): Omit<Finding, "repairs"> {
+  const out: Partial<Finding> = { ...f };
+  delete out.repairs;
+  return out as Omit<Finding, "repairs">;
+}
+
 export function renderJson(input: ReportInput): string {
   return (
     JSON.stringify(
       {
         standard: input.standard ?? null,
         components: input.components.map((c) => ({ path: c.dir === "" ? "./" : c.dir, language: c.language })),
-        findings: input.findings,
+        findings: input.findings.map(publicFinding),
       },
       null,
       2,

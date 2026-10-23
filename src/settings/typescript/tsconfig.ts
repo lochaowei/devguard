@@ -1,6 +1,6 @@
 import { dirname, extname, join } from "node:path";
 import { at, isRecord, parseJsonc, readIfExists } from "../config-files.ts";
-import type { SettingsJudge } from "../judge.ts";
+import { setAt, type SettingsJudge } from "../judge.ts";
 
 interface Loaded {
   options: Record<string, unknown>;
@@ -54,12 +54,14 @@ export async function checkTsconfig(root: string, judge: SettingsJudge): Promise
     else run();
   };
   check("typecheck.strict", "strict", options.strict, () => {
-    judge.compare("typecheck.strict", options.strict === true, file, "tsconfig strict");
+    const repair = setAt(file, ["compilerOptions", "strict"]);
+    judge.compare("typecheck.strict", options.strict === true, file, "tsconfig strict", repair);
   });
   const wanted = judge.declared("typecheck.options");
   for (const name of Array.isArray(wanted) ? wanted.filter((o) => typeof o === "string") : []) {
     check("typecheck.options", name, options[name], () => {
-      if (options[name] !== true) judge.disabled("typecheck.options", file, `tsconfig ${name}`);
+      const repair = setAt(file, ["compilerOptions", name], () => true);
+      if (options[name] !== true) judge.disabled("typecheck.options", file, `tsconfig ${name}`, repair);
     });
   }
 }

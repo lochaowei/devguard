@@ -1,3 +1,5 @@
+import type { Repair } from "../fix/repair.ts";
+
 export type Level = "error" | "deviation" | "hint";
 
 /** The three check layers from SPEC §1, plus findings about the code itself. */
@@ -15,6 +17,8 @@ export interface Finding {
   line?: number;
   /** How to resolve it: a command, or what to edit by hand. */
   fix?: string;
+  /** What `devguard fix` does about it, by file category (SPEC §9.2). Internal: not part of the JSON report. */
+  repairs?: Repair[];
 }
 
 export const LEVEL_ORDER: readonly Level[] = ["error", "deviation", "hint"];

@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ResolvedComponent } from "../declaration/resolve.ts";
+import { fixText } from "../fix/category.ts";
+import type { Repair } from "../fix/repair.ts";
 import type { Finding } from "../report/finding.ts";
 import { checkGoSettings, GOLANGCI_FILE, GOMOD_FILE } from "../settings/go.ts";
 import type { CheckLayer } from "./types.ts";
@@ -26,14 +28,23 @@ function missing(component: ResolvedComponent, name: string, rule: string, fix: 
   };
 }
 
+/** A missing `.golangci.yml`; `fix` creates it with what a bare v2 config would be missing. */
+function golangciMissing(component: ResolvedComponent): Finding {
+  const file = component.dir + GOLANGCI_FILE;
+  const bare = checkGoSettings(component, { golangci: 'version: "2"\n' });
+  const repairs: Repair[] = [
+    { op: "set", file, path: ["version"], value: "2" },
+    ...bare.flatMap((f) => f.repairs ?? []),
+  ];
+  const fix = fixText(`建立 ${GOLANGCI_FILE}（golangci-lint v2 格式）`, repairs);
+  return { ...missing(component, GOLANGCI_FILE, "settings/golangci-missing", fix), repairs };
+}
+
 async function checkComponent(cwd: string, component: ResolvedComponent): Promise<Finding[]> {
   const golangci = await readOptional(join(cwd, component.dir, GOLANGCI_FILE));
   const gomod = await readOptional(join(cwd, component.dir, GOMOD_FILE));
   const findings: Finding[] = [];
-  if (golangci === undefined)
-    findings.push(
-      missing(component, GOLANGCI_FILE, "settings/golangci-missing", `建立 ${GOLANGCI_FILE}（golangci-lint v2 格式）`),
-    );
+  if (golangci === undefined) findings.push(golangciMissing(component));
   if (gomod === undefined) findings.push(missing(component, GOMOD_FILE, "settings/gomod-missing", "go mod init"));
   return [...findings, ...checkGoSettings(component, { golangci, gomod })];
 }

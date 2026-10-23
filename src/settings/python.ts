@@ -1,5 +1,7 @@
 import { compareToDefault } from "../declaration/compare.ts";
 import type { ResolvedComponent } from "../declaration/resolve.ts";
+import { fixText } from "../fix/category.ts";
+import type { KeyPath, Repair } from "../fix/repair.ts";
 import type { Finding, Level } from "../report/finding.ts";
 import { compareVersion } from "../standard/registry.ts";
 import type { ItemDef } from "../standard/types.ts";
@@ -30,6 +32,10 @@ interface Setting {
   value: unknown;
   /** Set when the file leaves the setting out and the tool's default stands in. */
   toolDefault?: string;
+  /** Where `devguard fix` writes the declared value; absent for settings outside [tool.*] (not CLI-managed). */
+  path?: KeyPath;
+  /** The declared value as the file spells it (e.g. "3.11" → "py311"). */
+  toFile?: (declared: unknown) => unknown;
 }
 
 /** What a setting is compared with when the project, not the declaration, sets the bar. */
@@ -43,7 +49,7 @@ class Report {
   readonly findings: Finding[] = [];
   private readonly component: ResolvedComponent;
   private readonly defs: Readonly<Record<string, ItemDef>>;
-  private readonly file: string;
+  readonly file: string;
 
   constructor(component: ResolvedComponent, defs: Readonly<Record<string, ItemDef>>, file: string) {
     this.component = component;
@@ -56,7 +62,7 @@ class Report {
     return this.component.effective[key]?.value;
   }
 
-  add(level: Level, rule: string, message: string, fix?: string): void {
+  add(level: Level, rule: string, message: string, fix?: string, repairs: Repair[] = []): void {
     this.findings.push({
       level,
       layer: "config",
@@ -65,29 +71,52 @@ class Report {
       component: this.component.name,
       file: this.file,
       ...(fix ? { fix } : {}),
+      ...(repairs.length > 0 ? { repairs } : {}),
     });
   }
 
+  /** An error `devguard fix` resolves with `repairs` (the fix text follows the file category). */
+  fixable(rule: string, message: string, detail: string, repairs: Repair[]): void {
+    this.add("error", rule, message, fixText(detail, repairs), repairs);
+  }
+
+  set(path: KeyPath, value: unknown): Repair {
+    return { op: "set", file: this.file, path, value };
+  }
+
+  /** How a setting goes back to the declared value; settings outside [tool.*] are not the CLI's to change. */
+  private putBack(
+    name: string,
+    declared: unknown,
+    path: KeyPath | undefined,
+    toFile: Setting["toFile"],
+  ): { detail: string; repairs: Repair[] } {
+    if (!path) return { detail: `把 ${name} 改成符合 ${fmt(declared)}（不在 [tool.*]，CLI 不修改）`, repairs: [] };
+    const back = toFile ? toFile(declared) : declared;
+    return { detail: `把 ${name} 改為 ${fmt(back)}`, repairs: [this.set(path, back)] };
+  }
+
   /** Judges a tool setting against the declaration with the standard item's kind (SPEC §4.2, §8). */
-  compare({ name, key, value, toolDefault }: Setting, bar?: Bar): void {
+  compare({ name, key, value, toolDefault, path, toFile }: Setting, bar?: Bar): void {
     const item = this.defs[key];
     if (!item) return;
     const declared = bar ? bar.value : this.want(key);
     const shown = toolDefault ? `未設定（${toolDefault} ${fmt(value)}）` : fmt(value);
     const basis = bar ? `專案 ${bar.source} 的` : "宣告的";
     const what = `${name} 為 ${shown}，${basis}「${item.label}」是 ${fmt(declared)}`;
+    const { detail, repairs } = this.putBack(name, declared, path, toFile);
     switch (compareToDefault({ ...item, value: declared as ItemDef["value"] }, value)) {
       case "invalid":
-        this.add("error", "invalid-setting", `${name} 的值 ${fmt(value)} 無法辨識`, "devguard fix");
+        this.fixable("invalid-setting", `${name} 的值 ${fmt(value)} 無法辨識`, detail, repairs);
         return;
       case "looser":
-        this.add("error", "looser", `${what}：設定檔比宣告寬鬆`, "devguard fix");
+        this.fixable("looser", `${what}：設定檔比宣告寬鬆`, detail, repairs);
         return;
       case "stricter":
         this.add("hint", "stricter", `${what}：設定檔比宣告嚴格，建議把宣告同步成 ${fmt(value)}`);
         return;
       case "different":
-        this.add("error", "style-mismatch", `${what}：與宣告不一致`, "devguard fix");
+        this.fixable("style-mismatch", `${what}：與宣告不一致`, detail, repairs);
         return;
       default:
         return;
@@ -98,24 +127,55 @@ class Report {
 /** A Ruff selector covers a rule group when it is the group itself, a broader prefix of it, or ALL. */
 const covers = (selector: string, group: string): boolean => selector === "ALL" || group.startsWith(selector);
 
+const RUFF: KeyPath = ["tool", "ruff"];
+
+/** Ruff's selected rule groups, where `fix` adds to them, and the groups the declaration asks for. */
+interface RuffRules {
+  select: string[];
+  addAll(values: string[]): Repair[];
+  groups: string[];
+}
+
+/** extend-select is folded into lint.select, with the declared groups it still lacks. Returns whether it was used. */
+function checkExtendSelect(r: Report, ruff: Table, lint: Table, rules: RuffRules): boolean {
+  const places = [
+    { table: lint, path: [...RUFF, "lint", "extend-select"] },
+    { table: ruff, path: [...RUFF, "extend-select"] },
+  ].filter((p) => "extend-select" in p.table);
+  if (places.length === 0) return false;
+  const extended = places.flatMap((p) => p.table["extend-select"]).filter((v) => typeof v === "string");
+  const merged = [...rules.select, ...extended];
+  const repairs: Repair[] = [
+    ...places.map((p): Repair => ({ op: "delete", file: r.file, path: p.path })),
+    ...rules.addAll([...extended, ...rules.groups.filter((g) => !merged.some((s) => covers(s, g)))]),
+  ];
+  r.fixable(
+    "ruff-extend-select",
+    "Ruff 使用了 extend-select：請改用 lint.select 寫出完整規則組（Ruff 的預設規則會隨版本變動）",
+    "把 extend-select 併入 lint.select",
+    repairs,
+  );
+  return true;
+}
+
 function checkRuffRules(r: Report, ruff: Table, lint: Table): void {
-  const extend = "extend-select" in lint || "extend-select" in ruff;
-  if (extend) {
-    r.add(
-      "error",
-      "ruff-extend-select",
-      "Ruff 使用了 extend-select：請改用 lint.select 寫出完整規則組（Ruff 的預設規則會隨版本變動）",
-      "devguard fix",
-    );
-  }
+  const selectPath = "select" in lint || !("select" in ruff) ? [...RUFF, "lint", "select"] : [...RUFF, "select"];
   const raw = lint.select ?? ruff.select;
-  if (raw === undefined && extend) return;
+  const select = isStringArray(raw) ? raw : [];
   const declared = r.want("lint.rules");
   const groups = isStringArray(declared) ? declared : [];
-  const select = isStringArray(raw) ? raw : [];
+  const addAll = (values: string[]): Repair[] =>
+    values.map((value) => ({ op: "add", file: r.file, path: selectPath, value }));
+  const extended = checkExtendSelect(r, ruff, lint, { select, addAll, groups });
+  if (raw === undefined && extended) return;
   const missing = groups.filter((g) => !select.some((s) => covers(s, g)));
   if (missing.length > 0) {
-    r.add("error", "ruff-rules-missing", `Ruff lint.select 缺少標準規則組：${missing.join("、")}`, "devguard fix");
+    r.fixable(
+      "ruff-rules-missing",
+      `Ruff lint.select 缺少標準規則組：${missing.join("、")}`,
+      `在 lint.select 加上 ${missing.join("、")}`,
+      addAll(missing),
+    );
   }
   const extra = select.filter((s) => !groups.includes(s));
   if (extra.length > 0) {
@@ -128,11 +188,11 @@ function checkRuffRules(r: Report, ruff: Table, lint: Table): void {
 }
 
 /** Reads a Ruff setting, falling back to Ruff's default when it is not set. */
-function ruffSetting(table: Table, setting: keyof typeof RUFF_DEFAULTS, key: string): Setting {
+function ruffSetting(table: Table, setting: keyof typeof RUFF_DEFAULTS, key: string, path: KeyPath): Setting {
   const name = `Ruff ${setting}`;
   const value = table[setting];
-  if (value === undefined) return { name, key, value: RUFF_DEFAULTS[setting], toolDefault: "Ruff 預設" };
-  return { name, key, value };
+  if (value === undefined) return { name, key, value: RUFF_DEFAULTS[setting], toolDefault: "Ruff 預設", path };
+  return { name, key, value, path };
 }
 
 const MIN_VERSION = "python.minVersion";
@@ -154,16 +214,28 @@ export function requiresPythonFloor(spec: string): string | undefined {
 /** Ruff's target-version ("py311") as a dotted version ("3.11"); anything else is returned as is. */
 const fromRuffTarget = (v: unknown): unknown => (typeof v === "string" ? v.replace(/^py(\d)(\d+)$/, "$1.$2") : v);
 
+/** A dotted version ("3.11") as Ruff's target-version ("py311"). */
+const toRuffTarget = (v: unknown): unknown => (typeof v === "string" ? `py${v.replace(".", "")}` : v);
+
+/** The floor of requires-python, and whether it is above the declared minimum (then the project sets the bar). */
+function pythonFloor(r: Report, doc: Table): { floor?: string; higher: boolean } {
+  const spec = at(doc, "project")?.["requires-python"];
+  const floor = typeof spec === "string" ? requiresPythonFloor(spec) : undefined;
+  const declared = r.want(MIN_VERSION);
+  const higher =
+    floor !== undefined &&
+    typeof declared === "string" &&
+    compareVersion(versionParts(floor), versionParts(declared)) > 0;
+  return { floor, higher };
+}
+
 /**
  * Checks requires-python against the standard minimum and returns the bar the other version settings must meet:
  * requires-python when it is higher than the declaration (the project wins), otherwise the declaration.
  */
 function checkRequiresPython(r: Report, doc: Table): { floor?: string; bar?: Bar } {
-  const spec = at(doc, "project")?.["requires-python"];
-  const floor = typeof spec === "string" ? requiresPythonFloor(spec) : undefined;
+  const { floor, higher } = pythonFloor(r, doc);
   if (floor === undefined) return {};
-  const declared = r.want(MIN_VERSION);
-  const higher = typeof declared === "string" && compareVersion(versionParts(floor), versionParts(declared)) > 0;
   // SPEC §6.1: a higher requires-python is the project's call, not a stricter setting to sync back.
   if (higher) return { floor, bar: { value: floor, source: "requires-python" } };
   r.compare({ name: "requires-python", key: MIN_VERSION, value: floor });
@@ -173,52 +245,87 @@ function checkRequiresPython(r: Report, doc: Table): { floor?: string; bar?: Bar
 function checkPythonVersion(r: Report, doc: Table, ruff: Table | undefined): void {
   const { floor, bar } = checkRequiresPython(r, doc);
   const target = ruff?.["target-version"];
+  const targetPath = [...RUFF, "target-version"];
   if (ruff && target !== undefined) {
-    r.compare({ name: "Ruff target-version", key: MIN_VERSION, value: fromRuffTarget(target) }, bar);
+    r.compare(
+      {
+        name: "Ruff target-version",
+        key: MIN_VERSION,
+        value: fromRuffTarget(target),
+        path: targetPath,
+        toFile: toRuffTarget,
+      },
+      bar,
+    );
   } else if (ruff && floor === undefined) {
-    r.add(
-      "error",
+    const value = toRuffTarget(r.want(MIN_VERSION));
+    r.fixable(
       "target-version-missing",
       "Ruff 沒有設定 target-version，專案也沒有 requires-python 可供推定",
-      "devguard fix",
+      `設定 Ruff target-version = ${fmt(value)}`,
+      [r.set(targetPath, value)],
     );
   }
   const mypy = at(doc, "tool", "mypy")?.python_version;
-  if (mypy !== undefined) r.compare({ name: "mypy python_version", key: MIN_VERSION, value: mypy }, bar);
+  const mypyPath = ["tool", "mypy", "python_version"];
+  if (mypy !== undefined)
+    r.compare({ name: "mypy python_version", key: MIN_VERSION, value: mypy, path: mypyPath }, bar);
   const pyright = at(doc, "tool", "pyright")?.pythonVersion;
-  if (pyright !== undefined) r.compare({ name: "pyright pythonVersion", key: MIN_VERSION, value: pyright }, bar);
+  const pyrightPath = ["tool", "pyright", "pythonVersion"];
+  if (pyright !== undefined)
+    r.compare({ name: "pyright pythonVersion", key: MIN_VERSION, value: pyright, path: pyrightPath }, bar);
 }
 
 /** mypy's `strict = true`, or pyright's `typeCheckingMode = "strict"`, whichever the declaration picks. */
 function checkTypecheck(r: Report, doc: Table): void {
   const pyright = r.want("typecheck.tool") === "pyright";
   const section = pyright ? "pyright" : "mypy";
+  const path = pyright ? ["tool", "pyright", "typeCheckingMode"] : ["tool", "mypy", "strict"];
+  const strictValue = pyright ? "strict" : true;
   const table = at(doc, "tool", section);
   if (!table) {
-    r.add("error", "typecheck-missing", `pyproject.toml 沒有 [tool.${section}] 設定`, "devguard fix");
+    r.fixable(
+      "typecheck-missing",
+      `pyproject.toml 沒有 [tool.${section}] 設定`,
+      `新增 [tool.${section}] ${String(path[2])} = ${fmt(strictValue)}`,
+      [r.set(path, strictValue)],
+    );
     return;
   }
   const strict = pyright ? table.typeCheckingMode === "strict" : table.strict === true;
   const name = pyright ? `pyright typeCheckingMode ${fmt(table.typeCheckingMode ?? null)}` : "mypy strict";
-  r.compare({ name, key: "typecheck.strict", value: strict });
+  r.compare({ name, key: "typecheck.strict", value: strict, path, toFile: () => strictValue });
 }
 
 function checkCoverage(r: Report, doc: Table): void {
   if (at(doc, "tool", "coverage", "run")?.branch === true) return;
-  r.add(
-    "error",
+  r.fixable(
     "coverage-branch",
     "coverage 沒有開啟 [tool.coverage.run] branch = true：標準要求行與分支覆蓋率各自達標",
-    "devguard fix",
+    "設定 [tool.coverage.run] branch = true",
+    [r.set(["tool", "coverage", "run", "branch"], true)],
   );
 }
 
 function checkRuff(r: Report, ruff: Table): void {
   const lint = at(ruff, "lint") ?? {};
   checkRuffRules(r, ruff, lint);
+  const mccabeTable = at(lint, "mccabe") ? "lint" : at(ruff, "mccabe") ? undefined : "lint";
   const mccabe = at(lint, "mccabe") ?? at(ruff, "mccabe") ?? {};
-  r.compare(ruffSetting(mccabe, "max-complexity", "complexity.cyclomatic"));
-  r.compare(ruffSetting(ruff, "line-length", "format.lineLength"));
+  const mccabePath = [...RUFF, ...(mccabeTable ? [mccabeTable] : []), "mccabe", "max-complexity"];
+  r.compare(ruffSetting(mccabe, "max-complexity", "complexity.cyclomatic", mccabePath));
+  r.compare(ruffSetting(ruff, "line-length", "format.lineLength", [...RUFF, "line-length"]));
+}
+
+/** The [tool.ruff] settings the standard asks for, written out when the section is missing. */
+function newRuff(r: Report, doc: Table): Repair[] {
+  const { floor, higher } = pythonFloor(r, doc);
+  return [
+    r.set([...RUFF, "line-length"], r.want("format.lineLength")),
+    r.set([...RUFF, "target-version"], toRuffTarget(higher ? floor : r.want(MIN_VERSION))),
+    r.set([...RUFF, "lint", "select"], r.want("lint.rules")),
+    r.set([...RUFF, "lint", "mccabe", "max-complexity"], r.want("complexity.cyclomatic")),
+  ];
 }
 
 /**
@@ -235,7 +342,7 @@ export function checkPyproject(
   const r = new Report(component, defs, file);
   const ruff = at(doc, "tool", "ruff");
   if (ruff) checkRuff(r, ruff);
-  else r.add("error", "ruff-missing", "pyproject.toml 沒有 [tool.ruff] 設定", "devguard fix");
+  else r.fixable("ruff-missing", "pyproject.toml 沒有 [tool.ruff] 設定", "新增 [tool.ruff]", newRuff(r, doc));
   checkPythonVersion(r, doc, ruff);
   checkTypecheck(r, doc);
   checkCoverage(r, doc);

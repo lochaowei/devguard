@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
 import { localDate, runCheck } from "./check.ts";
+import { terminalInteraction } from "./fix/interaction.ts";
+import { runFix } from "./fix/run.ts";
 import { failureMessage, UsageError } from "./report/failure.ts";
 import { exitCodeFor, renderJson, renderText } from "./report/render.ts";
 
@@ -10,12 +12,14 @@ const USAGE = `用法：devguard <指令> [選項]
 
 指令：
   check      檢查專案宣告（.devguard.yaml）
+  fix        修正設定（先預覽；--yes 直接套用）
 
 選項：
   --format <text|json>  輸出格式（預設 text）
   --strict              偏離也算失敗
   --verbose             展開所有提示
   --cwd <dir>           專案根目錄（預設為目前目錄）
+  --yes                 fix：不詢問，直接套用
   --version             顯示版本
 `;
 
@@ -29,6 +33,7 @@ async function main(argv: string[]): Promise<number> {
       verbose: { type: "boolean", default: false },
       cwd: { type: "string" },
       version: { type: "boolean", default: false },
+      yes: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -41,10 +46,15 @@ async function main(argv: string[]): Promise<number> {
     process.stdout.write(USAGE);
     return values.help ? 0 : 2;
   }
+  const cwd = values.cwd ?? process.cwd();
+  if (command === "fix") return runFix({ cwd, today: localDate(), io: terminalInteraction(values.yes) });
   if (command !== "check") throw new UsageError(`不認得的指令「${command}」`);
-  if (values.format !== "text" && values.format !== "json") throw new UsageError(`不支援的格式「${values.format}」`);
+  return check(cwd, values);
+}
 
-  const result = await runCheck({ cwd: values.cwd ?? process.cwd(), today: localDate() });
+async function check(cwd: string, values: { format: string; verbose: boolean; strict: boolean }): Promise<number> {
+  if (values.format !== "text" && values.format !== "json") throw new UsageError(`不支援的格式「${values.format}」`);
+  const result = await runCheck({ cwd, today: localDate() });
   process.stdout.write(values.format === "json" ? renderJson(result) : renderText(result, values.verbose));
   return exitCodeFor(result.findings, values.strict);
 }

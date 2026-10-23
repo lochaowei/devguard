@@ -143,7 +143,7 @@ async function javaLockfile(s: Scope, emit: Emit): Promise<void> {
   if (missing.length > 0) {
     emit("error", "deps/enforcer-rule-missing", `Maven Enforcer 缺少規則：${missing.join("、")}`, {
       file: pom,
-      fix: "在 pom.xml 的 maven-enforcer-plugin 加上 banDynamicVersions 與 dependencyConvergence（devguard fix）",
+      fix: "在 pom.xml 的 maven-enforcer-plugin 加上 banDynamicVersions 與 dependencyConvergence（建置檔不會自動修改）",
     });
   }
 }

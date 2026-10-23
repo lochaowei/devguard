@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -14,6 +14,7 @@ function project(declaration?: string): string {
   if (declaration !== undefined) writeFileSync(join(dir, ".devguard.yaml"), declaration);
   // Satisfies the deps layer for npm components; the temp dir is not a git repo, so existing counts as committed.
   writeFileSync(join(dir, "package-lock.json"), "{}");
+  writeFileSync(join(dir, ".gitattributes"), "* text=auto eol=lf\n");
   return dir;
 }
 
@@ -103,6 +104,42 @@ describe("devguard check", () => {
   it("prints the version and help", () => {
     expect(run(["--version"]).out).toBe("devguard 0.1.0\n");
     expect(run(["--help"]).code).toBe(0);
+  });
+});
+
+describe("devguard fix", () => {
+  /** A clean TypeScript project whose .gitattributes lacks the LF rule. */
+  function fixableProject(): string {
+    const dir = project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: typescript}\n");
+    writeTsConfigs(dir, 80);
+    writeFileSync(join(dir, ".gitattributes"), "*.png binary\n");
+    return dir;
+  }
+
+  it("marks the finding as fixable, without the internal repairs in JSON", () => {
+    const r = run(["check", "--cwd", fixableProject(), "--format", "json"]);
+    const json = JSON.parse(r.out) as { findings: Record<string, unknown>[] };
+    expect(json.findings).toHaveLength(1);
+    expect(json.findings[0]?.fix).toMatch(/^devguard fix/);
+    expect(json.findings[0]).not.toHaveProperty("repairs");
+  });
+
+  it("only previews and exits 1 when not interactive and without --yes", () => {
+    const dir = fixableProject();
+    const r = run(["fix", "--cwd", dir]);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("+* text=auto eol=lf");
+    expect(readFileSync(join(dir, ".gitattributes"), "utf8")).toBe("*.png binary\n");
+  });
+
+  it("applies with --yes, after which check passes", () => {
+    const dir = fixableProject();
+    expect(run(["fix", "--cwd", dir, "--yes"]).code).toBe(0);
+    expect(run(["check", "--cwd", dir]).code).toBe(0);
+  });
+
+  it("does not take --code yet", () => {
+    expect(run(["fix", "--code"]).code).toBe(2);
   });
 });
 
