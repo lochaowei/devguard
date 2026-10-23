@@ -52,7 +52,9 @@ export function runSmoke(command: readonly string[], expectedVersion: string, en
   try {
     for (const [name, text] of Object.entries(SAMPLE)) writeFileSync(join(dir, name), text);
     const version = run(command, ["--version"], env);
-    const sample = run(command, ["check", "--cwd", dir], env);
+    // Scoped to tsconfig.json: every setup layer still runs, but no TypeScript source is in scope, so the code checks
+    // (ESLint, Prettier, tsc — which need Node, deliberately absent from PATH here) have nothing to run.
+    const sample = run(command, ["check", "--cwd", dir, join(dir, "tsconfig.json")], env);
     const missing = run(command, ["check", "--cwd", empty], env);
     return [
       { name: "--version", ok: version.stdout === `devguard ${expectedVersion}\n`, detail: version.output },

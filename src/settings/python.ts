@@ -62,7 +62,14 @@ class Report {
     return this.component.effective[key]?.value;
   }
 
-  add(level: Level, rule: string, message: string, fix?: string, repairs: Repair[] = []): void {
+  add(
+    level: Level,
+    rule: string,
+    message: string,
+    fix?: string,
+    extra: Pick<Finding, "repairs" | "observed"> = {},
+  ): void {
+    const { repairs, observed } = extra;
     this.findings.push({
       level,
       layer: "config",
@@ -71,13 +78,14 @@ class Report {
       component: this.component.name,
       file: this.file,
       ...(fix ? { fix } : {}),
-      ...(repairs.length > 0 ? { repairs } : {}),
+      ...(repairs && repairs.length > 0 ? { repairs } : {}),
+      ...(observed ? { observed } : {}),
     });
   }
 
   /** An error `devguard fix` resolves with `repairs` (the fix text follows the file category). */
-  fixable(rule: string, message: string, detail: string, repairs: Repair[]): void {
-    this.add("error", rule, message, fixText(detail, repairs), repairs);
+  fixable(rule: string, message: string, detail: string, repairs: Repair[], observed?: Finding["observed"]): void {
+    this.add("error", rule, message, fixText(detail, repairs), { repairs, observed });
   }
 
   set(path: KeyPath, value: unknown): Repair {
@@ -105,18 +113,21 @@ class Report {
     const basis = bar ? `專案 ${bar.source} 的` : "宣告的";
     const what = `${name} 為 ${shown}，${basis}「${item.label}」是 ${fmt(declared)}`;
     const { detail, repairs } = this.putBack(name, declared, path, toFile);
+    const observed = { key, value };
     switch (compareToDefault({ ...item, value: declared as ItemDef["value"] }, value)) {
       case "invalid":
         this.fixable("invalid-setting", `${name} 的值 ${fmt(value)} 無法辨識`, detail, repairs);
         return;
       case "looser":
-        this.fixable("looser", `${what}：設定檔比宣告寬鬆`, detail, repairs);
+        this.fixable("looser", `${what}：設定檔比宣告寬鬆`, detail, repairs, observed);
         return;
       case "stricter":
-        this.add("hint", "stricter", `${what}：設定檔比宣告嚴格，建議把宣告同步成 ${fmt(value)}`);
+        this.add("hint", "stricter", `${what}：設定檔比宣告嚴格，建議把宣告同步成 ${fmt(value)}`, undefined, {
+          observed,
+        });
         return;
       case "different":
-        this.fixable("style-mismatch", `${what}：與宣告不一致`, detail, repairs);
+        this.fixable("style-mismatch", `${what}：與宣告不一致`, detail, repairs, observed);
         return;
       default:
         return;

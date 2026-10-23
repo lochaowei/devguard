@@ -48,8 +48,9 @@ export function judgeConfigValue(
   if (status === "stricter") return stricterHint(key, `${what}，比宣告的 ${fmt(want)} 嚴格`, actual, site);
   if (status !== "looser" && status !== "different") return undefined;
   const why = status === "looser" ? `比宣告的 ${fmt(want)} 寬鬆` : `與宣告的 ${fmt(want)} 不同`;
+  const observed = { key, value: actual };
   return withRepairs(
-    { level: "error", layer: "config", rule: "settings/looser", message: `${what}，${why}`, ...site },
+    { level: "error", layer: "config", rule: "settings/looser", message: `${what}，${why}`, ...site, observed },
     `把 ${site.file} 的 ${label} 改回宣告的 ${fmt(want)}`,
     repair,
     want,
@@ -59,7 +60,8 @@ export function judgeConfigValue(
 /** A config value stricter than declared: a hint to sync the declaration (SPEC §8). */
 function stricterHint(key: string, message: string, actual: unknown, site: ConfigSite): Finding {
   const fix = `建議把宣告中的 ${key} 同步成 ${fmt(actual)}`;
-  return { level: "hint", layer: "config", rule: "settings/stricter", message, ...site, fix };
+  const observed = { key, value: actual };
+  return { level: "hint", layer: "config", rule: "settings/stricter", message, ...site, fix, observed };
 }
 
 /** A finding with its repairs and the matching fix text (SPEC §9.2: fix writes it, or only prints it). */

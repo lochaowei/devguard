@@ -1,6 +1,17 @@
+import type { CodeCategory } from "../code/types.ts";
 import type { Resolution } from "../declaration/resolve.ts";
 import type { Finding } from "../report/finding.ts";
 import type { ToolRunner } from "../tools/runner.ts";
+
+/** What `devguard check` was asked to cover: `[files]`, `--only <類別>`, `--full`. */
+export interface CheckScope {
+  /** Repo-relative, forward-slash paths given on the command line; absent means the whole repo. */
+  files?: readonly string[];
+  /** Run only this category. */
+  only?: CodeCategory;
+  /** Run every check, including slow ones a layer may otherwise skip (tests, coverage, vulnerability scans). */
+  full: boolean;
+}
 
 /** What a check layer can see. Layers run in order; `resolution` is set once the declaration layer has run. */
 export interface LayerContext {
@@ -12,6 +23,12 @@ export interface LayerContext {
   tools: ToolRunner;
   /** Repo-relative, forward-slash paths of the files in the repo; listed once, on first call. */
   files: () => Promise<readonly string[]>;
+  scope: CheckScope;
+}
+
+/** The files a layer should look at: those given on the command line, otherwise every file in the repo. */
+export function scopedFiles(ctx: LayerContext): Promise<readonly string[]> {
+  return ctx.scope.files ? Promise.resolve(ctx.scope.files) : ctx.files();
 }
 
 export interface LayerResult {

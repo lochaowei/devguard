@@ -14,6 +14,11 @@ export interface ToolRequest {
   /** Component directory, normalized ("" for the repo root, otherwise ending in "/"). The tool runs there. */
   dir: string;
   args?: readonly string[];
+  /**
+   * Extra environment variables. Go only, e.g. the mirror's GOPROXY / GOSUMDB (SPEC §10.2); the runner still
+   * forces GOTOOLCHAIN=local, and GOPROXY=off for `go` / `go tool` so resolving a tool never downloads it.
+   */
+  env?: Readonly<Record<string, string>>;
 }
 
 export interface ToolResult {
@@ -126,13 +131,14 @@ const GO_ENV = { GOTOOLCHAIN: "local", GOPROXY: "off" };
 
 function go(req: ToolRequest, cwd: string, env: Env): Resolved {
   const args = req.args ?? [];
+  const goEnv = { ...req.env, ...GO_ENV };
   // `go` itself, for module commands such as `go mod tidy -diff`.
-  if (req.tool === "go") return { ok: true, command: { file: "go", args: [...args], cwd, env: GO_ENV } };
+  if (req.tool === "go") return { ok: true, command: { file: "go", args: [...args], cwd, env: goEnv } };
   if (req.tool === "golangci-lint") {
     // Exception in SPEC §5.2: not a go.mod tool, but a binary from the internal Scoop bucket.
     const exe = onPath(req.tool, env);
     if (!exe) return { ok: false, message: "找不到 golangci-lint", install: "scoop install golangci-lint" };
-    return { ok: true, command: { file: exe, args: [...args], cwd, env: { GOTOOLCHAIN: "local" } } };
+    return { ok: true, command: { file: exe, args: [...args], cwd, env: { ...req.env, GOTOOLCHAIN: "local" } } };
   }
   const goMod = env.readText(env.path.join(cwd, "go.mod"));
   const declared = goModTools(goMod ?? "").some((t) => t === req.tool || t.endsWith(`/${req.tool}`));
@@ -144,7 +150,7 @@ function go(req: ToolRequest, cwd: string, env: Env): Resolved {
       install: inDir(req.dir, `go get -tool <${req.tool} 的套件路徑>`),
     };
   }
-  return { ok: true, command: { file: "go", args: ["tool", req.tool, ...args], cwd, env: GO_ENV } };
+  return { ok: true, command: { file: "go", args: ["tool", req.tool, ...args], cwd, env: goEnv } };
 }
 
 function java(req: ToolRequest, cwd: string, env: Env): Resolved {

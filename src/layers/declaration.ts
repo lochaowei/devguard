@@ -27,7 +27,7 @@ export const declarationLayer: CheckLayer = {
             layer: "config",
             rule: "declaration/missing",
             message: `找不到 ${DECLARATION_FILE}`,
-            fix: `在 repo 根目錄建立 ${DECLARATION_FILE}（格式見 SPEC §4）`,
+            fix: `devguard draft（依既有的工具設定產生 ${DECLARATION_FILE} 草稿）`,
           },
         ],
       };
