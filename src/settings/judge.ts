@@ -91,6 +91,11 @@ export class SettingsJudge {
     return eff && eff.status !== "invalid" ? eff.value : undefined;
   }
 
+  /** Normalized directory of this component (`""` or ending in `"/"`). */
+  get dir(): string {
+    return this.component.dir;
+  }
+
   /** Path of a file in this component's directory, repo-relative. */
   path(name: string): string {
     return this.component.dir + name;

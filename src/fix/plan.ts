@@ -135,15 +135,36 @@ function lcsLengths(a: readonly string[], b: readonly string[]): (i: number, j: 
   return lcs;
 }
 
+function trimCommon(
+  a: readonly string[],
+  b: readonly string[],
+): { prefix: string[]; midA: readonly string[]; midB: readonly string[]; suffix: string[] } {
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start++;
+  let endA = a.length;
+  let endB = b.length;
+  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) {
+    endA--;
+    endB--;
+  }
+  return {
+    prefix: a.slice(0, start).map((l) => ` ${l}`),
+    midA: a.slice(start, endA),
+    midB: b.slice(start, endB),
+    suffix: a.slice(endA).map((l) => ` ${l}`),
+  };
+}
+
 /** Every line of `a` and `b` marked " " (both), "-" (only a) or "+" (only b), in order. */
 function lineOps(a: readonly string[], b: readonly string[]): string[] {
-  const lcs = lcsLengths(a, b);
-  const ops: string[] = [];
+  const { prefix, midA, midB, suffix } = trimCommon(a, b);
+  const lcs = lcsLengths(midA, midB);
+  const ops: string[] = [...prefix];
   let i = 0;
   let j = 0;
-  while (i < a.length && j < b.length) {
-    const left = a[i] ?? "";
-    const right = b[j] ?? "";
+  while (i < midA.length && j < midB.length) {
+    const left = midA[i] ?? "";
+    const right = midB[j] ?? "";
     if (left === right) {
       ops.push(` ${left}`);
       i++;
@@ -156,7 +177,7 @@ function lineOps(a: readonly string[], b: readonly string[]): string[] {
       i++;
     }
   }
-  return [...ops, ...a.slice(i).map((l) => `-${l}`), ...b.slice(j).map((l) => `+${l}`)];
+  return [...ops, ...midA.slice(i).map((l) => `-${l}`), ...midB.slice(j).map((l) => `+${l}`), ...suffix];
 }
 
 const WRITE_LABEL = { generated: "重新產生（由 CLI 產生）", managed: "修改 CLI 管理的設定" } as const;
