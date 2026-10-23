@@ -5,6 +5,8 @@ import { localDate, runCheck } from "./check.ts";
 import { DeclarationExistsError, writeDraft } from "./draft.ts";
 import { terminalInteraction } from "./fix/interaction.ts";
 import { runFix } from "./fix/run.ts";
+import { runInstall } from "./hooks/install.ts";
+import { HOOK_HANDLERS } from "./hooks/registry.ts";
 import { failureMessage, UsageError } from "./report/failure.ts";
 import { claudeFeedback } from "./report/claude.ts";
 import { exitCodeFor, renderJson, renderText, type ReportInput } from "./report/render.ts";
@@ -19,6 +21,8 @@ const USAGE = `用法：devguard <指令> [選項]
 指令：
   check [檔案…]  檢查專案宣告（.devguard.yaml）與程式碼；指定檔案時只檢查這些檔案
   fix            修正設定：先預覽，確認後套用；--yes 直接套用
+  install        產生各防線的設定並安裝 git pre-commit hook：先預覽，確認後套用；--yes 直接套用
+  hook <名稱>    給 hook 呼叫：git-pre-commit
   draft          沒有 .devguard.yaml 時，依偵測到的元件與工具設定產生宣告草稿（不覆寫既有檔案）
 
 選項：
@@ -28,7 +32,7 @@ const USAGE = `用法：devguard <指令> [選項]
   --strict              偏離也算失敗
   --verbose             展開所有提示
   --cwd <dir>           專案根目錄（預設為目前目錄）
-  --yes                 fix：不詢問，直接套用
+  --yes                 fix / install：不詢問，直接套用
   --version             顯示版本
 `;
 
@@ -80,11 +84,24 @@ async function main(argv: string[]): Promise<number> {
     process.stdout.write(USAGE);
     return values.help ? 0 : 2;
   }
-  const cwd = resolve(values.cwd ?? process.cwd());
-  if (command === "draft") return draft(cwd);
-  if (command === "fix") return runFix({ cwd, today: localDate(), io: terminalInteraction(values.yes) });
-  if (command !== "check") throw new UsageError(`不認得的指令「${command}」`);
-  return check(cwd, values, positionals.slice(1));
+  return dispatch(command, resolve(values.cwd ?? process.cwd()), values, positionals.slice(1));
+}
+
+function dispatch(command: string, cwd: string, values: CheckFlags & { yes: boolean }, args: string[]) {
+  switch (command) {
+    case "draft":
+      return draft(cwd);
+    case "fix":
+      return runFix({ cwd, today: localDate(), io: terminalInteraction(values.yes) });
+    case "install":
+      return runInstall({ cwd, today: localDate(), io: terminalInteraction(values.yes) });
+    case "hook":
+      return hook(cwd, args[0]);
+    case "check":
+      return check(cwd, values, args);
+    default:
+      throw new UsageError(`不認得的指令「${command}」`);
+  }
 }
 
 interface CheckFlags {
@@ -102,6 +119,15 @@ async function check(cwd: string, flags: CheckFlags, files: string[]): Promise<n
   const result = await runCheck({ cwd, today: localDate(), scope });
   process.stdout.write(render(format, result, flags.verbose));
   return exitCodeFor(result.findings, flags.strict);
+}
+
+/** `devguard hook <name>`: the hook's report goes to stderr, which git shows to the person committing. */
+function hook(cwd: string, name: string | undefined): Promise<number> {
+  const handler = name === undefined ? undefined : HOOK_HANDLERS[name];
+  if (!handler) {
+    throw new UsageError(`不認得的 hook「${name ?? ""}」，可用的有 ${Object.keys(HOOK_HANDLERS).join("|")}`);
+  }
+  return handler({ cwd, today: localDate(), write: (text) => process.stderr.write(text) });
 }
 
 async function draft(cwd: string): Promise<number> {

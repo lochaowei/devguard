@@ -2,7 +2,7 @@ import { isAbsolute, posix, relative } from "node:path";
 import { normalizePath } from "../declaration/path.ts";
 import type { Finding, Level } from "../report/finding.ts";
 import type { ToolRequest, ToolResult, ToolRunner } from "../tools/runner.ts";
-import type { CodeTarget } from "./types.ts";
+import type { CodeCheckContext, CodeTarget } from "./types.ts";
 
 /** Helpers shared by the per-language code checkers. */
 
@@ -44,6 +44,35 @@ export async function runBatched(
   const results: ToolResult[] = [];
   for (const batch of fileBatches(files)) results.push(await tools.run({ ...request, args: [...args, ...batch] }));
   return results;
+}
+
+export interface StagedSplit {
+  /** Files (relative to the target directory) whose staged version is known, with that version. */
+  staged: { file: string; text: string }[];
+  /** The other files, checked on disk; undefined means the whole directory, [] means none. */
+  onDisk: readonly string[] | undefined;
+}
+
+/** Splits the target's files into those checked through stdin (staged version known) and those checked on disk. */
+export async function splitStaged(target: CodeTarget, ctx: CodeCheckContext): Promise<StagedSplit> {
+  const { staged: read } = ctx;
+  if (read === undefined || target.files === undefined) return { staged: [], onDisk: target.files };
+  const staged: StagedSplit["staged"] = [];
+  const onDisk: string[] = [];
+  for (const file of target.files) {
+    const text = await read(target.dir + file);
+    if (text === undefined) onDisk.push(file);
+    else staged.push({ file, text });
+  }
+  return { staged, onDisk };
+}
+
+/** 1-based number of the first line where `actual` and `expected` differ (1 when they are equal). */
+export function firstDifferentLine(actual: string, expected: string): number {
+  const a = actual.split("\n");
+  const b = expected.split("\n");
+  const i = a.findIndex((line, n) => line !== b[n]);
+  return i === -1 ? Math.min(a.length, b.length) : i + 1;
 }
 
 export interface CodeFindingInput {

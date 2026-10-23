@@ -1,5 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { readIfExists } from "../settings/config-files.ts";
 import { fileCategory, type FileCategory } from "./category.ts";
 import { editConfigText } from "./edit.ts";
@@ -13,6 +13,8 @@ export interface FileWrite {
   category: "generated" | "managed";
   before: string;
   after: string;
+  /** File mode set after writing, e.g. 0o755 for a git hook. */
+  mode?: number;
 }
 
 /** Something printed for a person to apply: build files, code-form config, user-level settings. */
@@ -182,11 +184,12 @@ export function renderPlan(plan: ChangePlan): string {
   return out.join("\n");
 }
 
-/** Writes the planned files. Printed items are never written. */
+/** Writes the planned files: repo-relative, or absolute (a hooks directory outside the work tree). Printed items are never written. */
 export async function applyPlan(cwd: string, plan: ChangePlan): Promise<void> {
   for (const w of plan.writes) {
-    const path = join(cwd, w.file);
+    const path = resolve(cwd, w.file);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, w.after);
+    if (w.mode !== undefined) await chmod(path, w.mode);
   }
 }

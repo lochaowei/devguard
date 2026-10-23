@@ -24,6 +24,8 @@ export interface LayerContext {
   /** Repo-relative, forward-slash paths of the files in the repo; listed once, on first call. */
   files: () => Promise<readonly string[]>;
   scope: CheckScope;
+  /** Set by the pre-commit hook: the staged version of a repo-relative file, for tools that read stdin. */
+  stagedText?: (repoPath: string) => Promise<string | undefined>;
 }
 
 /** The files a layer should look at: those given on the command line, otherwise every file in the repo. */

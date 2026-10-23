@@ -1,6 +1,6 @@
 import type { Finding } from "../report/finding.ts";
 import type { ToolResult } from "../tools/runner.ts";
-import { codeFinding, runBatched, toolFailed, toRepoPath } from "./support.ts";
+import { codeFinding, firstDifferentLine, runBatched, splitStaged, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
 
 interface EslintMessage {
@@ -44,18 +44,18 @@ function eslintFindings(target: CodeTarget, ctx: CodeCheckContext, result: ToolR
   );
 }
 
+/** Staged files go through `eslint --stdin --stdin-filename` one by one; the rest are checked on disk. */
 async function lint(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
   const request = { language: "typescript", tool: "eslint", dir: target.dir } as const;
-  const results = await runBatched(ctx.tools, request, ["--format", "json", "--no-warn-ignored"], target.files);
+  const args = ["--format", "json", "--no-warn-ignored"];
+  const { staged, onDisk } = await splitStaged(target, ctx);
+  const results = await runBatched(ctx.tools, request, args, onDisk);
+  for (const { file, text } of staged) {
+    results.push(
+      await ctx.tools.run({ ...request, args: [...args, "--stdin", "--stdin-filename", file], stdin: text }),
+    );
+  }
   return results.flatMap((r) => eslintFindings(target, ctx, r));
-}
-
-/** 1-based number of the first line where `actual` and `expected` differ (1 when they are equal). */
-function firstDifferentLine(actual: string, expected: string): number {
-  const a = actual.split("\n");
-  const b = expected.split("\n");
-  const i = a.findIndex((line, n) => line !== b[n]);
-  return i === -1 ? Math.min(a.length, b.length) : i + 1;
 }
 
 /** Prettier only lists unformatted files; formatting each one again locates the first changed line. */
@@ -68,10 +68,22 @@ async function prettierLine(target: CodeTarget, ctx: CodeCheckContext, file: str
   return firstDifferentLine(original, formatted.stdout);
 }
 
+/** `prettier --stdin-filepath` prints the staged version formatted; any difference is a format finding. */
+async function formatStaged(target: CodeTarget, ctx: CodeCheckContext, file: string, text: string): Promise<Finding[]> {
+  const request = { language: "typescript", tool: "prettier", dir: target.dir, stdin: text } as const;
+  const result = await ctx.tools.run({ ...request, args: ["--stdin-filepath", file] });
+  if (result.code !== 0) return [toolFailed(target, "prettier", result)];
+  if (result.stdout === text) return [];
+  const at = { file: toRepoPath(ctx.cwd, target.dir, file), line: firstDifferentLine(text, result.stdout) };
+  return [codeFinding(target, { rule: "prettier/format", message: "格式不符合 Prettier", ...at })];
+}
+
 async function format(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
   const request = { language: "typescript", tool: "prettier", dir: target.dir } as const;
   const findings: Finding[] = [];
-  for (const result of await runBatched(ctx.tools, request, ["--list-different"], target.files)) {
+  const { staged, onDisk } = await splitStaged(target, ctx);
+  for (const { file, text } of staged) findings.push(...(await formatStaged(target, ctx, file, text)));
+  for (const result of await runBatched(ctx.tools, request, ["--list-different"], onDisk)) {
     if (result.code > 1) {
       findings.push(toolFailed(target, "prettier", result));
       continue;
@@ -153,6 +165,10 @@ async function biome(target: CodeTarget, ctx: CodeCheckContext, command: "lint" 
 /** ESLint + Prettier (or Biome) and `tsc --noEmit`, run from the component's node_modules (SPEC §6.3). */
 export const typescriptChecker: CodeChecker = {
   language: "typescript",
+  workingTreeTools(target) {
+    const tools = target.effective["lint.tool"] === "biome" ? ["biome"] : [];
+    return target.categories.has("typecheck") ? [...tools, "tsc"] : tools;
+  },
   async check(target, ctx) {
     const findings: Finding[] = [];
     const useBiome = target.effective["lint.tool"] === "biome";

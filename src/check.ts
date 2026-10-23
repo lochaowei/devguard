@@ -61,6 +61,8 @@ export interface CheckOptions {
   listFiles?: (cwd: string) => Promise<string[]>;
   /** Defaults to the whole repo and every category. */
   scope?: CheckScope;
+  /** The staged version of a file (pre-commit hook); formatters and single-file linters check it via stdin. */
+  stagedText?: (repoPath: string) => Promise<string | undefined>;
 }
 
 function layerContext(options: CheckOptions): LayerContext {
@@ -73,6 +75,7 @@ function layerContext(options: CheckOptions): LayerContext {
     tools: options.tools ?? createToolRunner({ cwd }),
     files: () => (files ??= listFiles(cwd)),
     scope: options.scope ?? { full: false },
+    ...(options.stagedText ? { stagedText: options.stagedText } : {}),
   };
 }
 
