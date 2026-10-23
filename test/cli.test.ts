@@ -62,6 +62,7 @@ function writeTsConfigs(dir: string, coverage: number): void {
   const files: Record<string, string> = {
     "tsconfig.json": `${JSON.stringify({ compilerOptions }, null, 2)}\n`,
     ".prettierrc": '{ "printWidth": 120, "endOfLine": "lf" }\n',
+    ".npmrc": "registry=https://nexus.example.internal/repository/npm-proxy/\n",
     "eslint.config.js": ESLINT_CONFIG,
     "vitest.config.ts": `export default { test: { coverage: { thresholds: { ${thresholds} } } } };\n`,
   };
