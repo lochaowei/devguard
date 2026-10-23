@@ -3,7 +3,7 @@ import { isAbsolute, relative, resolve } from "node:path";
 import type { CheckOptions } from "../check.ts";
 import { normalizePath } from "../declaration/path.ts";
 import { previewThenApply, type Interaction } from "../fix/interaction.ts";
-import { applyPlan, renderPlan, type ChangePlan } from "../fix/plan.ts";
+import { applyPlan, renderPlan, type ChangePlan, type Printed } from "../fix/plan.ts";
 import { planConfigFix } from "../fix/run.ts";
 import { nodeExec, type Exec } from "../process/exec.ts";
 import { UsageError } from "../report/failure.ts";
@@ -14,6 +14,7 @@ import {
   type HookFileOptions,
   type HookFileStatus,
 } from "./file.ts";
+import { detectFramework, hooksDisabled, hooksPathConflict, planFrameworkHooks, readHooksPath } from "./frameworks.ts";
 
 /** The hooks `devguard install` writes. pre-push joins once `devguard hook git-pre-push` exists (#19). */
 export const INSTALLED_HOOKS: readonly GitHookName[] = ["pre-commit"];
@@ -81,6 +82,27 @@ export async function planHooks(
   return plan;
 }
 
+/**
+ * What `install` does for the git hooks: inject into the hook framework the repo already uses, or write devguard's own
+ * hook files; plus a `core.hooksPath` conflict that would keep them from running (SPEC §7.4).
+ */
+export async function planInstallHooks(
+  cwd: string,
+  options: HookFileOptions & { exec?: Exec } = {},
+): Promise<ChangePlan> {
+  const framework = await detectFramework(cwd);
+  const conflict = await hooksPathConflict(cwd, framework, options.exec);
+  const printed: Printed[] = conflict ? [{ file: conflict.file, category: "conflict", lines: [conflict.message] }] : [];
+  const disabled = hooksDisabled(await readHooksPath(cwd, options.exec));
+  if (framework) {
+    const plan = await planFrameworkHooks(cwd, framework, INSTALLED_HOOKS, options.command);
+    return { writes: plan.writes, printed: [...plan.printed, ...printed] };
+  }
+  if (disabled) return { writes: [], printed };
+  const plan = await planHooks(cwd, INSTALLED_HOOKS, options);
+  return { writes: plan.writes, printed: [...plan.printed, ...printed] };
+}
+
 export interface InstallOptions extends CheckOptions {
   io: Interaction;
   /** How the hooks start the CLI; defaults to `devguard`. */
@@ -94,7 +116,7 @@ export interface InstallOptions extends CheckOptions {
  */
 export async function runInstall(options: InstallOptions): Promise<0 | 1> {
   const hookOptions = { exec: options.exec, ...(options.hookCommand ? { command: options.hookCommand } : {}) };
-  const hooks = await planHooks(options.cwd, INSTALLED_HOOKS, hookOptions);
+  const hooks = await planInstallHooks(options.cwd, hookOptions);
   const config = await planConfigFix(options);
   const plan: ChangePlan = {
     writes: [...config.writes, ...hooks.writes],
