@@ -41,6 +41,7 @@ describe("runCheck", () => {
       "settings-typescript",
       "tool-versions",
       "code",
+      "tests",
     ]);
   });
 

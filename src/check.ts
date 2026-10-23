@@ -5,6 +5,7 @@ import { depsLayer } from "./layers/deps.ts";
 import { pythonSettingsLayer } from "./layers/python-settings.ts";
 import { goSettingsLayer } from "./layers/settings-go.ts";
 import { javaSettingsLayer } from "./layers/settings-java.ts";
+import { testsLayer } from "./layers/tests.ts";
 import { typescriptSettingsLayer } from "./layers/settings-typescript.ts";
 import { toolVersionsLayer } from "./layers/tool-versions.ts";
 import type { CheckLayer, CheckScope, LayerContext } from "./layers/types.ts";
@@ -32,6 +33,8 @@ export const CHECK_LAYERS: readonly CheckLayer[] = [
   toolVersionsLayer,
   // Layers above check the setup; code checks run last.
   codeLayer,
+  // Tests and coverage run only with --full.
+  testsLayer,
 ];
 
 export interface CheckOptions {
@@ -77,6 +80,14 @@ export async function runCheck(
 /** The declaration layer alone: parse `.devguard.yaml` and resolve it against the bundled standard. */
 export function checkDeclaration(cwd: string, today: string): Promise<CheckResult> {
   return runCheck({ cwd, today }, [declarationLayer]);
+}
+
+/**
+ * Tests and coverage alone, as `check --full` runs them (SPEC §7.1, for the pre-push hook): the declaration layer,
+ * then each component's tests. Test failures and coverage below the declared threshold are separate errors.
+ */
+export function checkTestsAndCoverage(options: Omit<CheckOptions, "scope">): Promise<CheckResult> {
+  return runCheck({ ...options, scope: { full: true } }, [declarationLayer, testsLayer]);
 }
 
 export function localDate(now = new Date()): string {
