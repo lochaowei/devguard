@@ -59,6 +59,31 @@ describe("TypeScript code checks with the real tools", { timeout: 120_000 }, () 
     expect(findings.every((f) => f.layer === "code" && f.component === "./ (TypeScript)")).toBe(true);
   });
 
+  it("checks the staged version of a file through stdin when one is given (SPEC §7.4)", async () => {
+    const staged = (path: string) => Promise.resolve(path === "clean.ts" ? "let  unstaged = 2;\n" : undefined);
+    const listFiles = () => Promise.resolve(["clean.ts"]);
+    const lintAndFormat = async (only: "lint" | "format") =>
+      brief(
+        (
+          await runCheck(
+            {
+              cwd: dir,
+              today: TODAY,
+              listFiles,
+              scope: { files: ["clean.ts"], only, full: false },
+              stagedText: staged,
+            },
+            [declarationLayer, codeLayer],
+          )
+        ).findings,
+      ).sort();
+    expect(await lintAndFormat("lint")).toEqual([
+      "eslint/@typescript-eslint/no-unused-vars clean.ts:1",
+      "eslint/prefer-const clean.ts:1",
+    ]);
+    expect(await lintAndFormat("format")).toEqual(["prettier/format clean.ts:1"]);
+  });
+
   it("checks only the given file and category", async () => {
     expect(brief(await check({ files: ["clean.ts"], full: false }))).toContain("tsc/TS2322 typed.ts:1");
     expect(await check({ files: ["clean.ts"], only: "lint", full: false })).toEqual([]);

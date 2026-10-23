@@ -275,6 +275,20 @@ describe("devguard draft", { timeout: 60_000 }, () => {
   });
 });
 
+describe("devguard hook / install", () => {
+  it("rejects an unknown hook name with exit 2 and lists the known ones", () => {
+    const r = run(["hook", "git-nope"]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("git-pre-commit");
+  });
+
+  it("install refuses outside a git repo with exit 2", () => {
+    const r = run(["install", "--yes", "--cwd", project("standard: team@1.0.0\ncomponents: []\n")]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("不是 git repo");
+  });
+});
+
 describe("localDate", () => {
   it("formats the local calendar date", () => {
     expect(localDate(new Date(2026, 0, 5, 23, 59))).toBe("2026-01-05");

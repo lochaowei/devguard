@@ -61,6 +61,19 @@ describe("nodeExec", () => {
     }
   });
 
+  it("feeds stdin when given, and closes it otherwise", async () => {
+    const echo = "process.stdin.on('data', (d) => process.stdout.write(d)).on('end', () => process.stdout.write('|'))";
+    const run = (stdin?: string) =>
+      nodeExec({
+        file: process.execPath,
+        args: ["-e", echo],
+        cwd: process.cwd(),
+        ...(stdin === undefined ? {} : { stdin }),
+      });
+    expect((await run("staged 版本")).stdout).toBe("staged 版本|");
+    expect((await run()).stdout).toBe("|");
+  });
+
   it("rejects arguments cmd.exe would alter instead of throwing", async () => {
     await expect(nodeExec({ file: "x.cmd", args: ["%PATH%"], cwd: "." })).rejects.toThrow("cmd.exe");
   });

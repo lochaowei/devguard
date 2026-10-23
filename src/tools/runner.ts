@@ -19,6 +19,8 @@ export interface ToolRequest {
    * forces GOTOOLCHAIN=local, and GOPROXY=off for `go` / `go tool` so resolving a tool never downloads it.
    */
   env?: Readonly<Record<string, string>>;
+  /** Fed to the tool's stdin, e.g. the staged version of a file (SPEC §7.4). */
+  stdin?: string;
 }
 
 export interface ToolResult {
@@ -201,7 +203,7 @@ export function createToolRunner(deps: ToolRunnerDeps): ToolRunner {
       const resolved = RESOLVERS[req.language](req, env.path.join(deps.cwd, req.dir.replace(/\/$/, "")), env);
       if (!resolved.ok) throw new ToolMissingError(resolved.message, resolved.install);
       try {
-        return await exec(resolved.command);
+        return await exec(req.stdin === undefined ? resolved.command : { ...resolved.command, stdin: req.stdin });
       } catch (e) {
         const install = LAUNCHERS[resolved.command.file];
         if (isEnoent(e) && install) throw new ToolMissingError(`找不到 ${resolved.command.file}`, install);

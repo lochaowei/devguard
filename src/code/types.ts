@@ -31,6 +31,11 @@ export interface CodeCheckContext {
   tools: ToolRunner;
   /** Contents of a repo-relative file, or undefined when it cannot be read. */
   readText: (repoPath: string) => Promise<string | undefined>;
+  /**
+   * Set by the pre-commit hook: the staged version of a repo-relative file (undefined when it is not staged).
+   * Formatters and single-file linters that read stdin check this version instead of the working tree (SPEC §7.4).
+   */
+  staged?: (repoPath: string) => Promise<string | undefined>;
 }
 
 /**
@@ -43,6 +48,11 @@ export interface CodeChecker {
   check(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]>;
   /** The formatter and lint-fix runs that resolve the target's fixable findings, in order (`fix --code`). */
   fixSteps(target: CodeTarget, ctx: CodeCheckContext): Promise<FixStep[]>;
+  /**
+   * The tools that check the working-tree version even when staged content is given (no stdin mode, or they read
+   * other files on disk anyway): type checkers, golangci-lint, the Java build tools. The pre-commit hook prints them.
+   */
+  workingTreeTools(target: CodeTarget): string[];
 }
 
 /** One tool run that changes files in place, for `devguard fix --code` (SPEC §9.1). */

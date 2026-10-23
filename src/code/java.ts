@@ -207,6 +207,11 @@ async function format(target: CodeTarget, ctx: CodeCheckContext, build: Build): 
 /** Spotless, Checkstyle and PMD through the project's Maven or Gradle wrapper (SPEC §6.4). */
 export const javaChecker: CodeChecker = {
   language: "java",
+  // No stdin mode: the build reads the files on disk.
+  workingTreeTools(target) {
+    const lint = target.categories.has("lint") ? ["Checkstyle", "PMD"] : [];
+    return target.categories.has("format") ? ["Spotless", ...lint] : lint;
+  },
   async check(target, ctx) {
     const findings: Finding[] = [];
     const build = await buildOf(target, ctx);

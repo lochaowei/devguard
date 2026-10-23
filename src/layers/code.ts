@@ -80,8 +80,9 @@ export async function codeTargets(ctx: LayerContext): Promise<PlannedTarget[]> {
 }
 
 /** What a CodeChecker sees of the layer context. */
-export function codeCheckContext(ctx: Pick<LayerContext, "cwd" | "tools">): CodeCheckContext {
-  return { cwd: ctx.cwd, tools: ctx.tools, readText: (p) => readText(ctx.cwd, p) };
+export function codeCheckContext(ctx: Pick<LayerContext, "cwd" | "tools" | "stagedText">): CodeCheckContext {
+  const base = { cwd: ctx.cwd, tools: ctx.tools, readText: (p: string) => readText(ctx.cwd, p) };
+  return ctx.stagedText ? { ...base, staged: ctx.stagedText } : base;
 }
 
 /** Runs each target's checker in order. */

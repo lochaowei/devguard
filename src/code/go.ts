@@ -83,6 +83,8 @@ function packageDirs(files: readonly string[] | undefined): string[] | undefined
  */
 export const goChecker: CodeChecker = {
   language: "go",
+  // golangci-lint loads whole packages from disk; it has no stdin mode for `run`.
+  workingTreeTools: () => ["golangci-lint"],
   async check(target, ctx) {
     const packages = packageDirs(target.files);
     if (packages?.length === 0) return [];

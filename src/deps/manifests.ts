@@ -165,6 +165,31 @@ export async function directDependencies(language: Language, dir: string, read: 
   return deps;
 }
 
+const DEPENDENCY_FILES = new Set([
+  "pyproject.toml",
+  "uv.lock",
+  "poetry.lock",
+  "package.json",
+  "package-lock.json",
+  "npm-shrinkwrap.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "go.mod",
+  "go.sum",
+  "pom.xml",
+  "build.gradle",
+  "build.gradle.kts",
+  "settings.gradle",
+  "settings.gradle.kts",
+  "gradle.lockfile",
+]);
+
+/** A manifest or lockfile the dependency rules read; staging one makes the pre-commit hook run them (SPEC §7.1). */
+export function isDependencyFile(path: string): boolean {
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  return DEPENDENCY_FILES.has(name) || /^requirements.*\.txt$/.test(name);
+}
+
 /** Whether `name` is the banned entry `banned` (Python names compare normalized; a Go entry covers its subpaths). */
 export function isBanned(language: Language, name: string, banned: string): boolean {
   if (language === "python") return pyName(name) === pyName(banned);

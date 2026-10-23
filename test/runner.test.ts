@@ -75,6 +75,13 @@ describe("tool runner: TypeScript", () => {
     expect(started).toEqual([{ file: bin, args: ["."], cwd: "C:\\repo\\web" }]);
   });
 
+  it("passes stdin through to the tool", async () => {
+    const bin = "C:\\repo\\node_modules\\.bin\\prettier.cmd";
+    const { runner, started } = fakeRunner({ [bin]: "" });
+    await runner.run(req({ language: "typescript", tool: "prettier", args: ["--stdin-filepath", "a.ts"], stdin: "x" }));
+    expect(started).toEqual([{ file: bin, args: ["--stdin-filepath", "a.ts"], cwd: "C:\\repo", stdin: "x" }]);
+  });
+
   it("asks for npm ci when node_modules lacks the tool", async () => {
     const { runner } = fakeRunner({});
     expect((await missing(runner.run(req({ language: "typescript", tool: "eslint" })))).install).toBe("npm ci");
