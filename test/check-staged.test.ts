@@ -90,15 +90,15 @@ describe("devguard check --staged (SPEC §3.2): the pre-commit hook's checks", (
     const tools: ToolRunner = {
       run(req) {
         calls.push(req);
-        const json = req.args?.includes("settings.json") === true;
-        return Promise.resolve({ code: 0, stdout: json ? '{ "name": "x" }\n' : (req.stdin ?? ""), stderr: "" });
+        const isSettings = req.args?.includes("settings.json") === true;
+        return Promise.resolve({ code: 0, stdout: isSettings ? '{ "name": "x" }\n' : (req.stdin ?? ""), stderr: "" });
       },
     };
     const r = await cli(dir, ["check", "--staged", "--format", "json"], tools);
     const report = JSON.parse(r.out) as { findings: { rule: string; file?: string }[] };
     expect(report.findings.map((f) => [f.rule, f.file])).toEqual([["prettier/format", "settings.json"]]);
     expect(r.code).toBe(1);
-    // notes.txt is no file Prettier formats, so nothing checks it.
+    // Prettier doesn't format notes.txt, so nothing checks it.
     expect(calls.map((c) => [c.tool, ...(c.args ?? [])])).toEqual([
       ["prettier", "--stdin-filepath", ".devguard.yaml"],
       ["prettier", "--stdin-filepath", "settings.json"],
