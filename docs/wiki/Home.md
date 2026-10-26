@@ -19,7 +19,10 @@
 - **[專案宣告（`.devguard.yaml`）](Project-Declaration.md)**
   元件與檔案歸屬規則、9 種標準項目類型、覆寫與偏離（`reason` / `until`）規則、以及使用 `devguard draft` 從既有設定自動產生草稿。
 - **[CLI 指令與報告格式參考](CLI-Reference.md)**
-  `devguard check`、`devguard doctor`、`devguard fix`、`devguard install`、`devguard draft`、`devguard standard upgrade` 的完整參數、16 道可插拔檢查層的執行順序、三道防線與內部鏡像帳密細節、4 種檔案修補分類，以及 `text`、`json`、`sarif`、`vscode`、`claude` 五種輸出格式與 exit code 語意。
+  所有指令的總覽、共用選項、`text`、`json`、`sarif`、`vscode`、`claude` 五種輸出格式與 exit code 語意，以及各指令頁範例所用的示範專案。
+- **各指令的細部行為**
+  每頁說明用法與旗標、執行流程、輸出與 exit code、實際範例與常見錯誤：
+  [`draft`](Command-draft.md)、[`install`](Command-install.md)、[`check`](Command-check.md)（15 道檢查層）、[`fix`](Command-fix.md)（4 種檔案類別與互動規則）、[`doctor`](Command-doctor.md)（環境檢查）、[`hook`](Command-hook.md)（5 個 git 與 Claude Code hook）、[`standard upgrade`](Command-standard-upgrade.md)。
 - **[各語言預設標準（`team@1.0.0`）與檢查對照表](Language-Standards.md)**
   Python、Go、TypeScript、Java 四種語言的標準項目預設值、工具版本範圍、設定檔落地位置、鎖定工具版本的讀取來源、程式碼檢查工具、測試覆蓋率與弱點掃描判定方式。
 - **[開發指南與實作路線圖](Development-and-Roadmap.md)**
