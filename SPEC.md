@@ -386,7 +386,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 **環境檢查**
 - 用 `code --list-extensions --show-versions` 偵測擴充套件（透過 `cmd.exe` 執行）。這個指令只能判斷「是否已安裝」：被停用的擴充套件也會列出，而且只涵蓋預設 profile。CLI 沒有可靠的方式判斷是否已啟用（狀態存在 VS Code 內部的 `state.vscdb`，不是公開 API）。
-- 缺少推薦的擴充套件時回報**錯誤**，提示「請從公司內部 marketplace 安裝 `<id>`」並附上連結；訊息另外註明「若已安裝但被停用，請在 VS Code 中啟用」。
+- 缺少推薦的擴充套件時給**提示**（不是錯誤），提示「請從公司內部 marketplace 安裝 `<id>`」並附上連結；訊息另外註明「若已安裝但被停用，請在 VS Code 中啟用」。找不到 `code` 指令或指令失敗時也只給提示。使用其他編輯器（IntelliJ IDEA、Cursor、Neovim 等）的開發者因此不會讓 `doctor` 失敗。
 - 裝了不推薦的擴充套件時給**提示**。
 
 **提交規則**：`settings.json`、`extensions.json`、`tasks.json` 必須提交。如果 `.gitignore` 忽略了 `.vscode/`，CLI 提示改成 `.vscode/*` 並加上例外規則。

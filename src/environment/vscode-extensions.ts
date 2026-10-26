@@ -57,7 +57,7 @@ export interface VscodeExtensionsCheckOptions {
 /**
  * SPEC §7.2 環境檢查: `code --list-extensions --show-versions` (on Windows `code.cmd`, which starts through cmd.exe).
  * It only tells installed from not installed: disabled extensions are listed too, and only the default profile is
- * covered. A missing recommended extension is an error, an installed unwanted one a hint.
+ * covered. Every finding is a hint, so a developer on another editor (no `code` command, no extensions) still passes.
  */
 export function createVscodeExtensionsCheck(options: VscodeExtensionsCheckOptions = {}): EnvironmentCheck {
   const file = (options.platform ?? process.platform) === "win32" ? "code.cmd" : "code";
@@ -72,7 +72,7 @@ export function createVscodeExtensionsCheck(options: VscodeExtensionsCheckOption
       const findings: Finding[] = recommended
         .filter((id) => !installed.has(id.toLowerCase()))
         .map((id) => ({
-          level: "error",
+          level: "hint",
           layer: "environment",
           rule: "environment/vscode-extension-missing",
           message: `VS Code 沒有安裝推薦的擴充套件 ${id}（若已安裝但被停用，請在 VS Code 中啟用）`,

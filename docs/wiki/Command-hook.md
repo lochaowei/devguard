@@ -107,10 +107,7 @@ $ git push origin main
 
 ```text
 $ echo '{}' | devguard hook claude-session-start
-devguard：3 個錯誤、1 個偏離、0 個提示
-- 錯誤 VS Code 沒有安裝推薦的擴充套件 dbaeumer.vscode-eslint（若已安裝但被停用，請在 VS Code 中啟用） [environment/vscode-extension-missing]（修正：請從公司內部 marketplace 安裝 dbaeumer.vscode-eslint：https://vsmarketplace.example.internal/items?itemName=dbaeumer.vscode-eslint）
-- 錯誤 VS Code 沒有安裝推薦的擴充套件 esbenp.prettier-vscode（…） [environment/vscode-extension-missing]（…）
-- 錯誤 VS Code 沒有安裝推薦的擴充套件 vitest.explorer（…） [environment/vscode-extension-missing]（…）
+devguard：0 個錯誤、1 個偏離、0 個提示
 - 偏離 .devguard.yaml:6 覆蓋率門檻 (%)：80 → 10｜理由：舊程式碼的測試在 Q1 補齊｜到期：2027-03-31 [declaration/deviation]
 ```
 

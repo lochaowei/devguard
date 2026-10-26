@@ -3,11 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCheck } from "../src/check.ts";
+import { runDoctor } from "../src/doctor.ts";
 import { createVscodeExtensionsCheck } from "../src/environment/vscode-extensions.ts";
 import { declarationLayer } from "../src/layers/declaration.ts";
 import { createEnvironmentLayer } from "../src/layers/environment.ts";
-import type { Command, Exec } from "../src/process/exec.ts";
+import { nodeExec, type Command, type Exec } from "../src/process/exec.ts";
 import type { Finding } from "../src/report/finding.ts";
+import { exitCodeFor } from "../src/report/render.ts";
 import { rules, TODAY } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -55,9 +57,9 @@ describe("VS Code extensions installed (SPEC §7.2 環境檢查)", () => {
     expect(code.calls[0]?.file).toBe("code");
   });
 
-  it("a missing recommended extension is an error pointing at the internal marketplace", async () => {
+  it("a missing recommended extension is a hint pointing at the internal marketplace", async () => {
     const findings = await doctor(repo(PYTHON), fakeCode(["ms-python.python", "charliermarsh.ruff"]));
-    expect(rules(findings)).toEqual(["error:environment/vscode-extension-missing"]);
+    expect(rules(findings)).toEqual(["hint:environment/vscode-extension-missing"]);
     expect(findings[0]?.message).toContain("ms-python.mypy-type-checker");
     expect(findings[0]?.message).toContain("若已安裝但被停用，請在 VS Code 中啟用");
     expect(findings[0]?.fix).toContain(
@@ -88,5 +90,29 @@ describe("VS Code extensions installed (SPEC §7.2 環境檢查)", () => {
     const code = fakeCode([]);
     expect(await doctor(repo("standard: team@1.0.0\ncomponents: []\n"), code)).toEqual([]);
     expect(code.calls).toEqual([]);
+  });
+});
+
+describe("doctor for a developer who does not use VS Code (#40)", () => {
+  /** Runs `devguard doctor` with only the VS Code check in the environment layer; other commands run for real. */
+  async function doctorVscode(dir: string, code: Exec): Promise<Finding[]> {
+    const exec: Exec = (c) => (/^code(\.cmd)?$/.test(c.file) ? code(c) : nodeExec(c));
+    const checks = [createVscodeExtensionsCheck({ platform: "win32" })];
+    const { findings } = await runDoctor({ cwd: dir, today: TODAY, exec, env: {}, checks });
+    return findings.filter((f) => f.layer === "environment");
+  }
+
+  it("does not fail when the code command is not installed (IntelliJ, Cursor, Neovim …)", async () => {
+    const missing: Exec = () => Promise.reject(Object.assign(new Error("spawn code ENOENT"), { code: "ENOENT" }));
+    const findings = await doctorVscode(repo(PYTHON), missing);
+    expect(rules(findings)).toEqual(["hint:environment/vscode-cli-missing"]);
+    expect(exitCodeFor(findings, false)).toBe(0);
+  });
+
+  it("does not fail when every recommended extension is missing", async () => {
+    const findings = await doctorVscode(repo(PYTHON), fakeCode([]));
+    expect(findings.length).toBeGreaterThan(0);
+    expect(new Set(rules(findings))).toEqual(new Set(["hint:environment/vscode-extension-missing"]));
+    expect(exitCodeFor(findings, false)).toBe(0);
   });
 });
