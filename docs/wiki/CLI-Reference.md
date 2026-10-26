@@ -129,11 +129,11 @@ $ devguard check src/first.ts --format json
    - `src/add.ts`：一個 `add(a, b)` 函式
    - `.gitignore`：`node_modules/`、`coverage/`。**一定要有**，否則 `node_modules/` 中的檔案會被當成專案檔案，見 [check 的常見錯誤](Command-check.md#常見錯誤與排解)
 
-2. 安裝標準要求的工具：`typescript`、`eslint`、`typescript-eslint`、`prettier`、`vitest`、`@vitest/coverage-v8`、`eslint-plugin-sonarjs@3`。撰寫本文時 `eslint-plugin-sonarjs@3` 的 peer dependency 不接受 ESLint 10，要加上 `--legacy-peer-deps`，並自行補裝因此沒有自動安裝的 `globals` 與 `vite`。
+2. 安裝標準要求的工具：`typescript`、`eslint`、`typescript-eslint`、`prettier`、`vitest`、`@vitest/coverage-v8`。`team@1.1.0` 不要求 `eslint-plugin-sonarjs`；宣告 `team@1.0.0` 時才需要另外安裝 `eslint-plugin-sonarjs@3`（撰寫本文時它的 peer dependency 不接受 ESLint 10，要加上 `--legacy-peer-deps`，並自行補裝因此沒有自動安裝的 `globals` 與 `vite`）。
 3. `devguard draft` → 產生宣告（[範例](Command-draft.md)）。
 4. `devguard check` → 12 個錯誤（[範例](Command-check.md#初次導入設定與程式碼的問題一起列出)）。
 5. `devguard fix --yes` → 寫入 `tsconfig.json`、`.prettierrc`、`.gitattributes`、`.npmrc`、`.vscode/`（[範例](Command-fix.md#範例)）。
-6. 手動建立 `eslint.config.js`（`strictTypeChecked`、`complexity`、`sonarjs/cognitive-complexity`，並在 `projectService.allowDefaultProject` 列出 `eslint.config.js`、`vitest.config.ts`）與 `vitest.config.ts`（`coverage.include: ["src/**/*.ts"]` 與四個 80% 門檻）。
+6. 手動建立 `eslint.config.js`（`strictTypeChecked`、`complexity`；`team@1.0.0` 另加 `sonarjs/cognitive-complexity`，並在 `projectService.allowDefaultProject` 列出 `eslint.config.js`、`vitest.config.ts`）與 `vitest.config.ts`（`coverage.include: ["src/**/*.ts"]` 與四個 80% 門檻）。
 7. `devguard check` → `通過：沒有錯誤、偏離或提示`。
 8. `devguard install --yes` → 產生 `.claude/` 與 git hook（[範例](Command-install.md#範例)）。
 9. 之後依各頁範例故意製造問題：未格式化的檔案、型別錯誤、沒有測試的函式、放寬覆蓋率的偏離、被修改的 hook。

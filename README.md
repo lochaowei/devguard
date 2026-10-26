@@ -74,7 +74,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
    ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.0.0
+   standard: team@1.1.0
    components:
      - path: ./
        language: python
@@ -118,7 +118,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
      ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.0.0
+   standard: team@1.1.0
    components:
      - path: ./
        language: go
@@ -147,13 +147,13 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
    ```bash
    npm pkg set type=module "engines.node=>=22"
    npm i -D "typescript@>=6 <7" "eslint@>=10 <11" "typescript-eslint@>=8 <9" \
-     "eslint-plugin-sonarjs@>=3 <4" "prettier@>=3 <4" "vitest@>=5 <6" "@vitest/coverage-v8@>=5 <6"
+     "prettier@>=3 <4" "vitest@>=5 <6" "@vitest/coverage-v8@>=5 <6"
    # 若改用 Biome：npm i -D "@biomejs/biome@>=2 <3"
    # 若改用 Jest：npm i -D "jest@>=30 <31"
    ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.0.0
+   standard: team@1.1.0
    components:
      - path: ./
        language: typescript
@@ -175,24 +175,22 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
      ```js
      // eslint.config.js
      import { defineConfig } from "eslint/config";
-     import sonarjs from "eslint-plugin-sonarjs";
      import tseslint from "typescript-eslint";
 
      export default defineConfig(
        { ignores: ["coverage/", "dist/", "node_modules/"] },
        tseslint.configs.strictTypeChecked,
        {
-         plugins: { sonarjs },
          languageOptions: {
            parserOptions: { projectService: { allowDefaultProject: ["eslint.config.js"] } },
          },
          rules: {
            complexity: ["error", 10],
-           "sonarjs/cognitive-complexity": ["error", 15],
          },
        },
      );
      ```
+     `team@1.1.0` 起不再要求 `eslint-plugin-sonarjs`（授權為 LGPL-3.0-only），使用 ESLint 時只檢查內建的 `complexity`；仍宣告 `team@1.0.0` 的專案要另外安裝 `eslint-plugin-sonarjs@>=3 <4` 並開啟 `"sonarjs/cognitive-complexity": ["error", 15]`，或執行 `devguard standard upgrade` 升級。
      ```ts
      // vitest.config.ts
      import { defineConfig } from "vitest/config";
@@ -227,7 +225,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
      ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.0.0
+   standard: team@1.1.0
    components:
      - path: ./
        language: java
@@ -275,7 +273,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 放在 repo 根目錄。最精簡的寫法：
 
 ```yaml
-standard: team@1.0.0
+standard: team@1.1.0
 components:
   - path: ./
     language: typescript
@@ -284,7 +282,7 @@ components:
 monorepo 與覆寫的寫法：
 
 ```yaml
-standard: team@1.0.0            # 必須寫確切版本
+standard: team@1.1.0            # 必須寫確切版本
 components:                     # 元件 = 目錄 + 語言
   - path: backend/
     language: go
@@ -309,7 +307,7 @@ mirrors:
 - 理由仍是 `TODO`、覆寫不存在的項目、值的型別錯誤、重複宣告同一個元件，都是**錯誤**。
 - 每個檔案歸屬於路徑最長且語言相符的元件；沒有元件涵蓋時，依副檔名推定語言並套用預設標準（並發出 `declaration/uncovered-files` 提示）。
 
-可以覆寫的項目與預設值，見 [src/standard/team-1.0.0.ts](src/standard/team-1.0.0.ts)、SPEC §5–§6 或 [Language-Standards.md](docs/wiki/Language-Standards.md)。
+可以覆寫的項目與預設值，見 [src/standard/team-1.0.0.ts](src/standard/team-1.0.0.ts)（`team@1.1.0` 與它的差異見 [src/standard/team-1.1.0.ts](src/standard/team-1.1.0.ts)）、SPEC §5–§6 或 [Language-Standards.md](docs/wiki/Language-Standards.md)。
 
 ### 鏡像（`mirrors.*`）
 
@@ -334,7 +332,7 @@ mirrors:
 
 `check` 會讀出各元件用依賴管理鎖定的工具版本（`uv.lock` / `poetry.lock`、`package-lock.json`、`go.mod` 的 `tool`、`pom.xml` / `build.gradle(.kts)` 中的 plugin 版本），超出標準的版本範圍（`tools.<工具>` 項目）就回報錯誤。golangci-lint 例外：從 PATH 呼叫 `golangci-lint --version` 核對。專案用 pre-commit 框架時，其他工具 hook 的 `rev` 與鎖定版本不同會給提示（SPEC §8）。
 
-> **待團隊訂定**：`team@1.0.0` 中各工具的版本範圍、golangci-lint 與 Dependency-Check plugin 的指定版本目前都是**佔位值**（SPEC §12 第 5 項），發佈前必須換成團隊訂定的值。
+> **待團隊訂定**：`team@1.0.0`（與沿用它的 `team@1.1.0`）中各工具的版本範圍、golangci-lint 與 Dependency-Check plugin 的指定版本目前都是**佔位值**（SPEC §12 第 5 項），發佈前必須換成團隊訂定的值。
 
 ## 指令
 
@@ -486,7 +484,7 @@ web/ (TypeScript)
 | `npm run smoke:exe [-- <exe>]` | 從 PATH 移除 Node 後，對 exe 執行 `--version` 與 `check`（範例專案） |
 | `npm run t2:probe` / `build:t2-probe` | SPEC §13 T2：子程序行為探測，先在 Node 下跑基準，再打包成 `dist/t2-probe-windows-<arch>.exe` 執行比對 |
 
-devguard 本身也遵守 SPEC §6.3 的 TypeScript 預設標準，並以 [.devguard.yaml](.devguard.yaml) 宣告自己。**例外：認知複雜度（上限 15）目前沒有檢查**。標準用 `eslint-plugin-sonarjs` 的 `cognitive-complexity`，但它的授權是 LGPL-3.0-only，還在等法務確認（SPEC §12 第 8 項），所以 devguard 自己還沒有加入；`devguard check` 對自己會一直顯示這一項提示。
+devguard 本身也遵守 SPEC §6.3 的 TypeScript 預設標準，並以 [.devguard.yaml](.devguard.yaml) 宣告自己（`team@1.1.0`）。`team@1.1.0` 不要求 `eslint-plugin-sonarjs`（LGPL-3.0-only，SPEC §12 第 8 項），所以 ESLint 只檢查循環複雜度，認知複雜度不檢查。
 
 測試大多在同一個程序內執行 CLI（`runCli`，[src/main.ts](src/main.ts)），以假的 `ToolRunner` 代替 ESLint、Ruff 等工具；只有少數測試真的啟動 `node src/cli.ts` 與真實工具。
 

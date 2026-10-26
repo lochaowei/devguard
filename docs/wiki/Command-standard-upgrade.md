@@ -69,11 +69,34 @@ devguard standard upgrade [目標版本] [--apply] [--cwd <dir>]
 
 ## 範例
 
-目前 CLI 只內建 `team@1.0.0`，所以實際執行只會看到這兩種結果：
+目前 CLI 內建 `team@1.0.0` 與 `team@1.1.0`。宣告 `team@1.0.0` 的 TypeScript 專案升級時（`doctor` 也會以 `standard/upgrade-available` 提示建議這個指令）：
 
 ```text
 $ devguard standard upgrade
-已經是這個 devguard 內建的最新標準 team@1.0.0
+標準升級預覽：team@1.0.0 → team@1.1.0
+
+標準項目的差異：
+  TypeScript｜eslint-plugin-sonarjs 版本範圍：">=3,<4"（移除）
+
+對本專案的影響：
+多餘的覆寫（--apply 會從宣告中刪除）：
+  無
+…
+要修改的檔案：
+.devguard.yaml：修改 CLI 管理的設定
++standard: team@1.1.0
+-standard: team@1.0.0
+…
+只預覽，沒有套用。加上 --apply 才會套用。
+$ echo $?
+1
+```
+
+宣告中覆寫了 `tools.eslint-plugin-sonarjs` 時，這個覆寫會列在「多餘的覆寫」（`（新標準已移除這個項目）`），`--apply` 會把它刪除。已經是最新版本，或指定的版本不存在時：
+
+```text
+$ devguard standard upgrade
+已經是這個 devguard 內建的最新標準 team@1.1.0
 
 $ devguard standard upgrade team@9.0.0
 這個 devguard 沒有內建「team@9.0.0」
