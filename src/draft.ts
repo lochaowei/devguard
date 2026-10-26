@@ -15,7 +15,7 @@ import { typescriptSettingsLayer } from "./layers/settings-typescript.ts";
 import type { CheckLayer } from "./layers/types.ts";
 import type { Finding } from "./report/finding.ts";
 import { listRepoFiles } from "./repo/files.ts";
-import { BUNDLED_STANDARDS } from "./standard/registry.ts";
+import { defaultStandard } from "./standard/registry.ts";
 import { EXTENSION_LANGUAGE, LANGUAGES, type Language, type Standard } from "./standard/types.ts";
 import { upwards } from "./repo/paths.ts";
 
@@ -180,7 +180,7 @@ export async function draftDeclaration(options: DraftOptions): Promise<Draft> {
   const { cwd, today } = options;
   const ignore = options.ignore ?? [];
   const files = withoutIgnored(ignore, options.files);
-  const standard = BUNDLED_STANDARDS[BUNDLED_STANDARDS.length - 1];
+  const standard = defaultStandard();
   if (!standard) throw new Error("no bundled standard");
   const present = new Set(files.map(normalizePath));
   const components = inferComponents(files);

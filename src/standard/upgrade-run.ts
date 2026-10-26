@@ -13,9 +13,9 @@ import type { Finding } from "../report/finding.ts";
 import { createToolRunner, type PackageRequest, type ToolRunner } from "../tools/runner.ts";
 import { pinnedVersions, type Pinned } from "../versions/pinned.ts";
 import { inRange, parseRange } from "../versions/range.ts";
-import { BUNDLED_STANDARDS, compareVersion, findStandard, parseStandardId } from "./registry.ts";
+import { BUNDLED_STANDARDS, findStandard, parseStandardId } from "./registry.ts";
 import { LANGUAGE_LABEL, type ItemDef, type Language, type Standard } from "./types.ts";
-import { diffStandards, newerVersions, type ItemChange } from "./upgrade.ts";
+import { diffStandards, upgradeTargets, type ItemChange } from "./upgrade.ts";
 import { repoReaderSync } from "../shared/fs.ts";
 
 export interface UpgradeOptions extends CheckOptions {
@@ -90,18 +90,22 @@ async function readCurrent(cwd: string): Promise<Declaration | NoUpgrade> {
   return declaration ?? { code: 2, message: `${DECLARATION_FILE} 無法解析，請先執行 devguard check\n` };
 }
 
-const isNewer = (wanted: string, current: string): boolean =>
-  compareVersion(parseStandardId(wanted)?.version ?? [], parseStandardId(current)?.version ?? []) > 0;
+const sameName = (a: string, b: string): boolean => parseStandardId(a)?.name === parseStandardId(b)?.name;
 
 async function chooseTarget(options: UpgradeOptions, bundled: readonly Standard[]): Promise<Target | NoUpgrade> {
   const declaration = await readCurrent(options.cwd);
   if ("code" in declaration) return declaration;
   const current = declaration.standard;
-  const wanted = options.target ?? newerVersions(current, bundled)[0]?.id;
+  const targets = upgradeTargets(current, bundled);
+  const wanted = options.target ?? targets[0]?.id;
   if (wanted === undefined) return { code: 0, message: `已經是這個 devguard 內建的最新標準 ${current}\n` };
   const found = findStandard(wanted, bundled);
   if (!found.ok) return { code: 2, message: `這個 devguard 沒有內建「${wanted}」\n` };
-  if (!isNewer(wanted, current)) return { code: 0, message: `已經是 ${current}，不需要升級到 ${wanted}\n` };
+  if (!targets.includes(found.standard)) {
+    if (sameName(wanted, current)) return { code: 0, message: `已經是 ${current}，不需要升級到 ${wanted}\n` };
+    const can = targets.length === 0 ? "" : `；可以升級到 ${targets.map((s) => s.id).join("、")}`;
+    return { code: 2, message: `無法從 ${current} 升級到 ${wanted}${can}\n` };
+  }
   const lookup = findStandard(current, bundled);
   return { declaration, from: lookup.ok ? lookup.standard : undefined, to: found.standard };
 }

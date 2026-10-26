@@ -120,8 +120,13 @@ async function checkJest(root: string, judge: SettingsJudge): Promise<void> {
   judge.missingFile(judge.path("jest.config.js"), " Jest 設定檔（覆蓋率門檻設在 coverageThreshold.global）");
 }
 
-/** The four coverage thresholds against the declared `coverage.lines`, for Vitest or Jest. */
+/**
+ * The four coverage thresholds against the declared `coverage.lines`, for Vitest or Jest. A threshold of 0
+ * (legacy@1.0.0, #37) fails no total, so it needs no config file, thresholds or file list.
+ */
 export async function checkCoverage(root: string, judge: SettingsJudge): Promise<void> {
+  const threshold = judge.declared("coverage.lines");
+  if (typeof threshold === "number" && threshold <= 0) return;
   const tool = judge.declared("test.tool");
   if (tool === "vitest") await checkVitest(root, judge);
   else if (tool === "jest") await checkJest(root, judge);

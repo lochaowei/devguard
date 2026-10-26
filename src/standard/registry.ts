@@ -1,9 +1,13 @@
+import { legacy_1_0_0 } from "./legacy-1.0.0.ts";
 import { team_1_0_0 } from "./team-1.0.0.ts";
 import { team_1_1_0 } from "./team-1.1.0.ts";
 import type { Standard } from "./types.ts";
 
-/** All standard versions bundled with this CLI release (SPEC §5.5), oldest first: the last one is the newest. */
-export const BUNDLED_STANDARDS: readonly Standard[] = [team_1_0_0, team_1_1_0];
+/** All standard versions bundled with this CLI release (SPEC §5.5), oldest first within each standard. */
+export const BUNDLED_STANDARDS: readonly Standard[] = [team_1_0_0, team_1_1_0, legacy_1_0_0];
+
+/** The standard `draft` writes and the code checks fall back to without a declaration. legacy is opt-in. */
+const DEFAULT_STANDARD_NAME = "team";
 
 export type StandardLookup =
   | { ok: true; standard: Standard }
@@ -35,6 +39,11 @@ export function findStandard(id: string, bundled: readonly Standard[] = BUNDLED_
   const newest = sameName.reduce((a, b) => (a && b && compareVersion(a.version, b.version) >= 0 ? a : b));
   if (newest && compareVersion(wanted.version, newest.version) > 0) return { ok: false, reason: "newer-than-cli" };
   return { ok: false, reason: "no-longer-bundled" };
+}
+
+/** The newest bundled version of the default standard (`team`): what `draft` writes (SPEC §4.3, §5.5). */
+export function defaultStandard(bundled: readonly Standard[] = BUNDLED_STANDARDS): Standard | undefined {
+  return bundled.filter((s) => parseStandardId(s.id)?.name === DEFAULT_STANDARD_NAME).at(-1);
 }
 
 export { compareVersion };

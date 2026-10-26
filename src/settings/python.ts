@@ -337,6 +337,9 @@ function checkTypecheck(r: Report, doc: Table, found: ToolSection | undefined): 
 }
 
 function checkCoverage(r: Report, doc: Table): void {
+  const threshold = r.want("coverage.lines");
+  // A threshold of 0 (legacy@1.0.0, #37) fails no total, so branch coverage need not be measured.
+  if (typeof threshold === "number" && threshold <= 0) return;
   if (at(doc, "tool", "coverage", "run")?.branch === true) return;
   r.fixable(
     "coverage-branch",

@@ -57,7 +57,7 @@ $ devguard draft
    - 比預設寬鬆：寫成 `{value, reason}`，`reason` 是 `TODO: 由 <檔案> 推得，請填寫放寬理由`。
 5. **寫入** `.devguard.yaml`，檔頭附上說明註解；有 `--ignore` 時在最後加上 `ignore` 清單。寫入時用「檔案不存在才建立」的模式，同時執行兩次也不會互相覆蓋。
 
-標準一律使用這個 CLI 內建的最新版本。
+標準一律使用這個 CLI 內建的最新 `team` 版本，不會寫入既有專案的基線標準 `legacy@1.0.0`；要用它時自行改寫 `standard`（見[各語言預設標準](Language-Standards.md)）。
 
 ---
 

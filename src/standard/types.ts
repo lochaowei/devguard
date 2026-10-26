@@ -64,6 +64,11 @@ export interface Standard {
   /** Items that apply to the whole repo (mirrors, Claude Code version). */
   global: Readonly<Record<string, ItemDef>>;
   languages: Readonly<Record<Language, Readonly<Record<string, ItemDef>>>>;
+  /**
+   * A standard that is a stepping stone to another one (legacy → team): the version `standard upgrade` moves it to
+   * once its own standard has no newer version bundled. That version and its newer versions are valid targets.
+   */
+  upgradesTo?: string;
   /** Set when the team deprecates this version. */
   deprecated?: { until: string };
 }

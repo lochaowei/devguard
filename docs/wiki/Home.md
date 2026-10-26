@@ -23,7 +23,7 @@
 - **各指令的細部行為**
   每頁說明用法與旗標、執行流程、輸出與 exit code、實際範例與常見錯誤：
   [`draft`](Command-draft.md)、[`install`](Command-install.md)、[`check`](Command-check.md)（15 道檢查層）、[`fix`](Command-fix.md)（4 種檔案類別與互動規則）、[`doctor`](Command-doctor.md)（環境檢查）、[`hook`](Command-hook.md)（5 個 git 與 Claude Code hook）、[`standard upgrade`](Command-standard-upgrade.md)。
-- **[各語言預設標準（`team@1.0.0`、`team@1.1.0`）與檢查對照表](Language-Standards.md)**
+- **[各語言預設標準（`team@1.0.0`、`team@1.1.0`、`legacy@1.0.0`）與檢查對照表](Language-Standards.md)**
   Python、Go、TypeScript、Java 四種語言的標準項目預設值、工具版本範圍、設定檔落地位置、鎖定工具版本的讀取來源、程式碼檢查工具、測試覆蓋率與弱點掃描判定方式。
 - **[開發指南與實作路線圖](Development-and-Roadmap.md)**
   專案架構與模組職責、本機開發與測試指令、Bun 單一 `.exe` 打包、GitHub Release 發佈流程與 T2 子程序探測，以及 GitHub Issues（#1–#28）實作進度對照表。

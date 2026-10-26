@@ -48,6 +48,19 @@ export function newerVersions(id: string, bundled: readonly Standard[]): Standar
 }
 
 /**
+ * What `standard upgrade` may move `id` to, the default first: newer bundled versions of the same standard (newest
+ * first), then the version its `upgradesTo` names and that standard's newer versions (oldest first). Without
+ * `upgradesTo` (team) only the same standard's versions are targets, so team never moves to legacy.
+ */
+export function upgradeTargets(id: string, bundled: readonly Standard[]): Standard[] {
+  const own = newerVersions(id, bundled);
+  const next = bundled.find((s) => s.id === id)?.upgradesTo;
+  const step = next === undefined ? undefined : bundled.find((s) => s.id === next);
+  if (!step) return own;
+  return [...own, step, ...newerVersions(step.id, bundled).reverse()];
+}
+
+/**
  * The hint `doctor` gives when this CLI bundles a minor or patch update of the declared standard (SPEC §5.5;
  * `src/environment/standard-upgrade.ts`). Undefined when there is none, or the id is malformed or unknown.
  */

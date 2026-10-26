@@ -9,7 +9,7 @@ import {
 import type { ResolvedComponent } from "../declaration/resolve.ts";
 import type { Finding } from "../report/finding.ts";
 import { assignFiles, type OwnedFile } from "../repo/files.ts";
-import { BUNDLED_STANDARDS } from "../standard/registry.ts";
+import { defaultStandard } from "../standard/registry.ts";
 import type { Language, Standard } from "../standard/types.ts";
 import { scopedFiles, type CheckScope, type LayerContext, type CheckLayer } from "./types.ts";
 import { repoReader } from "../shared/fs.ts";
@@ -105,7 +105,7 @@ export interface PlannedTarget {
 
 /** The code targets in scope: one per component, or per language for files no component covers. */
 export async function codeTargets(ctx: LayerContext): Promise<PlannedTarget[]> {
-  const standard = ctx.resolution?.standard ?? BUNDLED_STANDARDS[BUNDLED_STANDARDS.length - 1];
+  const standard = ctx.resolution?.standard ?? defaultStandard();
   if (!standard) return [];
   const global = values(ctx.resolution?.standard ? ctx.resolution.global : standard.global);
   const components = ctx.resolution?.components ?? [];

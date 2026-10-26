@@ -260,13 +260,16 @@ CLI 依偵測到的工具設定檔產生**草稿**：
   - 需要執行的套件管理指令
 
   加上 `--apply` 才實際修改宣告與設定檔，並透過內部鏡像執行套件管理指令。預覽不會詢問；有變更待套用時以 `1` 結束（§11）。
+
+  目標版本：同一個標準的較新版本；`legacy` 另外可以升級到它指定的 `team` 版本（`legacy@1.0.0` → `team@1.1.0`）及該 `team` 的較新版本。沒有指定目標時，取同一個標準的最新版本，沒有的話取 `legacy` 指定的 `team` 版本。其他目標（例如從 `team` 升到 `legacy`，或從 `legacy@1.0.0` 升到 `team@1.0.0`）以 `2` 結束。
+- **基線標準 `legacy`**（§6.5）：給既有專案先納管用，最終要升級到 `team`。`legacy` → `team` 會收緊，不是 minor 更新，所以 doctor 不會建議；`devguard draft` 一律寫入 `team` 的最新版本，`team` 也不會升級到 `legacy`。
 - **強制升級**：團隊可以把某個標準版本標為棄用並設定截止日。截止日之前只顯示提示，之後回報錯誤。
 
 來源：[預設標準的版本發佈與專案升級方式](.scratch/coding-standards-guard/issues/12-standards-versioning.md)
 
 ---
 
-## 6. 各語言的預設標準（`team@1.0.0` 草案，及 `team@1.1.0`）
+## 6. 各語言的預設標準（`team@1.0.0` 草案，及 `team@1.1.0`、`legacy@1.0.0`）
 
 本節的表格是 `team@1.0.0`。`team@1.1.0`（minor，§5.5）沿用 `team@1.0.0` 的所有項目，只有以下差異：
 
@@ -278,7 +281,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
   - Java：`tools.spotless-maven-plugin` `>=2.44,<4`、`tools.spotless-gradle-plugin` `>=7,<9`、`tools.checkstyle` `>=10.21,<15`。
   - 其餘工具範圍不變：ESLint 9（2026-08-06 EOL）、TypeScript 5、Jest 29、Biome 1、pytest 7、pytest-cov 6 之前、mypy 1.18 之前的版本線上游都不再發佈修正；Go 工具的現行版本已在範圍內。
 
-`devguard draft` 寫入、`doctor` 建議升級到的都是 CLI 內建的最新版本（目前是 `team@1.1.0`）。
+`devguard draft` 寫入、`doctor` 建議升級到的都是 CLI 內建的最新 `team` 版本（目前是 `team@1.1.0`）。既有專案可以改宣告基線標準 `legacy@1.0.0`（§6.5）。
 
 ### 6.1 Python
 
@@ -348,6 +351,21 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | 進階：`deps.vulnFailOn` | CVSS 7 | OWASP Dependency-Check；`ignoredVulns` 轉成 suppression 檔；NVD API key 不由 CLI 管理，doctor 只檢查有沒有設定 |
 
 來源：[預設標準：Java](.scratch/coding-standards-guard/issues/11-default-standard-java.md)
+
+### 6.5 既有專案的基線標準（`legacy@1.0.0`）
+
+`legacy@1.0.0` 讓既有（brownfield）專案先以務實的基線納管，不必為 80% 覆蓋率、strict 型別檢查與禁用清單寫一大堆 `reason`／`until`，之後再以 `devguard standard upgrade` 升級到 `team@1.1.0`（§5.5）。它沿用 `team@1.1.0` 的所有項目，只放寬以下項目：
+
+| 項目 | `legacy@1.0.0` | 說明 |
+|---|---|---|
+| `coverage.lines` | 0 | `--full` 仍執行測試，測試失敗仍是錯誤；但不判定覆蓋率，也不要求覆蓋率設定（Vitest / Jest 門檻與 `include`、Python `branch = true`）或覆蓋率報告 |
+| `typecheck.strict` | false（TypeScript、Python） | |
+| `typecheck.options` | `[]`（TypeScript） | |
+| `complexity.cyclomatic` / `cognitive` | 20 / 25 | Python 只有 `cyclomatic` |
+| `deps.banned` | Python `pycrypto`；TypeScript `request`；Java `log4j:log4j`；Go 無 | 只保留有已知且不會修正的弱點的套件。JUnit 4（`junit:junit`）、`nose`、`moment`、`node-fetch`、`github.com/pkg/errors`、`github.com/golang/protobuf` 不再禁用 |
+| `java.minVersion` | 8 | 明確寫在 `legacy@1.0.0` 中、不繼承 `team@1.1.0`，讓 Java 8 的既有專案可以納管 |
+
+升級到 `team@1.1.0` 時，預覽會列出這些項目收緊後專案新出現的錯誤。
 
 ---
 

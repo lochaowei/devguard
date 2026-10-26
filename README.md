@@ -309,6 +309,8 @@ mirrors:
 
 可以覆寫的項目與預設值，見 [src/standard/team-1.0.0.ts](src/standard/team-1.0.0.ts)（`team@1.1.0` 與它的差異見 [src/standard/team-1.1.0.ts](src/standard/team-1.1.0.ts)）、SPEC §5–§6 或 [Language-Standards.md](docs/wiki/Language-Standards.md)。
 
+既有專案可以先宣告基線標準 `legacy@1.0.0`（[src/standard/legacy-1.0.0.ts](src/standard/legacy-1.0.0.ts)，SPEC §6.5）：不判定覆蓋率、不要求 strict 型別檢查、放寬複雜度、只禁用有已知弱點的套件，並接受 Java 8；之後以 `devguard standard upgrade` 升級到 `team@1.1.0`。
+
 ### 鏡像（`mirrors.*`）
 
 `mirrors.pypi`、`npm`、`go`、`maven` 等預設指向內部 Nexus（SPEC §10.1）。改成同一台內部主機上的其他 repository 直接寫值即可；**改成內部主機以外的網址算放寬**，必須寫成 `{value, reason}`，報告中一直列為偏離，沒有理由就是錯誤。這樣 §10.2「設定指向外部來源是錯誤」不會被宣告悄悄繞過。devguard 自己在公司網路外開發，所以它的 [.devguard.yaml](.devguard.yaml) 就是這樣寫的：
