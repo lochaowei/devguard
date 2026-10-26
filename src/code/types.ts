@@ -20,6 +20,11 @@ export interface CodeTarget {
    * type checks on the whole project. Type checks always cover the whole project (SPEC §7.1).
    */
   files?: readonly string[];
+  /**
+   * Files relative to `dir` that only the formatter checks: the other files it handles (`.json`, `.md`…), when
+   * `files` lists files, so the file list covers what a whole-directory run would (#43).
+   */
+  formatOnly?: readonly string[];
   /** The categories to run; never empty. */
   categories: ReadonlySet<CodeCategory>;
 }
@@ -53,6 +58,8 @@ export interface CodeChecker {
    * other files on disk anyway): type checkers, golangci-lint, the Java build tools. The pre-commit hook prints them.
    */
   workingTreeTools(target: CodeTarget): string[];
+  /** Extensions the formatter also checks besides the language's sources (`.json`, `.md`…), for `formatOnly`. */
+  formatsAlso?(effective: CodeTarget["effective"]): readonly string[];
 }
 
 /** One tool run that changes files in place, for `devguard fix --code` (SPEC §9.1). */

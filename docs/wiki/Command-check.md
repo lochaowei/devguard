@@ -62,6 +62,7 @@ devguard check [檔案…] [--staged] [--only lint|format|typecheck] [--full]
 各種範圍選項的影響：
 
 - **指定檔案**：設定檢查（1–12）照常跑整個專案；`code` 層只檢查這些檔案。`tsc`、`mypy`、`pyright` 這類無法只檢查單一檔案的工具，仍會檢查檔案所屬的整個元件。
+- **指定的檔案不是原始碼**：TypeScript 元件內 formatter 會處理的檔案（Prettier 的 `.json`、`.md`、`.yaml`、`.css` 等，Biome 的 `.json`、`.css` 等）只做格式檢查，與全專案檢查的範圍一致。只有這類檔案時，不跑 lint 與型別檢查。
 - **`--staged`**：只跑 `declaration`、`code` 兩層；有依賴檔（`package.json`、lockfile 等）被 staged 時再加上 `deps`。細節見 [hook 頁的 git-pre-commit](Command-hook.md#git-pre-commit)。
 - **沒有 `.devguard.yaml`**：報告 `declaration/missing` 錯誤，程式碼檢查仍以推定的預設標準執行。
 - **`.vscode/` 完全不存在**：`check` 不會報告；要產生它請執行 [`fix`](Command-fix.md) 或 [`install`](Command-install.md)。已經有部分檔案時，缺少的才算錯誤。
@@ -177,7 +178,6 @@ $ devguard check --strict > /dev/null; echo $?
 | `eslint 執行失敗（exit 2）…` `[code/tool-failed]` | 工具本身執行失敗（缺設定檔、缺 plugin 等）。照提示在元件目錄直接執行該工具看完整訊息 |
 | `Parsing error: … was not found by the project service` | `typescript-eslint` 的 `projectService` 找不到 `eslint.config.js`、`vitest.config.ts` 等不在 `tsconfig.json` 範圍內的檔案。在 ESLint 設定中加上 `projectService: { allowDefaultProject: [...] }` |
 | 覆蓋率看起來太高、沒測到的檔案沒算進去 | Vitest 預設只計算被測試 import 到的檔案。在 `vitest.config.ts` 設定 `coverage.include`（例如 `["src/**/*.ts"]`）。追蹤：[#45](https://github.com/lochaowei/devguard/issues/45) |
-| `check` 全專案時報 `.json`、`.md` 的格式錯誤，指定檔案或 `--staged` 時卻沒有 | 全專案檢查對元件目錄執行 `prettier`，會涵蓋 Prettier 支援的所有檔案；指定檔案與 `--staged` 只檢查四種語言的原始碼。追蹤：[#43](https://github.com/lochaowei/devguard/issues/43) |
 
 ---
 

@@ -33,7 +33,7 @@ devguard hook git-pre-commit|git-pre-push|claude-session-start|claude-post-edit|
 ### 執行流程
 
 1. 以 `git diff --cached --name-status` 列出 staged 的變更。沒有 staged 任何東西就直接通過。
-2. 執行 `declaration` 與 `code` 兩層，只檢查 staged 的檔案（刪除的不算）。有依賴檔（`package.json`、lockfile、`go.mod`、`pom.xml` 等）被 staged 時加上 `deps` 層。
+2. 執行 `declaration` 與 `code` 兩層，只檢查 staged 的檔案（刪除的不算）。有依賴檔（`package.json`、lockfile、`go.mod`、`pom.xml` 等）被 staged 時加上 `deps` 層。TypeScript 元件內 formatter 會處理的非原始碼檔案（`package.json`、`.md`、`.yaml` 等）也會做格式檢查。
 3. 檢查的是 **staged 版本**：formatter 與單檔 linter（`ruff`、`eslint`、`prettier`、`biome`、`golangci-lint fmt`）用 `git show :<path>` 讀取 staged 內容，從 stdin 檢查。過程中不做 `git stash`。
 4. 沒有 stdin 模式的工具（`tsc`、`mypy`、`pyright`、`golangci-lint run`、Java 的 wrapper）只能檢查工作目錄。檔案有未 staged 的修改時，會印出提示說明哪些工具看的是工作目錄版本。
 5. 有任何發現就印出報告。有錯誤時最後再加一行 `修正程式碼：devguard fix --code <檔案…>`，並以 exit `1` 擋下 commit。
@@ -167,7 +167,6 @@ $ echo '{"stop_hook_active":true}' | devguard hook claude-stop
 | pre-push 很慢 | 它會跑所有元件的完整測試，與這次 push 的內容無關。這是設計如此 |
 | pre-commit 印出的 `修正程式碼：devguard fix --code …` 列出 `node_modules/` 下的檔案 | `tsc` 檢查整個元件，依賴本身的型別錯誤也會被回報。通常表示依賴沒裝完整（例如缺 peer dependency），重新安裝依賴 |
 | Claude Code 的 hook 似乎沒有執行 | 執行 `devguard doctor`。`environment/claude-never-ran` 表示還沒信任此資料夾，或 hook 從未執行過 |
-| `claude-post-edit` 沒有發現 `.json`、`.md` 的格式問題 | 指定檔案的檢查只涵蓋四種語言的原始碼，見 [check 的常見錯誤](Command-check.md#常見錯誤與排解) |
 
 ---
 

@@ -344,6 +344,8 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 
 `devguard check --full` 與 CI 執行全部檢查。
 
+指定檔案時（檔案參數、`--staged`、pre-commit、Claude 的兩個 hook），formatter 會處理的非原始碼檔案（Prettier 的 `.json`、`.md`、`.yaml`、`.css`…，Biome 的 `.json`、`.css`…）也交給所屬的 TypeScript 元件做格式檢查，範圍與整個元件的檢查一致；只有這類檔案時不跑 lint 與型別檢查。
+
 ### 7.2 第一道：VS Code
 
 CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放一份 `.vscode/`。

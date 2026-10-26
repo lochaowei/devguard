@@ -199,11 +199,44 @@ async function biome(target: CodeTarget, ctx: CodeCheckContext, command: "lint" 
   return findings;
 }
 
+/** What Prettier formats by default besides TypeScript, so a file list matches `prettier --list-different .`. */
+const PRETTIER_ALSO = [
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".json",
+  ".jsonc",
+  ".json5",
+  ".md",
+  ".markdown",
+  ".mdx",
+  ".yaml",
+  ".yml",
+  ".css",
+  ".scss",
+  ".less",
+  ".html",
+  ".vue",
+  ".graphql",
+  ".gql",
+  ".hbs",
+  ".handlebars",
+];
+
+/** What `biome format` formats besides TypeScript. */
+const BIOME_ALSO = [".js", ".jsx", ".mjs", ".cjs", ".json", ".jsonc", ".css", ".graphql", ".gql"];
+
+/** The target as the formatter sees it: its files plus the ones only the formatter checks. */
+const formatTarget = (target: CodeTarget): CodeTarget =>
+  target.formatOnly === undefined ? target : { ...target, files: [...(target.files ?? []), ...target.formatOnly] };
+
 /** ESLint + Prettier (or Biome) and `tsc --noEmit`, run from the component's node_modules (SPEC §6.3). */
 export const typescriptChecker: CodeChecker = {
   language: "typescript",
   // ESLint, Prettier and Biome read the staged version from stdin; tsc reads the whole project from disk.
   workingTreeTools: (target) => (target.categories.has("typecheck") ? ["tsc"] : []),
+  formatsAlso: (effective) => (effective["lint.tool"] === "biome" ? BIOME_ALSO : PRETTIER_ALSO),
   async check(target, ctx) {
     const findings: Finding[] = [];
     const useBiome = target.effective["lint.tool"] === "biome";
@@ -211,7 +244,8 @@ export const typescriptChecker: CodeChecker = {
       findings.push(...(await (useBiome ? biome(target, ctx, "lint") : lint(target, ctx))));
     }
     if (target.categories.has("format")) {
-      findings.push(...(await (useBiome ? biome(target, ctx, "format") : format(target, ctx))));
+      const formatted = formatTarget(target);
+      findings.push(...(await (useBiome ? biome(formatted, ctx, "format") : format(formatted, ctx))));
     }
     if (target.categories.has("typecheck")) findings.push(...(await typecheck(target, ctx)));
     return findings;
@@ -219,15 +253,15 @@ export const typescriptChecker: CodeChecker = {
   /** Lint fixes first, then the formatter, so the formatter has the last word on layout. */
   fixSteps(target) {
     const files = target.files ?? ["."];
-    if (target.effective["lint.tool"] === "biome") {
-      return Promise.resolve([
-        { tool: "biome", args: ["lint", "--write"], files, okUpTo: 1 },
-        { tool: "biome", args: ["format", "--write"], files, okUpTo: 1 },
-      ]);
-    }
-    return Promise.resolve([
-      { tool: "eslint", args: ["--fix", "--no-warn-ignored"], files, okUpTo: 1 },
-      { tool: "prettier", args: ["--write", "--log-level", "warn"], files, okUpTo: 0 },
-    ]);
+    const formatted = formatTarget(target).files ?? ["."];
+    const biome = target.effective["lint.tool"] === "biome";
+    const lintFix = biome
+      ? { tool: "biome", args: ["lint", "--write"], files, okUpTo: 1 }
+      : { tool: "eslint", args: ["--fix", "--no-warn-ignored"], files, okUpTo: 1 };
+    const formatFix = biome
+      ? { tool: "biome", args: ["format", "--write"], files: formatted, okUpTo: 1 }
+      : { tool: "prettier", args: ["--write", "--log-level", "warn"], files: formatted, okUpTo: 0 };
+    // Only files the formatter checks were given: there is nothing to lint-fix.
+    return Promise.resolve(files.length > 0 ? [lintFix, formatFix] : [formatFix]);
   },
 };
