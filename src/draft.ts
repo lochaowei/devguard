@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { stringify } from "yaml";
 import { runCheck } from "./check.ts";
 import { compareToDefault } from "./declaration/compare.ts";
+import { withoutIgnored } from "./declaration/ignore.ts";
 import { displayDir, normalizePath } from "./declaration/path.ts";
 import { resolveDeclaration, type Resolution } from "./declaration/resolve.ts";
 import { DECLARATION_FILE } from "./declaration/types.ts";
@@ -74,6 +75,8 @@ export interface DraftOptions {
   today: string;
   /** Repo-relative paths of the repo's files. */
   files: readonly string[];
+  /** `ignore:` entries for the draft: matching files are left out of the inference and the list is written as is. */
+  ignore?: readonly string[];
 }
 
 export interface Draft {
@@ -149,6 +152,7 @@ function defaultResolution(
         overrides: Object.entries(inferToolChoices(c, present)).map(([key, raw]) => ({ key, raw })),
       })),
       globalOverrides: [],
+      ignore: [],
     },
     today,
     [standard],
@@ -173,7 +177,9 @@ function overridesFrom(findings: readonly Finding[], standard: Standard, languag
 
 /** A draft `.devguard.yaml` for a project that has none, from the components and tool settings found (SPEC §4.3). */
 export async function draftDeclaration(options: DraftOptions): Promise<Draft> {
-  const { cwd, today, files } = options;
+  const { cwd, today } = options;
+  const ignore = options.ignore ?? [];
+  const files = withoutIgnored(ignore, options.files);
   const standard = BUNDLED_STANDARDS[BUNDLED_STANDARDS.length - 1];
   if (!standard) throw new Error("no bundled standard");
   const present = new Set(files.map(normalizePath));
@@ -201,6 +207,7 @@ export async function draftDeclaration(options: DraftOptions): Promise<Draft> {
         ...(Object.keys(overrides).length > 0 ? { overrides } : {}),
       };
     }),
+    ...(ignore.length > 0 ? { ignore: [...ignore] } : {}),
   };
   return { text: HEADER + stringify(doc), components };
 }
@@ -221,6 +228,8 @@ export interface WriteDraftOptions {
   today: string;
   /** Defaults to listing the repo with git. */
   listFiles?: (cwd: string) => Promise<string[]>;
+  /** `ignore:` entries for the draft (`draft --ignore`). */
+  ignore?: readonly string[];
 }
 
 /** `devguard draft`: writes the draft to `.devguard.yaml`, refusing to replace one that exists. */
@@ -229,7 +238,7 @@ export async function writeDraft(options: WriteDraftOptions): Promise<Draft & { 
   const path = join(cwd, DECLARATION_FILE);
   if (existsSync(path)) throw new DeclarationExistsError();
   const files = await (options.listFiles ?? listRepoFiles)(cwd);
-  const draft = await draftDeclaration({ cwd, today, files });
+  const draft = await draftDeclaration({ cwd, today, files, ignore: options.ignore ?? [] });
   try {
     await writeFile(path, draft.text, { flag: "wx" });
   } catch (e) {

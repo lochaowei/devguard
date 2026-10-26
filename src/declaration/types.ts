@@ -19,6 +19,8 @@ export interface Declaration {
   components: DeclaredComponent[];
   /** Top-level `mirrors:` entries, keyed as global items ("mirrors.auth", "mirrors.npm", ...). */
   globalOverrides: RawOverride[];
+  /** Top-level `ignore:` entries: repo paths (directory or file prefixes) and globs excluded from the file checks. */
+  ignore: string[];
 }
 
 export const DECLARATION_FILE = ".devguard.yaml";
