@@ -1,4 +1,5 @@
 import type { Finding } from "../report/finding.ts";
+import { isRecord } from "../shared/guards.ts";
 import type { ToolResult } from "../tools/runner.ts";
 import { codeFinding, firstDifferentLine, runBatched, splitStaged, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
@@ -68,16 +69,24 @@ async function prettierLine(target: CodeTarget, ctx: CodeCheckContext, file: str
   return firstDifferentLine(original, formatted.stdout);
 }
 
+/** Whether Prettier has a parser for `file`: `prettier --file-info` reports `inferredParser: null` when it has none. */
+async function prettierHandles(target: CodeTarget, ctx: CodeCheckContext, file: string): Promise<boolean> {
+  const request = { language: "typescript", tool: "prettier", dir: target.dir, args: ["--file-info", file] } as const;
+  const info = parseJson((await ctx.tools.run(request)).stdout);
+  return isRecord(info) && typeof info.inferredParser === "string";
+}
+
 /**
  * `prettier --stdin-filepath` prints the staged version formatted; any difference is a format finding. With
- * `--ignore-unknown` it prints nothing for a file it has no parser for, and a file that is not blank never formats to
- * nothing, so empty output for such a file means Prettier skipped it.
+ * `--ignore-unknown` it prints nothing for a file it has no parser for, which is also what it prints for a blank file
+ * it does format, so empty output asks `--file-info` which of the two it was.
  */
 async function formatStaged(target: CodeTarget, ctx: CodeCheckContext, file: string, text: string): Promise<Finding[]> {
   const request = { language: "typescript", tool: "prettier", dir: target.dir, stdin: text } as const;
   const result = await ctx.tools.run({ ...request, args: ["--ignore-unknown", "--stdin-filepath", file] });
   if (result.code !== 0) return [toolFailed(target, "prettier", result)];
-  if (result.stdout === text || (result.stdout === "" && text.trim() !== "")) return [];
+  if (result.stdout === text) return [];
+  if (result.stdout === "" && !(await prettierHandles(target, ctx, file))) return [];
   const at = { file: toRepoPath(ctx.cwd, target.dir, file), line: firstDifferentLine(text, result.stdout) };
   return [codeFinding(target, { rule: "prettier/format", message: "格式不符合 Prettier", ...at })];
 }

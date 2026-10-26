@@ -124,6 +124,20 @@ describe("devguard check --staged (SPEC §3.2): the pre-commit hook's checks", (
         expect(brief(r.out)).toEqual([]);
         expect(r.code).toBe(0);
       });
+
+      it("reports nothing for a staged blank file no tool handles", async () => {
+        const dir = typescriptRepo({ LICENSE: "\n" });
+        const r = await cli(dir, ["check", "--staged", "--format", "json"], undefined);
+        expect(brief(r.out)).toEqual([]);
+        expect(r.code).toBe(0);
+      });
+
+      it("still reports a staged blank file that Prettier formats to nothing", async () => {
+        const dir = typescriptRepo({ "empty.mjs": "\n" });
+        const r = await cli(dir, ["check", "--staged", "--format", "json"], undefined);
+        expect(brief(r.out)).toEqual(["prettier/format empty.mjs"]);
+        expect(r.code).toBe(1);
+      });
     },
   );
 
