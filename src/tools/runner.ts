@@ -92,6 +92,21 @@ interface Env {
   pathEnv: string;
 }
 
+/**
+ * What git exports to a hook to locate the repo (githooks(5)). A project tool must not inherit them: in a worktree
+ * GIT_DIR is absolute, so a project test's `git init` in a temporary directory would commit into the outer repo
+ * (SPEC §7.4, #59). devguard's own git commands do not go through the runner and keep them.
+ */
+const GIT_REPO_ENV: readonly string[] = [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_COMMON_DIR",
+  "GIT_PREFIX",
+];
+
 /** Programs the CLI starts by name, with the install hint shown when they are missing. */
 const LAUNCHERS: Readonly<Record<string, string>> = { uv: "scoop install uv", go: "scoop install go" };
 
@@ -255,7 +270,8 @@ export function createToolRunner(deps: ToolRunnerDeps): Required<ToolRunner> {
   const start = async (resolved: Resolved, stdin?: string) => {
     if (!resolved.ok) throw new ToolMissingError(resolved.message, resolved.install);
     try {
-      return await exec(stdin === undefined ? resolved.command : { ...resolved.command, stdin });
+      const command = { ...resolved.command, unsetEnv: GIT_REPO_ENV };
+      return await exec(stdin === undefined ? command : { ...command, stdin });
     } catch (e) {
       const install = LAUNCHERS[resolved.command.file];
       if (isEnoent(e) && install) throw new ToolMissingError(`找不到 ${resolved.command.file}`, install);
