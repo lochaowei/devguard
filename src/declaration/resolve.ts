@@ -40,6 +40,8 @@ export interface Resolution {
   standard?: Standard;
   components: ResolvedComponent[];
   global: Record<string, EffectiveItem>;
+  /** The declaration's `ignore:` entries: files they match are left out of every file-based check. */
+  ignore: readonly string[];
   findings: Finding[];
 }
 
@@ -237,7 +239,7 @@ export function resolveDeclaration(
 ): Resolution {
   const r = new Resolver(decl.file, today);
   const standard = checkStandardVersion(r, decl, today, bundled);
-  if (!standard) return { components: [], global: {}, findings: r.findings };
+  if (!standard) return { components: [], global: {}, ignore: decl.ignore, findings: r.findings };
 
   const seen = new Set<string>();
   const components: ResolvedComponent[] = [];
@@ -266,5 +268,5 @@ export function resolveDeclaration(
   }
   hintStyleDrift(r, standard, components);
   const global = r.applyOverrides(standard.global, decl.globalOverrides, "整體");
-  return { standard, components, global, findings: r.findings };
+  return { standard, components, global, ignore: decl.ignore, findings: r.findings };
 }

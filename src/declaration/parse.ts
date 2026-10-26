@@ -7,7 +7,7 @@ export interface ParseResult {
   findings: Finding[];
 }
 
-const TOP_LEVEL_KEYS = new Set(["standard", "components", "mirrors"]);
+const TOP_LEVEL_KEYS = new Set(["standard", "components", "mirrors", "ignore"]);
 const COMPONENT_KEYS = new Set(["path", "language", "overrides"]);
 
 class Ctx {
@@ -94,6 +94,19 @@ function readComponents(ctx: Ctx, node: unknown): DeclaredComponent[] {
   return node.items.flatMap((item, i) => readComponent(ctx, item, i) ?? []);
 }
 
+const isPathPattern = (item: unknown): boolean => isScalar(item) && typeof item.value === "string" && item.value !== "";
+
+/** `ignore:`: a list of non-empty strings. Anything else is reported at the offending entry and ignores nothing. */
+function readIgnore(ctx: Ctx, node: unknown): string[] {
+  if (node === undefined || node === null) return [];
+  const bad = isSeq(node) ? node.items.find((item) => !isPathPattern(item)) : node;
+  if (bad !== undefined) {
+    ctx.error("declaration/invalid", "`ignore` 必須是非空字串的清單（目錄、檔案路徑或 glob）", ctx.lineOf(bad as Node));
+    return [];
+  }
+  return (node as { items: { value: string }[] }).items.map((item) => item.value);
+}
+
 /** Parses `.devguard.yaml`. Shape problems become findings; a declaration is returned whenever the root is readable. */
 export function parseDeclaration(text: string, file: string): ParseResult {
   const lines = new LineCounter();
@@ -118,6 +131,7 @@ export function parseDeclaration(text: string, file: string): ParseResult {
     standardLine: ctx.lineOf(root.get("standard", true)),
     components: readComponents(ctx, root.get("components", true)),
     globalOverrides: readOverrides(ctx, root.get("mirrors", true), "mirrors."),
+    ignore: readIgnore(ctx, root.get("ignore", true)),
   };
   return { declaration, findings: ctx.findings };
 }

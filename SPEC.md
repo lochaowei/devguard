@@ -121,6 +121,10 @@ components:                     # 元件 = 目錄 + 語言
         until: 2027-03-31
 mirrors:
   auth: env                     # none（預設）| env，見 §10.3
+ignore:                         # 選填：不歸屬任何元件、不受檢查的路徑，見 §4.1
+  - examples/
+  - third_party/
+  - "**/*.pb.go"
 ```
 
 ### 4.1 元件與檔案歸屬
@@ -128,6 +132,10 @@ mirrors:
 - 一個元件 = 一個 `path` 加一個 `language`。同一個目錄有多種語言時，就寫成多個元件。
 - 每個檔案歸屬於**路徑前綴最長、而且語言和副檔名相符**的元件。
 - 沒有元件涵蓋的程式檔，**依副檔名推定語言**，套用該語言的預設標準（不含覆寫），並提示「建議在宣告中補上元件」。
+- 頂層 `ignore` 是字串清單，列出範例、第三方嵌入原始碼、自動產生檔等不受檢查的路徑。一般路徑符合該檔案或該目錄底下的所有檔案；glob（`*`、`?` 不跨越 `/`，`**` 跨越多層）符合的路徑或符合的目錄底下的所有檔案。路徑相對於 repo 根目錄。
+  - 符合的檔案不歸屬任何元件、不提示「建議補上元件」，也不交給 `check`、`fix --code` 與各 hook 的程式碼、測試與弱點掃描檢查，即使在命令列上指定或已 staged。
+  - 以整個目錄為單位執行的工具（元件的 `eslint .`、`tsc`、`mypy` 等）仍依各自的設定決定範圍。
+  - 不是非空字串的清單時：**錯誤**（`declaration/invalid`），整份清單不生效。
 - 四種語言以外的檔案不在檢查範圍內。例外：指定檔案時（含 `--staged` 與各 hook，見 §7.1），TypeScript 元件內 formatter（Prettier 或 Biome）會處理的非原始碼檔案只做格式檢查。
 
 ### 4.2 覆寫規則
@@ -160,6 +168,7 @@ mirrors:
 CLI 依偵測到的工具設定檔產生**草稿**：
 - 與預設相同的項目省略。
 - 比預設寬鬆的項目帶上 `TODO` 理由，要填寫之後才算通過。
+- `draft --ignore <路徑或 glob>`（可重複）：符合的檔案不用來推斷元件，清單原樣寫進草稿的 `ignore`。
 
 可直接移植的參考實作（`Std` 模組中的 `resolve`、`lookup`、`draftFromDetected`、`checkToolConfigs`）：[prototypes/07-project-declaration.prototype.html](.scratch/coding-standards-guard/prototypes/07-project-declaration.prototype.html)
 

@@ -54,6 +54,31 @@ describe("draftDeclaration: components", () => {
   });
 });
 
+describe("draftDeclaration: ignore", () => {
+  const files = {
+    "pyproject.toml": "[project]\nname = 'app'\n",
+    "app/main.py": "",
+    "examples/demo/package.json": "{}",
+    "examples/demo/index.ts": "",
+    "third_party/lib/x.go": "",
+  };
+
+  it("infers no components from ignored files and writes the ignore list into the draft", async () => {
+    const cwd = project(files);
+    const ignore = ["examples/", "third_party/**"];
+    const { text } = await draftDeclaration({ cwd, today: TODAY, files: Object.keys(files), ignore });
+    const d = parse(text) as DraftYaml & { ignore?: string[] };
+    expect(d.components.map((c) => [c.path, c.language])).toEqual([["./", "python"]]);
+    expect(d.ignore).toEqual(["examples/", "third_party/**"]);
+  });
+
+  it("leaves ignore out of the draft when none is given", async () => {
+    const d = (await draft(files)) as DraftYaml & { ignore?: string[] };
+    expect(d.ignore).toBeUndefined();
+    expect(d.components).toHaveLength(3);
+  });
+});
+
 const TS_OPTIONS = ["strict", "noUncheckedIndexedAccess", "noImplicitOverride", "noFallthroughCasesInSwitch"];
 
 /** A TypeScript component in web/ with the given ESLint complexity limit and Vitest coverage threshold. */

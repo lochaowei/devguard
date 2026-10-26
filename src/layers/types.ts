@@ -1,4 +1,5 @@
 import type { CodeCategory } from "../code/types.ts";
+import { withoutIgnored } from "../declaration/ignore.ts";
 import type { Resolution } from "../declaration/resolve.ts";
 import type { Finding } from "../report/finding.ts";
 import type { ToolRunner } from "../tools/runner.ts";
@@ -28,9 +29,13 @@ export interface LayerContext {
   stagedText?: (repoPath: string) => Promise<string | undefined>;
 }
 
-/** The files a layer should look at: those given on the command line, otherwise every file in the repo. */
-export function scopedFiles(ctx: LayerContext): Promise<readonly string[]> {
-  return ctx.scope.files ? Promise.resolve(ctx.scope.files) : ctx.files();
+/**
+ * The files a layer should look at: those given on the command line, otherwise every file in the repo; either way
+ * without those the declaration's `ignore:` excludes.
+ */
+export async function scopedFiles(ctx: LayerContext): Promise<readonly string[]> {
+  const files = ctx.scope.files ?? (await ctx.files());
+  return withoutIgnored(ctx.resolution?.ignore ?? [], files);
 }
 
 export interface LayerResult {

@@ -64,6 +64,7 @@ devguard check [檔案…] [--staged] [--only lint|format|typecheck] [--full]
 - **指定檔案**：設定檢查（1–12）照常跑整個專案；`code` 層只檢查這些檔案。`tsc`、`mypy`、`pyright` 這類無法只檢查單一檔案的工具，仍會檢查檔案所屬的整個元件。
 - **指定的檔案不是原始碼**：TypeScript 元件內 formatter 會處理的檔案（Prettier 的 `.json`、`.md`、`.yaml`、`.css` 等，Biome 的 `.json`、`.css` 等）只做格式檢查，與全專案檢查的範圍一致。只有這類檔案時，不跑 lint 與型別檢查。
 - **`--staged`**：只跑 `declaration`、`code` 兩層；有依賴檔（`package.json`、lockfile 等）被 staged 時再加上 `deps`。細節見 [hook 頁的 git-pre-commit](Command-hook.md#git-pre-commit)。
+- **宣告的 `ignore`**：符合的檔案從檔案清單中排除，不會觸發 `uncovered-files` 提示，也不會交給 `code`、`tests`、`vuln` 層，即使在命令列上指定或已 staged 也一樣（格式見[專案宣告](Project-Declaration.md#排除路徑ignore)）。以整個目錄為單位執行的工具（元件的 `eslint .`、`prettier .`、`tsc`、`mypy` 等）仍依各自的設定決定範圍；元件目錄內要排除的檔案，也要在該工具的設定中排除。
 - **沒有 `.devguard.yaml`**：報告 `declaration/missing` 錯誤，程式碼檢查仍以推定的預設標準執行。
 - **`.vscode/` 完全不存在**：`check` 不會報告；要產生它請執行 [`fix`](Command-fix.md) 或 [`install`](Command-install.md)。已經有部分檔案時，缺少的才算錯誤。
 

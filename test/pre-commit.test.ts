@@ -67,6 +67,21 @@ describe("runPreCommit (SPEC §7.4)", () => {
     expect(out).toContain("uv sync");
   });
 
+  it("skips staged files the declaration ignores", async () => {
+    const { dir, git, write } = repo();
+    write(
+      ".devguard.yaml",
+      "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: python\nignore: [gen.py]\n",
+    );
+    git("add", ".devguard.yaml");
+    git("commit", "-q", "--no-verify", "-m", "ignore");
+    write("gen.py", "import os\n");
+    git("add", "gen.py");
+    const { tools, calls } = fakeTools();
+    expect((await preCommit(dir, tools)).code).toBe(0);
+    expect(calls).toEqual([]);
+  });
+
   it("passes when nothing is staged, without running any tool", async () => {
     const { dir } = repo();
     const { tools, calls } = fakeTools();

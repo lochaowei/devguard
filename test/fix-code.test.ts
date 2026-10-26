@@ -130,6 +130,16 @@ describe("devguard fix --code (SPEC §9.1, §9.3)", () => {
     expect(confirmed.fixCalls()).toHaveLength(2);
   });
 
+  it("does not touch files the declaration ignores, even when they are named", async () => {
+    const cwd = repo({ ".devguard.yaml": decl("web", "typescript") + "ignore: [web/messy.ts]\n", "web/messy.ts": "" });
+    const { tools, fixCalls } = typescriptTools();
+    const { io, output } = session({ yes: true });
+    const scope = { files: ["web/messy.ts"], full: false };
+    expect(await runCodeFix({ cwd, today: TODAY, tools, listFiles, io, scope })).toBe(0);
+    expect(fixCalls()).toEqual([]);
+    expect(output()).toContain("沒有可自動修正的程式碼問題");
+  });
+
   it("fixes only the given files, relative to the component", async () => {
     const { tools, fixCalls } = typescriptTools();
     const { io } = session({ yes: true });
