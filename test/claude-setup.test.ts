@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { format } from "prettier";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCheck } from "../src/check.ts";
 import type { Interaction } from "../src/fix/interaction.ts";
@@ -167,6 +168,35 @@ describe("check and fix keep an existing Claude Code setup current", () => {
     expect(await runFix({ cwd: dir, today: TODAY, io: io() })).toBe(0);
     expect(read(dir, ".claude/rules/standards-api-python.md")).toContain("由 CLI 產生");
     expect(await claudeFindings(dir)).toEqual([]);
+  });
+});
+
+describe("the generated Claude Code files are already in Prettier's format (#42)", () => {
+  const TS_ROOT = "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: typescript\n";
+  const FILES = [
+    ".claude/settings.json",
+    ".claude/rules/standards-root-typescript.md",
+    ".claude/skills/standards-doctor/SKILL.md",
+  ];
+
+  it("so formatting them with the project's Prettier settings changes nothing", async () => {
+    const dir = repo({ ".devguard.yaml": TS_ROOT });
+    await runInstall({ cwd: dir, today: TODAY, io: io() });
+    for (const file of FILES) {
+      const text = read(dir, file);
+      expect(await format(text, { filepath: file, printWidth: 120, endOfLine: "lf" }), file).toBe(text);
+    }
+  });
+
+  it("so a Prettier-formatted setup still matches the standard", async () => {
+    const dir = repo({ ".devguard.yaml": TS_ROOT });
+    await runInstall({ cwd: dir, today: TODAY, io: io() });
+    for (const file of FILES) {
+      const text = read(dir, file);
+      writeFileSync(join(dir, file), await format(text, { filepath: file, printWidth: 120, endOfLine: "lf" }));
+    }
+    const result = await runCheck({ cwd: dir, today: TODAY }, [declarationLayer, claudeCodeLayer]);
+    expect(result.findings.filter((f) => f.rule === "settings/claude-code")).toEqual([]);
   });
 });
 

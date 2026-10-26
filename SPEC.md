@@ -408,6 +408,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
   - frontmatter 的 `paths` 對應元件的目錄與副檔名，只在 Claude 讀寫相關檔案時載入。
   - 內容是精簡的工具、門檻、禁用清單、目前的偏離與理由，每份少於 200 行。
   - 開頭標註「由 CLI 產生」。
+- 產生的 `.claude/` 檔案（rules、skill、`settings.json`）本身就符合 Prettier 的格式；`settings.json` 依宣告的 `format.printWidth` 決定陣列是否排成一行。專案用 Prettier 格式化它們不會改變內容，也不會被回報為與標準不一致。
 - **`.claude/skills/standards-doctor/SKILL.md`**
   - 設定 `disable-model-invocation: true`，只有開發者能呼叫。
   - 以 `` !`devguard doctor --format claude --exit-zero` `` 嵌入檢查結果（`!` 指令以非 0 結束時整個 skill 會中止，所以必須加 `--exit-zero`）；經開發者同意後，Claude 再執行 `fix --yes`。

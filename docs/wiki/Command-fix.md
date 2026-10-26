@@ -162,7 +162,6 @@ $ devguard fix --code src/mul.ts --yes
 | 在 Claude Code 或 CI 中執行 `fix`，exit `1` 且沒有寫入 | 非互動環境需要 `--yes` |
 | `fix` 之後 `npm install` 連不上 `nexus.example.internal` | `fix` 依標準寫入 `.npmrc` 的內部鏡像網址。標準中的網址是範例值，正式導入前要換成公司的鏡像，或在宣告的 `mirrors.*` 覆寫 |
 | `fix` 之後 `check` 仍報 `settings/missing-file`（`eslint.config.js`、`vitest.config.ts`） | 程式碼形式的設定檔屬於 `snippet`，`fix` 只印出片段，要自己建立或修改 |
-| 用 Prettier 格式化 `.claude/` 後，`check` 報 `settings/claude-code` 不一致；不格式化又報 `prettier/format` | devguard 產生的 `.claude/` 檔案與 Prettier 格式不同。暫時把 `.claude/` 加進 `.prettierignore`，再執行 `devguard fix --yes` 恢復成產生的內容。追蹤：[#42](https://github.com/lochaowei/devguard/issues/42) |
 | 改了 `.devguard.yaml` 之後 `check` 報 `.claude/rules/…` 不一致 | rules 檔會列出元件的標準與偏離，宣告改了就要重新產生。執行 `devguard fix --yes` |
 
 ---

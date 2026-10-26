@@ -292,7 +292,7 @@ components:
      },
    });
    ```
-   > 建議在 `.prettierignore` 加入 `.claude/` 與 `coverage/`，避免 Prettier 檢查產生的規則 Markdown 或測試報告。
+   > 建議在 `.prettierignore` 加入 `coverage/`，避免 Prettier 檢查測試報告。
 
 #### 檢查與修正指令
 | 指令 | 實際執行的動作 |

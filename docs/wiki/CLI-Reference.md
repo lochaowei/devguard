@@ -135,7 +135,7 @@ $ devguard check src/first.ts --format json
 5. `devguard fix --yes` → 寫入 `tsconfig.json`、`.prettierrc`、`.gitattributes`、`.npmrc`、`.vscode/`（[範例](Command-fix.md#範例)）。
 6. 手動建立 `eslint.config.js`（`strictTypeChecked`、`complexity`、`sonarjs/cognitive-complexity`，並在 `projectService.allowDefaultProject` 列出 `eslint.config.js`、`vitest.config.ts`）與 `vitest.config.ts`（`coverage.include: ["src/**/*.ts"]` 與四個 80% 門檻）。
 7. `devguard check` → `通過：沒有錯誤、偏離或提示`。
-8. `devguard install --yes` → 產生 `.claude/` 與 git hook（[範例](Command-install.md#範例)）。把 `.claude/` 加進 `.prettierignore`，見 [install 的常見錯誤](Command-install.md#常見錯誤與排解)。
+8. `devguard install --yes` → 產生 `.claude/` 與 git hook（[範例](Command-install.md#範例)）。
 9. 之後依各頁範例故意製造問題：未格式化的檔案、型別錯誤、沒有測試的函式、放寬覆蓋率的偏離、被修改的 hook。
 
 `.npmrc` 指向標準中的範例鏡像 `nexus.example.internal`，示範時安裝套件要加上 `--registry https://registry.npmjs.org/`。

@@ -1,12 +1,13 @@
 import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { Resolution, ResolvedComponent } from "../declaration/resolve.ts";
-import type { Repair } from "../fix/repair.ts";
+import type { Layout, Repair } from "../fix/repair.ts";
 import { nodeExec, type Exec } from "../process/exec.ts";
 import { parseJsonc } from "../settings/config-files.ts";
 import { EXTENSION_LANGUAGE, type ItemDef, type Standard } from "../standard/types.ts";
 import { readIfExists } from "../shared/fs.ts";
 import { isRecord } from "../shared/guards.ts";
+import { workspaceLayout } from "../vscode/workspace.ts";
 
 /** The Claude Code files `devguard install` generates and commits (SPEC §7.3). */
 export const CLAUDE_SETTINGS = ".claude/settings.json";
@@ -62,9 +63,9 @@ function isDevguardGroup(group: unknown): boolean {
 
 /**
  * The managed keys of `.claude/settings.json`: each event's devguard group replaces the previous one in place (or is
- * appended); other hooks the project set stay untouched.
+ * appended); other hooks the project set stay untouched. `layout` is the project's Prettier width, as for `.vscode/`.
  */
-export function settingsRepairs(text: string | undefined, command?: string): Repair[] {
+export function settingsRepairs(text: string | undefined, command?: string, layout: Layout = {}): Repair[] {
   const parsed = text === undefined ? {} : parseJsonc(text);
   const hooks = isRecord(parsed) && isRecord(parsed.hooks) ? parsed.hooks : {};
   return CLAUDE_HOOKS.flatMap((hook): Repair[] => {
@@ -74,7 +75,7 @@ export function settingsRepairs(text: string | undefined, command?: string): Rep
     const others = current.filter((g) => !isDevguardGroup(g));
     const after = at < 0 ? [...others, wanted] : [...others.slice(0, at), wanted, ...others.slice(at)];
     if (JSON.stringify(after) === JSON.stringify(current)) return [];
-    return [{ op: "set", file: CLAUDE_SETTINGS, path: ["hooks", hook.event], value: after }];
+    return [{ op: "set", file: CLAUDE_SETTINGS, path: ["hooks", hook.event], value: after, layout }];
   });
 }
 
@@ -160,7 +161,8 @@ allowed-tools: Bash(devguard *), PowerShell(devguard *)
 export async function claudeRepairs(cwd: string, resolution: Resolution, command?: string): Promise<Repair[]> {
   const standard = resolution.standard;
   if (!standard) return [];
-  const settings = settingsRepairs(await readIfExists(join(cwd, CLAUDE_SETTINGS)), command);
+  const text = await readIfExists(join(cwd, CLAUDE_SETTINGS));
+  const settings = settingsRepairs(text, command, workspaceLayout(resolution));
   const rules = resolution.components.map((c): Repair => ({
     op: "generate",
     file: rulesFile(c),
