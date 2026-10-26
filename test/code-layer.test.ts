@@ -98,6 +98,40 @@ describe("code checks in devguard check", () => {
     ]);
   });
 
+  it("formats the other files Prettier handles in a TypeScript component, as the whole-project run does (#43)", async () => {
+    const { tools, calls } = passingTools();
+    const files = ["web/b.ts", "web/package.json", "web/docs/a.md", "web/logo.png", "notes.md"];
+    await check({ tools, files: ["web/b.ts"], scope: { files, full: false } });
+    expect(summary(calls)).toEqual([
+      "web/:eslint --format json --no-warn-ignored b.ts",
+      "web/:prettier --list-different b.ts package.json docs/a.md",
+      "web/:tsc --noEmit --pretty false",
+    ]);
+  });
+
+  it("only formats when the given files are all non-source files: no lint, no type check (#43)", async () => {
+    const { tools, calls } = passingTools();
+    await check({ tools, files: ["web/b.ts"], scope: { files: ["web/package.json"], full: false } });
+    expect(summary(calls)).toEqual(["web/:prettier --list-different package.json"]);
+    const typecheckOnly = passingTools();
+    const scope = { files: ["web/package.json"], only: "typecheck" as const, full: false };
+    await check({ tools: typecheckOnly.tools, files: ["web/b.ts"], scope });
+    expect(typecheckOnly.calls).toEqual([]);
+  });
+
+  it("formats the files Biome handles when the component uses Biome (#43)", async () => {
+    const { tools, calls } = passingTools();
+    const biome =
+      "standard: team@1.0.0\ncomponents:\n  - {path: web/, language: typescript, overrides: {lint.tool: biome}}\n";
+    const files = ["web/b.ts", "web/package.json", "web/README.md"];
+    await check({ cwd: project(biome), tools, files: ["web/b.ts"], scope: { files, full: false } });
+    expect(summary(calls)).toEqual([
+      "web/:biome lint --reporter=github b.ts",
+      "web/:biome format --reporter=github b.ts package.json",
+      "web/:tsc --noEmit --pretty false",
+    ]);
+  });
+
   it("runs only the category named by --only", async () => {
     const { tools, calls } = passingTools();
     await check({ tools, files: ["web/a.ts"], scope: { only: "typecheck", full: false } });
