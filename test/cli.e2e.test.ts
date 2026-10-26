@@ -47,7 +47,8 @@ function messyProject(): void {
     ".prettierrc": '{ "printWidth": 120, "endOfLine": "lf" }\n',
     ".npmrc": "registry=https://nexus.example.internal/repository/npm-proxy/\n",
     "eslint.config.js": ESLINT_CONFIG,
-    "vitest.config.ts": `export default { test: { coverage: { thresholds: { ${thresholds} } } } };\n`,
+    // Within Prettier's 120 columns: check formats this file too.
+    "vitest.config.ts": `export default {\n  test: { coverage: { include: ["src/**"], thresholds: { ${thresholds} } } },\n};\n`,
     "a.ts": "let  answer = 42;\nexport { answer };\n",
   };
   for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text);

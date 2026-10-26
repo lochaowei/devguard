@@ -34,7 +34,7 @@ const SAMPLE: Readonly<Record<string, string>> = {
   "eslint.config.js":
     'export default [tseslint.configs.strictTypeChecked, { rules: { complexity: ["error", 10], "sonarjs/cognitive-complexity": ["error", 15] } }];\n',
   "vitest.config.ts":
-    "export default { test: { coverage: { thresholds: { lines: 80, branches: 80, functions: 80, statements: 80 } } } };\n",
+    'export default { test: { coverage: { include: ["src/**"], thresholds: { lines: 80, branches: 80, functions: 80, statements: 80 } } } };\n',
   // Satisfies the deps layer; the temp dir is not a git repo, so existing counts as committed.
   "package-lock.json": "{}",
 };

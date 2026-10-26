@@ -173,6 +173,18 @@ export class SettingsJudge {
     else this.compare(key, rule.max, file, `${label} 上限`, repair);
   }
 
+  /** A setting the standard needs that the config leaves out, with no value to compare (`rule` names what it is). */
+  missingSetting(rule: string, file: string, message: string, detail: string, repairs: readonly Repair[] = []): void {
+    this.add({
+      level: "error",
+      rule,
+      message,
+      file,
+      fix: fixText(detail, repairs),
+      ...(repairs.length > 0 ? { repairs: [...repairs] } : {}),
+    });
+  }
+
   /** The tool's config file is not there at all. */
   missingFile(file: string, what: string, repairs: readonly Repair[] = []): void {
     const fix = fixText(`建立 ${file}`, repairs);

@@ -177,7 +177,7 @@ $ devguard check --strict > /dev/null; echo $?
 | TypeScript 專案卻出現 `找不到 golangci-lint` | 檔案清單來自 `git ls-files`（含未被忽略的未追蹤檔）。沒有 `.gitignore` 時 `node_modules/` 裡的 `.go`、`.py` 等檔案也會被當成專案檔案。把 `node_modules/`、`.venv/` 等加進 `.gitignore` |
 | `eslint 執行失敗（exit 2）…` `[code/tool-failed]` | 工具本身執行失敗（缺設定檔、缺 plugin 等）。照提示在元件目錄直接執行該工具看完整訊息 |
 | `Parsing error: … was not found by the project service` | `typescript-eslint` 的 `projectService` 找不到 `eslint.config.js`、`vitest.config.ts` 等不在 `tsconfig.json` 範圍內的檔案。在 ESLint 設定中加上 `projectService: { allowDefaultProject: [...] }` |
-| 覆蓋率看起來太高、沒測到的檔案沒算進去 | Vitest 預設只計算被測試 import 到的檔案。在 `vitest.config.ts` 設定 `coverage.include`（例如 `["src/**/*.ts"]`）。追蹤：[#45](https://github.com/lochaowei/devguard/issues/45) |
+| `Vitest coverage.include 沒有設定` `[settings/coverage-include]` | Vitest 與 Jest 預設只計算被測試 import 的檔案，沒有測試的檔案不會拉低覆蓋率。在 `vitest.config.ts` 設定 `coverage.include`（例如 `["src/**/*.ts"]`），Jest 則設定 `collectCoverageFrom`。`fix` 只會印出片段 |
 
 ---
 

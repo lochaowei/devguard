@@ -111,7 +111,7 @@
 | `typecheck.options` | `["noUncheckedIndexedAccess", "noImplicitOverride", "noFallthroughCasesInSwitch"]` | `tsconfig.json` 額外嚴格選項 |
 | `complexity.cyclomatic` / `cognitive` | `10` / `15` | ESLint `complexity` / `sonarjs/cognitive-complexity`（或 Biome `noExcessiveCognitiveComplexity`） |
 | `test.tool` | `"vitest"` | 允許替代：`jest` |
-| `coverage.lines` | `80` | `lines`、`branches`、`functions`、`statements` 四項皆須達 80% |
+| `coverage.lines` | `80` | `lines`、`branches`、`functions`、`statements` 四項皆須達 80%；必須設定 Vitest `coverage.include`（或 Jest `collectCoverageFrom`），沒有測試的檔案才會算進去 |
 | `deps.manager` | `"npm"` | 允許替代：`pnpm`、`yarn` |
 | `deps.lockfile` | `true` | 必須提交 `package-lock.json`、`pnpm-lock.yaml` 或 `yarn.lock` |
 | `deps.banned` | `["moment", "request", "node-fetch"]` | 直接依賴禁用套件 |
@@ -132,6 +132,7 @@
   - `eslint --fix` + `prettier --write`（或 `biome lint --write` + `biome format --write`）
 - **測試與覆蓋率（`tests` 層，`--full`）**：
   - 執行 Vitest（或 Jest）產生 `coverage-summary.json`，檢查 `lines`、`branches`、`functions`、`statements` 四項百分比。
+  - Vitest 與 Jest 預設只計算被測試 import 的檔案，所以設定檢查會要求 `coverage.include` / `collectCoverageFrom`（`settings/coverage-include`）。
 - **弱點掃描（`vuln` 層，`--full` 且 `deps.vulnScan: true`）**：
   - 執行 `npm audit --json --registry=<mirrors.npm>`，依嚴重度門檻（預設 `high`）與 `deps.ignoredVulns`（GHSA ID）過濾。
 

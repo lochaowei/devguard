@@ -305,7 +305,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | `typecheck.strict` | `strict`，加上 `noUncheckedIndexedAccess`、`noImplicitOverride`、`noFallthroughCasesInSwitch` | `tsconfig.json`，用 `tsc --noEmit` 檢查 |
 | `complexity.cyclomatic` / `cognitive` | 10 / 15 | ESLint `complexity` / `eslint-plugin-sonarjs` 的 `cognitive-complexity`（**授權為 LGPL-3.0-only，需法務確認，見 §12**）；使用 Biome 時改開 `noExcessiveCognitiveComplexity` |
 | `test.tool` | `vitest`；允許替代工具 `jest` | — |
-| `coverage.lines` | lines、branches、functions、statements 都是 80 | `coverage.thresholds` / `coverageThreshold.global` |
+| `coverage.lines` | lines、branches、functions、statements 都是 80；覆蓋率必須涵蓋元件所有的原始碼，不只被測試 import 的檔案 | `coverage.thresholds` / `coverageThreshold.global`；並且必須設定 `coverage.include` / `collectCoverageFrom`，否則為錯誤 |
 | `deps.manager` | `npm`；允許替代工具 `pnpm`、`yarn` | — |
 | `deps.lockfile` | lockfile 必須提交；CI 使用 `npm ci` | CLI 檢查 |
 | 進階：`deps.vulnFailOn` | `high`（含 dev 依賴） | `npm audit --json`，由 CLI 依 GHSA 過濾 `ignoredVulns` |
