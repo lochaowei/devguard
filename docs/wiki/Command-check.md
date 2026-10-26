@@ -173,7 +173,7 @@ $ devguard check --strict > /dev/null; echo $?
 
 | 現象 | 原因與處理 |
 |---|---|
-| `找不到 eslint：node_modules 中沒有安裝`，exit `2` | `check` 遇到專案工具沒有安裝會直接中止。照提示安裝（`npm ci`、`uv sync` 等）；想看完整的環境問題清單改跑 [`doctor`](Command-doctor.md)，它會把缺工具列成一筆錯誤並繼續 |
+| `找不到 eslint：node_modules 中沒有安裝`，exit `2` | `check` 遇到專案工具沒有安裝會直接中止。照提示安裝（`npm ci`、`uv sync`、`poetry install` 等）；想看完整的環境問題清單改跑 [`doctor`](Command-doctor.md)，它會把缺工具列成一筆錯誤並繼續 |
 | TypeScript 專案卻出現 `找不到 golangci-lint` | 檔案清單來自 `git ls-files`（含未被忽略的未追蹤檔）。沒有 `.gitignore` 時 `node_modules/` 裡的 `.go`、`.py` 等檔案也會被當成專案檔案。把 `node_modules/`、`.venv/` 等加進 `.gitignore` |
 | `eslint 執行失敗（exit 2）…` `[code/tool-failed]` | 工具本身執行失敗（缺設定檔、缺 plugin 等）。照提示在元件目錄直接執行該工具看完整訊息 |
 | `Parsing error: … was not found by the project service` | `typescript-eslint` 的 `projectService` 找不到 `eslint.config.js`、`vitest.config.ts` 等不在 `tsconfig.json` 範圍內的檔案。在 ESLint 設定中加上 `projectService: { allowDefaultProject: [...] }` |
