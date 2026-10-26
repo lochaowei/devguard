@@ -44,8 +44,11 @@ export interface PackageRequest {
   /** Component directory, normalized as in ToolRequest. */
   dir: string;
   args: readonly string[];
-  /** The internal mirror (`mirrors.pypi` / `mirrors.npm` / `mirrors.go`): the only place packages come from. */
-  mirror: string;
+  /**
+   * The internal mirror (`mirrors.pypi` / `mirrors.npm` / `mirrors.go`): the only place packages come from. Required
+   * for every manager but Poetry, which reads it from the project's `[[tool.poetry.source]]`.
+   */
+  mirror?: string;
   /** Go only: the checksum database mirror (`mirrors.gosumdb`). */
   sumdb?: string;
 }
@@ -228,19 +231,19 @@ const RESOLVERS: Readonly<Record<Language, (req: ToolRequest, dirs: readonly str
 };
 
 /** The package manager of a language, pointed at the mirror through its own environment variables. */
-function packageManager(req: PackageRequest, cwd: string, env: Env): Resolved {
+function packageManager(req: PackageRequest, mirror: string, cwd: string, env: Env): Resolved {
   const args = [...req.args];
   switch (req.language) {
     case "python":
       if (req.manager === "poetry") return { ok: true, command: { file: "poetry", args, cwd } };
-      return { ok: true, command: { file: "uv", args, cwd, env: { UV_DEFAULT_INDEX: req.mirror } } };
+      return { ok: true, command: { file: "uv", args, cwd, env: { UV_DEFAULT_INDEX: mirror } } };
     case "typescript": {
       const npm = onPath("npm", env);
       if (!npm) return { ok: false, message: "找不到 npm", install: "scoop install nodejs-lts" };
-      return { ok: true, command: { file: npm, args, cwd, env: { npm_config_registry: req.mirror } } };
+      return { ok: true, command: { file: npm, args, cwd, env: { npm_config_registry: mirror } } };
     }
     case "go": {
-      const env = goEnv({ proxy: req.mirror, ...(req.sumdb ? { sumdb: req.sumdb } : {}) });
+      const env = goEnv({ proxy: mirror, ...(req.sumdb ? { sumdb: req.sumdb } : {}) });
       return { ok: true, command: { file: "go", args, cwd, env } };
     }
     case "java":
@@ -273,8 +276,10 @@ export function createToolRunner(deps: ToolRunnerDeps): Required<ToolRunner> {
   return {
     run: (req) => start(RESOLVERS[req.language](req, searchDirs(deps.cwd, req.dir, env.path), env), req.stdin),
     async manage(req) {
-      if (req.mirror.trim() === "") throw new Error("沒有設定內部鏡像，不執行套件管理指令");
-      return start(packageManager(req, dirOf(req.dir), env));
+      const ownMirror = req.language === "python" && req.manager === "poetry";
+      const mirror = req.mirror ?? "";
+      if (!ownMirror && mirror.trim() === "") throw new Error("沒有設定內部鏡像，不執行套件管理指令");
+      return start(packageManager(req, mirror, dirOf(req.dir), env));
     },
   };
 }

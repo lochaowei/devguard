@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -157,7 +157,7 @@ describe("devguard standard upgrade (SPEC §5.5)", () => {
     expect(out).toContain('整體｜說明網址：（新增）"https://example.internal"');
     expect(out).toMatch(/多餘的覆寫.*\n.*coverage\.lines/);
     expect(out).toContain("ruff 0.17.2 不在新的版本範圍 >=0.18,<0.19 內");
-    expect(out).toContain("uv add --dev ruff>=0.18,<0.19");
+    expect(out).toContain('uv add --dev "ruff>=0.18,<0.19"（鏡像：https://');
     expect(read(dir, ".devguard.yaml")).toBe(before.decl);
     expect(read(dir, "pyproject.toml")).toBe(before.py);
     expect(managed).toEqual([]);
@@ -248,11 +248,13 @@ describe("devguard standard upgrade (SPEC §5.5)", () => {
 });
 
 describe("devguard standard upgrade of a Poetry component (#53)", () => {
-  /** A Python component with poetry.lock (ruff 0.17.2 locked), its pyproject.toml written by `fix`. */
+  /**
+   * A Python component with poetry.lock (ruff 0.17.2 locked), its pyproject.toml written by `fix`. The declaration
+   * leaves `deps.manager` at the standard's default: the lockfile alone decides that this is Poetry.
+   */
   async function poetryRepo(): Promise<string> {
     const dir = repo({
-      ".devguard.yaml":
-        "standard: team@1.0.0\ncomponents:\n  - path: api/\n    language: python\n    overrides:\n      deps.manager: poetry\n",
+      ".devguard.yaml": "standard: team@1.0.0\ncomponents:\n  - path: api/\n    language: python\n",
       "api/poetry.lock": '[[package]]\nname = "ruff"\nversion = "0.17.2"\n',
     });
     const quiet: Interaction = {
@@ -265,13 +267,15 @@ describe("devguard standard upgrade of a Poetry component (#53)", () => {
     return dir;
   }
 
-  it("previews the poetry add command it will run", async () => {
+  it("previews the poetry add command, quoted for the shell, and where Poetry's mirror comes from", async () => {
     const { out } = await upgrade(await poetryRepo(), { target: "team@1.1.0" });
-    expect(out).toContain("cd api && poetry add --group dev ruff@>=0.18,<0.19（鏡像：");
+    expect(out).toContain(
+      'cd api && poetry add --group dev "ruff>=0.18,<0.19"（鏡像：api/pyproject.toml 的 [[tool.poetry.source]] nexus）',
+    );
     expect(out).not.toContain("uv add");
   });
 
-  it("--apply runs poetry add --group dev, never uv, and writes no uv.lock", async () => {
+  it("--apply runs poetry add --group dev with a PEP 508 requirement, never uv, and passes no mirror", async () => {
     const dir = await poetryRepo();
     const { tools, managed } = fakeTools();
     expect((await upgrade(dir, { target: "team@1.1.0", apply: true, tools })).code).toBe(0);
@@ -280,12 +284,9 @@ describe("devguard standard upgrade of a Poetry component (#53)", () => {
         language: "python",
         manager: "poetry",
         dir: "api/",
-        args: ["add", "--group", "dev", "ruff@>=0.18,<0.19"],
-        mirror: team_1_0_0.global["mirrors.pypi"]?.value,
+        args: ["add", "--group", "dev", "ruff>=0.18,<0.19"],
       },
     ]);
-    expect(existsSync(join(dir, "api/uv.lock"))).toBe(false);
-    expect(existsSync(join(dir, "uv.lock"))).toBe(false);
   });
 });
 

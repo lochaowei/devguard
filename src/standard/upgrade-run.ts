@@ -183,28 +183,38 @@ type Manager = "uv" | "poetry" | "npm" | "go";
 /** A Go module version needs all three parts: [0, 10] → "0.10.0". */
 const semver = (parts: readonly number[]) => [0, 1, 2].map((i) => parts[i] ?? 0).join(".");
 
+/** A PEP 508 requirement, e.g. `ruff>=0.18,<0.19`: what both uv and Poetry 2 take for a range. */
+const pep508 = (c: ToolChange) => `${c.name}${c.range}`;
+
+/** An argument with shell metacharacters in double quotes, so the printed command can be pasted into a shell. */
+const quoted = (arg: string) => (/[<>,\s]/.test(arg) ? `"${arg}"` : arg);
+
+interface ManagerDef {
+  command: readonly string[];
+  /** The `mirrors.*` key it downloads from; absent when the project's own settings name the mirror. */
+  mirror?: string;
+  spec(c: ToolChange): string;
+  /** Quote the printed arguments (`quoted`). */
+  quote?: true;
+}
+
 /** How each package manager installs a version in a range, and which mirror it downloads from. */
-const MANAGERS: Readonly<Record<Manager, { command: readonly string[]; mirror: string; spec(c: ToolChange): string }>> =
-  {
-    uv: { command: ["uv", "add", "--dev"], mirror: "mirrors.pypi", spec: (c) => `${c.name}${c.range}` },
-    // Poetry downloads from the [[tool.poetry.source]] the mirror check requires; `mirrors.pypi` is only shown.
-    poetry: {
-      command: ["poetry", "add", "--group", "dev"],
-      mirror: "mirrors.pypi",
-      spec: (c) => `${c.name}@${c.range}`,
-    },
-    npm: {
-      command: ["npm", "install", "--save-dev"],
-      mirror: "mirrors.npm",
-      spec: (c) => `${c.name}@${c.range.replaceAll(",", " ")}`,
-    },
-    go: {
-      command: ["go", "get", "-tool"],
-      mirror: "mirrors.go",
-      // go get takes one version, not a range: the range's lower bound.
-      spec: (c) => `${c.name}@v${semver(parseRange(c.range)?.lower?.version ?? [])}`,
-    },
-  };
+const MANAGERS: Readonly<Record<Manager, ManagerDef>> = {
+  uv: { command: ["uv", "add", "--dev"], mirror: "mirrors.pypi", spec: pep508, quote: true },
+  // Poetry downloads from the [[tool.poetry.source]] the mirror check requires.
+  poetry: { command: ["poetry", "add", "--group", "dev"], spec: pep508, quote: true },
+  npm: {
+    command: ["npm", "install", "--save-dev"],
+    mirror: "mirrors.npm",
+    spec: (c) => `${c.name}@${c.range.replaceAll(",", " ")}`,
+  },
+  go: {
+    command: ["go", "get", "-tool"],
+    mirror: "mirrors.go",
+    // go get takes one version, not a range: the range's lower bound.
+    spec: (c) => `${c.name}@v${semver(parseRange(c.range)?.lower?.version ?? [])}`,
+  },
+};
 
 /** Changes no package manager can make: PATH tools and Java build files. */
 function manualCommand(change: ToolChange): PlannedCommand {
@@ -226,18 +236,24 @@ function managerOf(language: Managed, dir: string, exists: (file: string) => boo
   return language === "typescript" ? "npm" : "go";
 }
 
+/** The command as printed: run from the component's directory, and where its packages come from. */
+function displayOf(manager: ManagerDef, request: PackageRequest): string {
+  const where = request.dir === "" ? "" : `cd ${request.dir.replace(/\/$/, "")} && `;
+  const shown = [manager.command[0] ?? "", ...request.args].map((a) => (manager.quote ? quoted(a) : a)).join(" ");
+  const from = request.mirror ?? `${request.dir}pyproject.toml 的 [[tool.poetry.source]] nexus`;
+  return `${where}${shown}（鏡像：${from}）`;
+}
+
 function managerCommand(group: readonly ToolChange[], language: Managed, ctx: CommandContext) {
   const dir = group[0]?.dir ?? "";
   const name = managerOf(language, dir, ctx.exists);
   const manager = MANAGERS[name];
-  const [file, ...verb] = manager.command;
-  const args = [...verb, ...group.map((c) => manager.spec(c))];
-  const mirror = ctx.mirrorOf(manager.mirror);
-  const request: PackageRequest = { language, ...(name === "poetry" ? { manager: name } : {}), dir, args, mirror };
+  const args = [...manager.command.slice(1), ...group.map((c) => manager.spec(c))];
+  const request: PackageRequest = { language, ...(name === "poetry" ? { manager: name } : {}), dir, args };
+  if (manager.mirror !== undefined) request.mirror = ctx.mirrorOf(manager.mirror);
   const sumdb = language === "go" ? ctx.mirrorOf("mirrors.gosumdb") : "";
   if (sumdb !== "") request.sumdb = sumdb;
-  const where = dir === "" ? "" : `cd ${dir.replace(/\/$/, "")} && `;
-  return { display: `${where}${[file, ...args].join(" ")}（鏡像：${mirror}）`, request };
+  return { display: displayOf(manager, request), request };
 }
 
 const isManaged = (c: ToolChange): c is ToolChange & { language: Managed } =>
