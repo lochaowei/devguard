@@ -168,12 +168,12 @@ describe("draftDeclaration: other languages", () => {
   });
 
   it("reads the Java version from pom.xml and treats nested modules as one component", async () => {
-    const pom = "<project><properties><maven.compiler.release>11</maven.compiler.release></properties></project>";
+    const pom = "<project><properties><maven.compiler.release>7</maven.compiler.release></properties></project>";
     const d = await draft({ "pom.xml": pom, "core/pom.xml": "<project/>", "core/src/main/java/App.java": "" });
     expect(d.components).toHaveLength(1);
     expect(d.components[0]?.path).toBe("./");
     expect(d.components[0]?.overrides?.["java.minVersion"]).toEqual({
-      value: "11",
+      value: "7",
       reason: expect.stringMatching(/^TODO/) as unknown,
     });
   });
