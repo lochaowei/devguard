@@ -5,7 +5,6 @@ import { normalizeDir } from "../declaration/path.ts";
 import type { EffectiveItem, ResolvedComponent } from "../declaration/resolve.ts";
 import { DECLARATION_FILE, type Declaration, type RawOverride } from "../declaration/types.ts";
 import { writesItself } from "../fix/category.ts";
-import { previewThenApply } from "../fix/interaction.ts";
 import { applyPlan, planChanges, renderPlan, type ChangePlan } from "../fix/plan.ts";
 import type { KeyPath, Repair } from "../fix/repair.ts";
 import { createDeclarationLayer, readDeclaration } from "../layers/declaration.ts";
@@ -339,7 +338,8 @@ async function runCommands(tools: ToolRunner, commands: readonly PlannedCommand[
 
 /**
  * `devguard standard upgrade [目標版本] [--apply]` (SPEC §5.5): previews by default; `--apply` writes the declaration
- * and config files, then runs the package-manager commands through the internal mirror. Returns the exit code.
+ * and config files, then runs the package-manager commands through the internal mirror. Never asks: a preview with
+ * changes pending exits 1, so CI can tell an upgrade is due (SPEC §11). Returns the exit code.
  */
 export async function runStandardUpgrade(options: UpgradeOptions): Promise<number> {
   const plan = await planStandardUpgrade(options);
@@ -347,18 +347,14 @@ export async function runStandardUpgrade(options: UpgradeOptions): Promise<numbe
     options.write(plan.message);
     return plan.code;
   }
-  const tools = options.tools ?? createToolRunner({ cwd: options.cwd });
-  const io = { yes: options.apply, interactive: false, write: options.write, confirm: () => Promise.resolve(false) };
-  return previewThenApply(
-    io,
-    {
-      preview: renderUpgrade(plan),
-      pending: plan.changes.writes.length > 0 || plan.commands.some((c) => c.request),
-      apply: async () => {
-        await applyPlan(options.cwd, plan.changes);
-        await runCommands(tools, plan.commands, options.write);
-      },
-    },
-    "--apply",
-  );
+  options.write(renderUpgrade(plan));
+  if (plan.changes.writes.length === 0 && !plan.commands.some((c) => c.request)) return 0;
+  if (!options.apply) {
+    options.write("只預覽，沒有套用。加上 --apply 才會套用。\n");
+    return 1;
+  }
+  await applyPlan(options.cwd, plan.changes);
+  await runCommands(options.tools ?? createToolRunner({ cwd: options.cwd }), plan.commands, options.write);
+  options.write("已套用。\n");
+  return 0;
 }
