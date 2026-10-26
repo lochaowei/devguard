@@ -83,9 +83,9 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 - 在專案環境（`.venv`）安裝並鎖定標準要求的開發工具（寫入 `pyproject.toml` 與 `uv.lock`）：
   ```bash
   uv init --lib
-  uv add --dev "ruff>=0.17,<0.18" "mypy>=1.18,<2" "pytest>=8,<10" "pytest-cov>=6,<8"
+  uv add --dev "ruff>=0.17,<1" "mypy>=1.18,<2" "pytest>=8,<10" "pytest-cov>=6,<8"
   # 若型別檢查改用 pyright：
-  # uv add --dev "pyright>=1.1.400,<1.2"
+  # uv add --dev "pyright>=1.1.400,<2"
   ```
 
 #### 專案宣告 `.devguard.yaml`
@@ -306,7 +306,7 @@ components:
 ### 3.4 Java
 
 #### 前置需求與建置 Wrapper
-- JDK `>= 17`（新專案建議 21+）
+- 執行建置與檢查工具的 JDK `>= 17`（新專案建議 21+）。`team@1.1.0` 起，編譯目標（`maven.compiler.release`）最低可為 8
 - 建置工具：預設 **Maven**，可在 `.devguard.yaml` 改用 **Gradle**
 - **必須提交建置 Wrapper**：`devguard` 一律透過專案目錄（或上層多模組根目錄）的 `./mvnw`（`mvnw.cmd`）或 `./gradlew`（`gradlew.bat`）呼叫建置工具：
   ```bash
