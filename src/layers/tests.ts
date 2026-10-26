@@ -46,9 +46,10 @@ export const testsLayer: CheckLayer = {
       if (!checker) continue;
       const reportDir = await mkdtemp(join(tmpdir(), "devguard-tests-"));
       try {
-        findings.push(
-          ...(await checker.check(toTarget(standard, component), { cwd: ctx.cwd, tools: ctx.tools, reportDir })),
-        );
+        const target = toTarget(standard, component);
+        const found = await checker.check(target, { cwd: ctx.cwd, tools: ctx.tools, reportDir });
+        // A threshold of 0 (legacy@1.0.0, #37) only runs the tests: no report is needed to judge it.
+        findings.push(...(target.threshold > 0 ? found : found.filter((f) => f.rule !== "coverage/no-report")));
       } finally {
         await rm(reportDir, { recursive: true, force: true });
       }
