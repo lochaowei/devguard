@@ -4,8 +4,8 @@ import { checkUv, UV_AUTH_VARIABLES } from "../mirrors/uv.ts";
 import { upwards } from "../repo/paths.ts";
 
 /**
- * The package manager a Python component uses, decided from its lockfiles alone (SPEC §5.2): `deps.manager` in the
- * declaration only says which managers the standard allows.
+ * The package manager a Python component uses, decided from its lockfiles alone (SPEC §6.1 `deps.manager`): the
+ * declared `deps.manager` only names the lockfile the deps check requires.
  */
 export type PythonManager = "uv" | "poetry";
 
