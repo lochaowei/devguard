@@ -4,11 +4,16 @@ import { createToolRunner, ToolMissingError, type ToolRequest, type ToolRunnerDe
 
 const ROOT = "C:\\repo";
 
-/** A fake project: `files` maps absolute paths to contents; exec records what it was asked to start. */
+/**
+ * A fake project: `files` maps absolute paths to contents; exec records what it was asked to start, and the
+ * variables it was asked to leave out of the environment separately in `unset`.
+ */
 function fakeRunner(files: Record<string, string>, extra: Partial<ToolRunnerDeps> = {}) {
   const started: Command[] = [];
-  const exec: Exec = (command) => {
+  const unset: (readonly string[] | undefined)[] = [];
+  const exec: Exec = ({ unsetEnv, ...command }) => {
     started.push(command);
+    unset.push(unsetEnv);
     return Promise.resolve({ code: 0, stdout: "ok", stderr: "" });
   };
   const runner = createToolRunner({
@@ -20,7 +25,7 @@ function fakeRunner(files: Record<string, string>, extra: Partial<ToolRunnerDeps
     pathEnv: "C:\\bin;C:\\scoop\\shims",
     ...extra,
   });
-  return { runner, started };
+  return { runner, started, unset };
 }
 
 async function missing(run: Promise<unknown>): Promise<{ message: string; install: string }> {
@@ -322,5 +327,37 @@ describe("tool runner: package-manager commands go through the internal mirror (
     await expect(runner.manage({ language: "python", dir: "", args: ["add"], mirror: "" })).rejects.toThrow("鏡像");
     await expect(runner.manage({ language: "java", dir: "", args: [], mirror: MIRROR })).rejects.toThrow("Java");
     expect(started).toEqual([]);
+  });
+});
+
+describe("tool runner: git's repo-location variables stay out of project tools (SPEC §7.4, #59)", () => {
+  it("unsets them for every tool and package-manager command", async () => {
+    const { runner, unset } = fakeRunner({
+      "C:\\repo\\.venv\\Scripts\\ruff.exe": "",
+      "C:\\repo\\node_modules\\.bin\\eslint.cmd": "",
+      "C:\\repo\\go.mod": "module m\ntool golang.org/x/tools/cmd/goimports\n",
+      "C:\\repo\\mvnw.cmd": "",
+      "C:\\bin\\npm.cmd": "",
+    });
+    await runner.run(req({ language: "python", tool: "ruff" }));
+    await runner.run(req({ language: "typescript", tool: "eslint", stdin: "staged" }));
+    await runner.run(req({ language: "go", tool: "goimports" }));
+    await runner.run(req({ language: "java", tool: "spotless" }));
+    await runner.manage({
+      language: "typescript",
+      dir: "",
+      args: ["install"],
+      mirror: "https://npm.example.internal/",
+    });
+    const gitRepoEnv = [
+      "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+      "GIT_COMMON_DIR",
+      "GIT_DIR",
+      "GIT_INDEX_FILE",
+      "GIT_OBJECT_DIRECTORY",
+      "GIT_PREFIX",
+      "GIT_WORK_TREE",
+    ];
+    expect(unset.map((names) => [...(names ?? [])].sort())).toEqual(Array.from({ length: 5 }, () => gitRepoEnv));
   });
 });
