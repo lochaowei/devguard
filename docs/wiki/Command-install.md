@@ -60,7 +60,7 @@ command -v devguard >/dev/null 2>&1 || { echo 'devguard：找不到 CLI（devgua
 
 | 檔案 | 內容 |
 |---|---|
-| `.claude/settings.json` | 註冊三個 hook：`SessionStart` → `claude-session-start`、`PostToolUse`（matcher `Edit\|Write`）→ `claude-post-edit`、`Stop` → `claude-stop`。前兩個設定 `onFailure: "block"` |
+| `.claude/settings.json` | 註冊三個 hook：`SessionStart` → `claude-session-start`、`PostToolUse`（matcher `Edit\|Write`）→ `claude-post-edit`、`Stop` → `claude-stop`。前兩個設定 `onFailure: "block"`；`Stop` 不設定（`onFailure` 對 `Stop` 無效），舊版產生的 `Stop` 若帶有 `onFailure`，`install` 會移除 |
 | `.claude/rules/standards-<元件>-<語言>.md` | 以 frontmatter `paths` 綁定元件的檔案；列出元件的標準項目與目前的偏離 |
 | `.claude/skills/standards-doctor/SKILL.md` | `/standards-doctor` skill：嵌入 `devguard doctor --format claude --exit-zero` 的結果，開發者同意後才執行 `fix --yes` |
 

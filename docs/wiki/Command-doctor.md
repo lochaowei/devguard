@@ -35,7 +35,7 @@ devguard doctor [--quiet] [--exit-zero] [--format text|json|sarif|vscode|claude]
 | 1 | 標準是否有更新：CLI 內建了宣告標準的較新 minor / patch 版本，提示執行 [`standard upgrade`](Command-standard-upgrade.md) | — | 一律 |
 | 2 | git hook：`core.hooksPath` 沒有停用 hook 或與框架衝突；hook 檔存在、是 devguard 的、checksum 沒變；或 hook 框架的設定有呼叫 devguard，且 pre-commit 框架已執行 `pre-commit install` | `not-a-git-repo`、`hooks-path-disabled`、`hooks-path-conflict`、`hooks-path-missing`、`hook-missing`、`hook-modified`、`hook-foreign`、`framework-entry-missing`、`framework-not-installed` | 一律 |
 | 3 | Claude Code：`claude --version` 達到 `claude.minVersion`；`.git/devguard/claude-last-seen` 存在（SessionStart hook 至少執行過一次） | `claude-version`、`claude-missing`（提示）、`claude-never-ran` | 專案有 devguard 的 Claude Code 設定時 |
-| 4 | VS Code 擴充套件：用 `code --list-extensions` 檢查推薦的已安裝、不推薦的沒有安裝 | `vscode-extension-missing`（錯誤）、`vscode-extension-unwanted`（提示）、`vscode-cli-missing`、`vscode-cli-failed` | 宣告有元件時 |
+| 4 | VS Code 擴充套件：用 `code --list-extensions` 檢查推薦的已安裝、不推薦的沒有安裝 | 全部是提示，不會讓 `doctor` 失敗：`vscode-extension-missing`、`vscode-extension-unwanted`、`vscode-cli-missing`、`vscode-cli-failed` | 宣告有元件時 |
 | 5 | Go 的使用者層級鏡像：`go env GOPROXY` 只指向內部鏡像，`GOSUMDB` 透過鏡像且不是 `off` | `go-proxy`、`gosumdb`、`gosumdb-off` | 有 Go 元件時 |
 | 6 | 鏡像帳密（`mirrors.auth: env`）：各工具需要的環境變數或 netrc / `gradle.properties` 是否存在。**只檢查有沒有，絕不讀取或印出值** | `mirrors/credentials-missing`、`mirrors/netrc-missing` | 宣告 `mirrors.auth: env` 時 |
 | 7 | npm audit 是否可用：對 npm 鏡像的 bulk advisory endpoint 送一次請求，不是 200 時提示 | `npm-audit-unavailable`（提示） | 有 TypeScript 元件開啟 `deps.vulnScan` 時 |
@@ -65,14 +65,14 @@ $ devguard doctor
         需手動修正
 
 （整體）
-  錯誤  VS Code 沒有安裝推薦的擴充套件 dbaeumer.vscode-eslint（若已安裝但被停用，請在 VS Code 中啟用）  [environment/vscode-extension-missing]
+  提示  VS Code 沒有安裝推薦的擴充套件 dbaeumer.vscode-eslint（若已安裝但被停用，請在 VS Code 中啟用）  [environment/vscode-extension-missing]
         需手動修正：請從公司內部 marketplace 安裝 dbaeumer.vscode-eslint：https://vsmarketplace.example.internal/items?itemName=dbaeumer.vscode-eslint
-  錯誤  VS Code 沒有安裝推薦的擴充套件 esbenp.prettier-vscode（若已安裝但被停用，請在 VS Code 中啟用）  [environment/vscode-extension-missing]
+  提示  VS Code 沒有安裝推薦的擴充套件 esbenp.prettier-vscode（若已安裝但被停用，請在 VS Code 中啟用）  [environment/vscode-extension-missing]
         需手動修正：請從公司內部 marketplace 安裝 esbenp.prettier-vscode：https://vsmarketplace.example.internal/items?itemName=esbenp.prettier-vscode
-  錯誤  VS Code 沒有安裝推薦的擴充套件 vitest.explorer（若已安裝但被停用，請在 VS Code 中啟用）  [environment/vscode-extension-missing]
+  提示  VS Code 沒有安裝推薦的擴充套件 vitest.explorer（若已安裝但被停用，請在 VS Code 中啟用）  [environment/vscode-extension-missing]
         需手動修正：請從公司內部 marketplace 安裝 vitest.explorer：https://vsmarketplace.example.internal/items?itemName=vitest.explorer
 
-3 個錯誤、1 個偏離、0 個提示
+0 個錯誤、1 個偏離、3 個提示
 ```
 
 hook 被改過或被刪掉：
@@ -97,6 +97,7 @@ $ devguard doctor --quiet
 |---|---|
 | `doctor` 通過，push 時卻被覆蓋率擋下 | `doctor` 不跑測試與覆蓋率。用 `devguard check --full` |
 | `environment/vscode-extension-missing`，但擴充套件明明有裝 | 檢查只看預設 profile，而且被停用的擴充套件也算已安裝。擴充套件若裝在其他 profile，請裝到預設 profile；也確認 `code` 指令指向你使用的那個 VS Code |
+| 不用 VS Code（IntelliJ IDEA、Cursor、Neovim 等），`doctor` 列出 `vscode-cli-missing` 或 `vscode-extension-missing` | 這些都是提示，不影響 exit code，可以忽略。`--quiet` 不會顯示 |
 | `environment/claude-never-ran` | 在專案資料夾啟動 Claude Code，並接受「信任此資料夾」的詢問 |
 | `mirrors/credentials-missing` | 照訊息設定環境變數。`doctor` 只檢查變數是否存在，不會印出值 |
 

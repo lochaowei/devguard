@@ -113,6 +113,24 @@ describe("install keeps the project's own Claude Code hooks", () => {
     expect(after.hooks.PostToolUse?.[1]?.matcher).toBe("Edit|Write");
   });
 
+  it("drops an onFailure block from devguard's Stop hook, since Stop ignores it (#40)", async () => {
+    const stale = {
+      hooks: {
+        Stop: [
+          {
+            hooks: [{ type: "command", command: "devguard", args: ["hook", "claude-stop"], onFailure: "block" }],
+          },
+        ],
+      },
+    };
+    const dir = repo({ ".devguard.yaml": DECL, ".claude/settings.json": JSON.stringify(stale, null, 2) + "\n" });
+    await runInstall({ cwd: dir, today: TODAY, io: io() });
+    const stop = settings(dir).hooks.Stop ?? [];
+    expect(stop).toHaveLength(1);
+    expect(stop[0]?.hooks.map((h) => h.onFailure)).toEqual([undefined]);
+    expect(stop[0]?.hooks[0]?.args).toEqual(["hook", "claude-stop", "--cwd", "${CLAUDE_PROJECT_DIR}"]);
+  });
+
   it("changes nothing the second time", async () => {
     const dir = repo({ ".devguard.yaml": DECL });
     await runInstall({ cwd: dir, today: TODAY, io: io() });
