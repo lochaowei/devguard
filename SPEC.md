@@ -405,7 +405,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 - **回饋給 Claude 的方式**
   - exit 0 加上 JSON：`decision: "block"` 與 `reason`。
   - `reason` 最多列 20 項，其餘寫「還有 N 項」，總長度少於 4,000 字元。
-  - 當 `stop_hook_active` 為 true 且檢查仍失敗時，放行，並用 `systemMessage` 告知開發者，避免 Claude 陷入修正迴圈。
+  - 當 `stop_hook_active` 為 true 且檢查仍失敗時，放行，並用 `systemMessage` 告知開發者，避免 Claude 陷入修正迴圈。`Stop` 檢查所有尚未 commit 的檔案，包含開發者在這一輪之前留下的修改；這類檔案最多讓 Claude 多修正一輪就會放行。
 - **`.claude/rules/standards-<元件>.md`**
   - frontmatter 的 `paths` 對應元件的目錄與副檔名，只在 Claude 讀寫相關檔案時載入。
   - 內容是精簡的工具、門檻、禁用清單、目前的偏離與理由，每份少於 200 行。

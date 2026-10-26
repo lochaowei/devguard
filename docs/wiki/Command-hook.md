@@ -142,6 +142,7 @@ $ echo '{"tool_name":"Write","tool_input":{"file_path":"C:\\work\\demo\\src\\sub
 4. 有錯誤時，依 hook 輸入的 `stop_hook_active` 決定：
    - **`false`**（第一次）：印出 `{"decision":"block","reason":"…"}`，讓 Claude 繼續修正。
    - **`true`**（Claude 已經因為這個 hook 繼續過一次）：印出 `{"systemMessage":"…"}` 告訴開發者，並讓 Claude 結束這一輪，避免無限循環。
+   - 開發者在這一輪之前留下、尚未 commit 的檔案也會被檢查；有問題時同樣最多讓 Claude 多修正一輪。
 5. 一律 exit `0`。
 
 ### 範例
