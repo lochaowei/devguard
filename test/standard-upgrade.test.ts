@@ -184,6 +184,7 @@ describe("devguard standard upgrade (SPEC §5.5)", () => {
     expect(managed).toEqual([
       {
         language: "python",
+        manager: "uv",
         dir: "",
         args: ["add", "--dev", "ruff>=0.18,<0.19"],
         mirror: team_1_0_0.global["mirrors.pypi"]?.value,

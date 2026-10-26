@@ -9,10 +9,8 @@ import {
   type MirrorProblem,
   type MirrorSettings,
 } from "./common.ts";
-import { readToml } from "./uv.ts";
+import { readToml, stringOf, type Toml } from "./toml.ts";
 import { isRecord } from "../shared/guards.ts";
-
-type Toml = Record<string, unknown>;
 
 /** The source devguard manages in `[[tool.poetry.source]]` (SPEC §10.2). */
 export const POETRY_SOURCE_NAME = "nexus";
@@ -35,8 +33,8 @@ function missingSource(file: string, mirrors: MirrorSettings): MirrorProblem {
 /** Every source: no credentials in its URL. Sources other than `nexus`: each must stay on the mirror's host. */
 function otherSources(file: string, sources: Toml[], mirror: string): MirrorProblem[] {
   return sources.flatMap((source, i): MirrorProblem[] => {
-    const url = typeof source.url === "string" ? source.url : "";
-    const label = `[[tool.poetry.source]] ${typeof source.name === "string" ? source.name : String(i + 1)}`;
+    const url = stringOf(source.url);
+    const label = `[[tool.poetry.source]] ${stringOf(source.name) || String(i + 1)}`;
     const problems: MirrorProblem[] = [];
     if (USERINFO.test(url)) {
       const message = `${file} 的 ${label} 網址內含帳密；帳密不得進 repo`;
@@ -56,7 +54,7 @@ function nexusProblems(file: string, nexus: Toml, at: number, mirrors: MirrorSet
     { op: "set", file, path: ["tool", "poetry", "source", at, key], value },
   ];
   const problems: MirrorProblem[] = [];
-  const url = typeof nexus.url === "string" ? nexus.url : "";
+  const url = stringOf(nexus.url);
   if (!sameUrl(url, mirrors.pypi)) {
     problems.push({
       rule: "external",

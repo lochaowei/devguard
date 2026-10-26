@@ -12,7 +12,7 @@ import type { KeyPath, Repair } from "../fix/repair.ts";
 import { createDeclarationLayer, readDeclaration } from "../layers/declaration.ts";
 import { rangeInForce } from "../layers/tool-versions.ts";
 import type { Finding } from "../report/finding.ts";
-import { pythonManager } from "../tools/python-manager.ts";
+import { PYTHON_MANAGERS, pythonManager, type FileExists, type PythonManager } from "../tools/python-manager.ts";
 import { createToolRunner, type PackageRequest, type ToolRunner } from "../tools/runner.ts";
 import { pinnedVersions, type Pinned } from "../versions/pinned.ts";
 import { inRange, parseRange } from "../versions/range.ts";
@@ -178,7 +178,7 @@ function toolChanges(cwd: string, t: Target, after: CheckResult): ToolChange[] {
 type Managed = "python" | "typescript" | "go";
 
 /** The package manager `standard upgrade` runs: the language's own, with Python's chosen per component. */
-type Manager = "uv" | "poetry" | "npm" | "go";
+type Manager = PythonManager | "npm" | "go";
 
 /** A Go module version needs all three parts: [0, 10] → "0.10.0". */
 const semver = (parts: readonly number[]) => [0, 1, 2].map((i) => parts[i] ?? 0).join(".");
@@ -191,26 +191,31 @@ const quoted = (arg: string) => (/[<>,\s]/.test(arg) ? `"${arg}"` : arg);
 
 interface ManagerDef {
   command: readonly string[];
-  /** The `mirrors.*` key it downloads from; absent when the project's own settings name the mirror. */
-  mirror?: string;
+  /** Where it downloads from: a `mirrors.*` key, or the project setting `where` names for a component directory. */
+  mirror: { key: string } | { where: (dir: string) => string };
   spec(c: ToolChange): string;
   /** Quote the printed arguments (`quoted`). */
   quote?: true;
 }
 
+function pythonDef(name: PythonManager): ManagerDef {
+  const { program, addDev, mirror } = PYTHON_MANAGERS[name];
+  const from = mirror.from === "env" ? { key: "mirrors.pypi" } : { where: mirror.where };
+  return { command: [program, ...addDev], mirror: from, spec: pep508, quote: true };
+}
+
 /** How each package manager installs a version in a range, and which mirror it downloads from. */
 const MANAGERS: Readonly<Record<Manager, ManagerDef>> = {
-  uv: { command: ["uv", "add", "--dev"], mirror: "mirrors.pypi", spec: pep508, quote: true },
-  // Poetry downloads from the [[tool.poetry.source]] the mirror check requires.
-  poetry: { command: ["poetry", "add", "--group", "dev"], spec: pep508, quote: true },
+  uv: pythonDef("uv"),
+  poetry: pythonDef("poetry"),
   npm: {
     command: ["npm", "install", "--save-dev"],
-    mirror: "mirrors.npm",
+    mirror: { key: "mirrors.npm" },
     spec: (c) => `${c.name}@${c.range.replaceAll(",", " ")}`,
   },
   go: {
     command: ["go", "get", "-tool"],
-    mirror: "mirrors.go",
+    mirror: { key: "mirrors.go" },
     // go get takes one version, not a range: the range's lower bound.
     spec: (c) => `${c.name}@v${semver(parseRange(c.range)?.lower?.version ?? [])}`,
   },
@@ -227,30 +232,25 @@ function manualCommand(change: ToolChange): PlannedCommand {
 
 interface CommandContext {
   mirrorOf: (key: string) => string;
-  /** Whether a repo-relative file exists: the lockfiles that tell uv from Poetry. */
-  exists: (file: string) => boolean;
-}
-
-function managerOf(language: Managed, dir: string, exists: (file: string) => boolean): Manager {
-  if (language === "python") return pythonManager(dir, exists);
-  return language === "typescript" ? "npm" : "go";
+  /** The lockfiles that tell uv from Poetry. */
+  exists: FileExists;
 }
 
 /** The command as printed: run from the component's directory, and where its packages come from. */
 function displayOf(manager: ManagerDef, request: PackageRequest): string {
   const where = request.dir === "" ? "" : `cd ${request.dir.replace(/\/$/, "")} && `;
   const shown = [manager.command[0] ?? "", ...request.args].map((a) => (manager.quote ? quoted(a) : a)).join(" ");
-  const from = request.mirror ?? `${request.dir}pyproject.toml 的 [[tool.poetry.source]] nexus`;
+  const from = "where" in manager.mirror ? manager.mirror.where(request.dir) : (request.mirror ?? "");
   return `${where}${shown}（鏡像：${from}）`;
 }
 
 function managerCommand(group: readonly ToolChange[], language: Managed, ctx: CommandContext) {
   const dir = group[0]?.dir ?? "";
-  const name = managerOf(language, dir, ctx.exists);
-  const manager = MANAGERS[name];
+  const python = language === "python" ? pythonManager(dir, ctx.exists) : undefined;
+  const manager = MANAGERS[python ?? (language === "typescript" ? "npm" : "go")];
   const args = [...manager.command.slice(1), ...group.map((c) => manager.spec(c))];
-  const request: PackageRequest = { language, ...(name === "poetry" ? { manager: name } : {}), dir, args };
-  if (manager.mirror !== undefined) request.mirror = ctx.mirrorOf(manager.mirror);
+  const request: PackageRequest = { language, ...(python ? { manager: python } : {}), dir, args };
+  if ("key" in manager.mirror) request.mirror = ctx.mirrorOf(manager.mirror.key);
   const sumdb = language === "go" ? ctx.mirrorOf("mirrors.gosumdb") : "";
   if (sumdb !== "") request.sumdb = sumdb;
   return { display: displayOf(manager, request), request };
@@ -262,7 +262,7 @@ const isManaged = (c: ToolChange): c is ToolChange & { language: Managed } =>
 function commandsFor(
   changes: readonly ToolChange[],
   global: Record<string, EffectiveItem>,
-  exists: (file: string) => boolean,
+  exists: FileExists,
 ): PlannedCommand[] {
   const mirrorOf = (key: string) => {
     const value = global[key]?.value;
