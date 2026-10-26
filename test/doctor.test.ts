@@ -32,6 +32,9 @@ function repo(files: Record<string, string> = { ".devguard.yaml": DECL }, git = 
 
 const environment = (findings: Finding[]) => findings.filter((f) => f.layer === "environment");
 
+/** A developer whose pushes run the full tests (SPEC §7.4): pre-push problems are errors. */
+const FULL = { DEVGUARD_PRE_PUSH: "full" };
+
 describe("devguard doctor: check plus the environment layer (SPEC §3.2, §11)", () => {
   it("reports a missing pre-commit hook with the install command, alongside the check findings", async () => {
     const dir = repo({});
@@ -81,6 +84,20 @@ describe("git hooks installed (SPEC §7.4)", () => {
     expect(findings[0]?.fix).toContain("devguard install");
   });
 
+  it("lists a missing pre-push hook only as a hint while pushes do not run the tests (DEVGUARD_PRE_PUSH unset)", async () => {
+    const dir = repo({ ".devguard.yaml": DECL, ".git/hooks/pre-commit": renderHookFile("pre-commit") });
+    const findings = environment((await runDoctor({ cwd: dir, today: TODAY, env: {} })).findings);
+    expect(rules(findings)).toEqual(["hint:environment/hook-missing"]);
+    expect(findings[0]?.message).toContain("DEVGUARD_PRE_PUSH=full");
+    expect(findings[0]?.fix).toContain("devguard install");
+  });
+
+  it("reports a missing pre-push hook as an error when DEVGUARD_PRE_PUSH=full", async () => {
+    const dir = repo({ ".devguard.yaml": DECL, ".git/hooks/pre-commit": renderHookFile("pre-commit") });
+    const findings = environment((await runDoctor({ cwd: dir, today: TODAY, env: FULL })).findings);
+    expect(rules(findings)).toEqual(["error:environment/hook-missing"]);
+  });
+
   it("accepts a hand-written hook that calls devguard and reports one that does not", async () => {
     const ok = withPreCommit('#!/bin/sh\nnpm test\nexec devguard hook git-pre-commit "$@"\n');
     expect(environment((await runDoctor({ cwd: ok, today: TODAY })).findings)).toEqual([]);
@@ -100,10 +117,16 @@ describe("an existing hook framework (SPEC §7.4 step 2)", () => {
 
   it("checks the framework's config for the devguard entry instead of the hook file", async () => {
     const checks = [createGitHooksCheck({ framework: lefthook(["pre-push"]) })];
-    const findings = environment((await runDoctor({ cwd: repo(), today: TODAY, checks })).findings);
+    const findings = environment((await runDoctor({ cwd: repo(), today: TODAY, checks, env: FULL })).findings);
     expect(rules(findings)).toEqual(["error:environment/framework-entry-missing"]);
     expect(findings[0]).toMatchObject({ file: "lefthook.yml", fix: "devguard install" });
     expect(findings[0]?.message).toContain("pre-push");
+  });
+
+  it("lists a missing pre-push entry only as a hint while pushes do not run the tests", async () => {
+    const checks = [createGitHooksCheck({ framework: lefthook(["pre-push"]) })];
+    const findings = environment((await runDoctor({ cwd: repo(), today: TODAY, checks, env: {} })).findings);
+    expect(rules(findings)).toEqual(["hint:environment/framework-entry-missing"]);
   });
 
   it("passes when the framework calls devguard for every hook", async () => {
@@ -114,7 +137,7 @@ describe("an existing hook framework (SPEC §7.4 step 2)", () => {
   it("reads a real husky setup: entries missing until install injects them", async () => {
     const dir = repo({ ".devguard.yaml": DECL, ".husky/pre-commit": "npm test\n", ".husky/_/h": "" });
     execFileSync("git", ["config", "core.hooksPath", ".husky/_"], { cwd: dir });
-    const before = environment((await runDoctor({ cwd: dir, today: TODAY })).findings);
+    const before = environment((await runDoctor({ cwd: dir, today: TODAY, env: FULL })).findings);
     expect(rules(before)).toEqual([
       "error:environment/framework-entry-missing",
       "error:environment/framework-entry-missing",
@@ -134,10 +157,15 @@ describe("an existing hook framework (SPEC §7.4 step 2)", () => {
     const io = { yes: true, interactive: false, write: () => undefined, confirm: () => Promise.resolve(false) };
     await runInstall({ cwd: dir, today: TODAY, io });
     const checks = [createGitHooksCheck()];
-    const before = environment((await runDoctor({ cwd: dir, today: TODAY, checks })).findings);
+    const before = environment((await runDoctor({ cwd: dir, today: TODAY, checks, env: FULL })).findings);
     expect(rules(before)).toEqual([
       "error:environment/framework-not-installed",
       "error:environment/framework-not-installed",
+    ]);
+    const optedOut = environment((await runDoctor({ cwd: dir, today: TODAY, checks, env: {} })).findings);
+    expect(rules(optedOut)).toEqual([
+      "error:environment/framework-not-installed",
+      "hint:environment/framework-not-installed",
     ]);
     expect(before[1]?.fix).toBe("pre-commit install --hook-type pre-commit --hook-type pre-push");
     expect(before[1]?.message).toContain("pre-push");

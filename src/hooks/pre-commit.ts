@@ -21,6 +21,8 @@ export interface HookContext extends Omit<CheckOptions, "scope" | "listFiles" | 
   stdin?: () => Promise<string>;
   /** Where structured output goes (Claude Code reads the hook's stdout); defaults to `write`. */
   stdout?: (text: string) => void;
+  /** The process environment (`DEVGUARD_PRE_PUSH`); defaults to the real one, tests pass their own. */
+  env?: Readonly<Record<string, string | undefined>>;
 }
 
 interface StagedEntry {
