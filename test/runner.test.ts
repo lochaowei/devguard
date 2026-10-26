@@ -67,6 +67,35 @@ describe("tool runner: Python", () => {
   });
 });
 
+describe("tool runner: Python with Poetry (#44)", () => {
+  it("runs the tool from the in-project .venv directly, not through uv", async () => {
+    const { runner, started } = fakeRunner({
+      "C:\\repo\\api\\poetry.lock": "",
+      "C:\\repo\\api\\.venv\\Scripts\\ruff.exe": "",
+    });
+    await runner.run(req({ language: "python", tool: "ruff", dir: "api/", args: ["check", "."] }));
+    expect(started).toEqual([
+      { file: "C:\\repo\\api\\.venv\\Scripts\\ruff.exe", args: ["check", "."], cwd: "C:\\repo\\api" },
+    ]);
+  });
+
+  it("asks for an in-project Poetry environment when the tool is not installed", async () => {
+    const { runner } = fakeRunner({ "C:\\repo\\poetry.lock": "" });
+    const m = await missing(runner.run(req({ language: "python", tool: "ruff", dir: "api/" })));
+    expect(m.install).toBe("cd api && poetry config virtualenvs.in-project true && poetry install");
+  });
+
+  it("follows the nearest lockfile: a uv.lock closer to the component wins", async () => {
+    const { runner, started } = fakeRunner({
+      "C:\\repo\\poetry.lock": "",
+      "C:\\repo\\api\\uv.lock": "",
+      "C:\\repo\\api\\.venv\\Scripts\\ruff.exe": "",
+    });
+    await runner.run(req({ language: "python", tool: "ruff", dir: "api/" }));
+    expect(started[0]?.file).toBe("uv");
+  });
+});
+
 describe("tool runner: TypeScript", () => {
   it("runs node_modules/.bin/<tool>.cmd on Windows", async () => {
     const bin = "C:\\repo\\web\\node_modules\\.bin\\eslint.cmd";

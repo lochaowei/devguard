@@ -196,11 +196,11 @@ CLI 依偵測到的工具設定檔產生**草稿**：
   - Java：`pom.xml` / `build.gradle` 中的 plugin 版本
 - **golangci-lint 例外**：不放進 `go.mod` 的 `tool`。使用指定版本的 binary，由開發者放到 PATH，CLI 從 PATH 呼叫並核對版本。
 - CLI 執行工具的方式：
-  - Python：`uv run <tool>`
+  - Python：`uv run <tool>`；Poetry 專案（最近的 lockfile 是 `poetry.lock`）直接執行專案內 `.venv` 中的工具，所以 Poetry 必須設定 `virtualenvs.in-project true`
   - TypeScript：`node_modules/.bin/<tool>`
   - Go：`go tool <名稱>`
   - Java：`./mvnw` / `./gradlew`
-- 工具尚未安裝時，CLI **不會自行下載**，而是報錯並附上一行安裝指令（例如 `uv sync`、`npm ci`），透過內部鏡像安裝。
+- 工具尚未安裝時，CLI **不會自行下載**，而是報錯並附上一行安裝指令（例如 `uv sync`、`poetry config virtualenvs.in-project true && poetry install`、`npm ci`），透過內部鏡像安裝。
 
 來源：[工具版本權威與一致性檢查](.scratch/coding-standards-guard/issues/14-tool-version-authority.md)
 

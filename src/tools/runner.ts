@@ -105,8 +105,22 @@ function searchDirs(root: string, dir: string, path: typeof win32): string[] {
   return parts.map((_, i) => path.join(root, ...parts.slice(0, parts.length - i))).concat(root);
 }
 
+/** Poetry when the nearest Python lockfile is `poetry.lock`; uv otherwise (SPEC §6.1 `deps.manager`). */
+function usesPoetry(dirs: readonly string[], env: Env): boolean {
+  for (const d of dirs) {
+    if (env.exists(env.path.join(d, "uv.lock"))) return false;
+    if (env.exists(env.path.join(d, "poetry.lock"))) return true;
+  }
+  return false;
+}
+
+/**
+ * The tool in the project's `.venv`. A uv project runs it through `uv run --no-sync`; a Poetry project runs the
+ * executable directly, which needs Poetry's environment inside the project (`virtualenvs.in-project`).
+ */
 function python(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
   const cwd = dirs[0] ?? "";
+  const poetry = usesPoetry(dirs, env);
   const bin = dirs
     .map((d) =>
       env.windows
@@ -115,12 +129,10 @@ function python(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
     )
     .find((p) => env.exists(p));
   if (!bin) {
-    return {
-      ok: false,
-      message: `找不到 ${req.tool}：專案環境（.venv）中沒有安裝`,
-      install: inDir(req.dir, "uv sync"),
-    };
+    const install = poetry ? "poetry config virtualenvs.in-project true && poetry install" : "uv sync";
+    return { ok: false, message: `找不到 ${req.tool}：專案環境（.venv）中沒有安裝`, install: inDir(req.dir, install) };
   }
+  if (poetry) return { ok: true, command: { file: bin, args: [...(req.args ?? [])], cwd } };
   return { ok: true, command: { file: "uv", args: ["run", "--no-sync", req.tool, ...(req.args ?? [])], cwd } };
 }
 

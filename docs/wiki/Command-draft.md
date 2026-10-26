@@ -115,7 +115,7 @@ components:
 | 多出不該有的元件（例如來自 `node_modules/`、`.venv/`） | 檔案清單只排除 git 忽略的檔案。先把依賴目錄加進 `.gitignore`，刪掉草稿重新產生 |
 | repo 根目錄出現一個意外的元件 | 有程式檔往上找不到標記檔，例如零散的腳本。可以保留、移到某個元件中，或從宣告中刪除（刪除後 `check` 會以 `uncovered-files` 提示） |
 | 想重新產生 | 先刪除或改名 `.devguard.yaml` 再執行 |
-| 宣告 `deps.manager: poetry` 後，`check` 仍提示 `uv sync` | 目前 Python 工具一律透過 `uv` 解析與執行，Poetry 專案需要專案內的 `.venv`。追蹤：[#44](https://github.com/lochaowei/devguard/issues/44) |
+| Poetry 專案的 `check` 提示 `找不到 ruff：專案環境（.venv）中沒有安裝` | devguard 從專案內的 `.venv` 執行工具。照提示執行 `poetry config virtualenvs.in-project true && poetry install`，讓 Poetry 把虛擬環境建在專案裡 |
 
 ---
 
