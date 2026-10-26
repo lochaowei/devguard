@@ -395,7 +395,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 **環境檢查**
 - 用 `code --list-extensions --show-versions` 偵測擴充套件（透過 `cmd.exe` 執行）。這個指令只能判斷「是否已安裝」：被停用的擴充套件也會列出，而且只涵蓋預設 profile。CLI 沒有可靠的方式判斷是否已啟用（狀態存在 VS Code 內部的 `state.vscdb`，不是公開 API）。
-- 缺少推薦的擴充套件時回報**錯誤**，提示「請從公司內部 marketplace 安裝 `<id>`」並附上連結；訊息另外註明「若已安裝但被停用，請在 VS Code 中啟用」。
+- 缺少推薦的擴充套件時給**提示**（不是錯誤），提示「請從公司內部 marketplace 安裝 `<id>`」並附上連結；訊息另外註明「若已安裝但被停用，請在 VS Code 中啟用」。找不到 `code` 指令或指令失敗時也只給提示。使用其他編輯器（IntelliJ IDEA、Cursor、Neovim 等）的開發者因此不會讓 `doctor` 失敗。
 - 裝了不推薦的擴充套件時給**提示**。
 
 **提交規則**：`settings.json`、`extensions.json`、`tasks.json` 必須提交。如果 `.gitignore` 忽略了 `.vscode/`，CLI 提示改成 `.vscode/*` 並加上例外規則。
@@ -414,7 +414,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 - **回饋給 Claude 的方式**
   - exit 0 加上 JSON：`decision: "block"` 與 `reason`。
   - `reason` 最多列 20 項，其餘寫「還有 N 項」，總長度少於 4,000 字元。
-  - 當 `stop_hook_active` 為 true 且檢查仍失敗時，放行，並用 `systemMessage` 告知開發者，避免 Claude 陷入修正迴圈。
+  - 當 `stop_hook_active` 為 true 且檢查仍失敗時，放行，並用 `systemMessage` 告知開發者，避免 Claude 陷入修正迴圈。`Stop` 檢查所有尚未 commit 的檔案，包含開發者在這一輪之前留下的修改；這類檔案最多讓 Claude 多修正一輪就會放行。
 - **`.claude/rules/standards-<元件>.md`**
   - frontmatter 的 `paths` 對應元件的目錄與副檔名，只在 Claude 讀寫相關檔案時載入。
   - 內容是精簡的工具、門檻、禁用清單、目前的偏離與理由，每份少於 200 行。
