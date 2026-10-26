@@ -452,6 +452,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
   - 型別檢查（mypy、pyright、tsc）、golangci-lint 與 Java 工具（Spotless、Checkstyle、PMD）沒有 stdin 模式，而且本來就會讀磁碟上的其他檔案，所以仍然檢查工作目錄的版本。
   - 印出的警告要說明哪些檢查用的是工作目錄版本。
 - **hook 只做檢查、不做修正**：失敗時印出 `devguard fix --code <files>`。
+- **專案工具不繼承 git 的 repo 定位變數**：git 執行 hook 前會匯出 `GIT_DIR`、`GIT_WORK_TREE`、`GIT_INDEX_FILE` 等變數（`githooks(5)`），在 worktree 中 `GIT_DIR` 是絕對路徑。CLI 代為執行的專案工具（測試、linter、formatter、型別檢查、套件管理指令）的環境中移除 `GIT_DIR`、`GIT_WORK_TREE`、`GIT_INDEX_FILE`、`GIT_OBJECT_DIRECTORY`、`GIT_ALTERNATE_OBJECT_DIRECTORIES`、`GIT_COMMON_DIR`、`GIT_PREFIX`，其餘變數照常傳遞；否則專案測試在暫存目錄中執行的 `git init`、`git commit` 會寫進外層的 repo。CLI 自己執行的 git 指令保留這些變數，例如 pre-commit 用 `git show :<path>` 讀 staged 版本時仍使用 git 提供的 index。
 - **pre-push 的完整測試由開發者開啟**：`install` 照常安裝 pre-push hook，但 hook 只在環境變數 `DEVGUARD_PRE_PUSH` 為 `full` 時，才執行 `check --full` 中的測試、覆蓋率與弱點掃描；未設定或其他值時直接放行，什麼都不印。開關放在開發者的環境而不是專案宣告，所以不改變 §4 的格式，切換時也不需要重新執行 `install`。
 - **「已安裝」的環境檢查**
   1. 讀取 `core.hooksPath` 及其設定來源。
