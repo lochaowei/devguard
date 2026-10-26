@@ -45,7 +45,7 @@ describe("draftDeclaration: components", () => {
       "web/src/app.ts": "",
       "README.md": "",
     });
-    expect(d.standard).toBe("team@1.0.0");
+    expect(d.standard).toBe("team@1.1.0");
     expect(d.components.map((c) => [c.path, c.language])).toEqual([
       ["./", "python"],
       ["backend/", "go"],

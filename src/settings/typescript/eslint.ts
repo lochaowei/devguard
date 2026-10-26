@@ -5,16 +5,21 @@ const FLAT_CONFIGS = ["js", "mjs", "cjs", "ts", "mts", "cts"].map((ext) => `esli
 
 const STRICT_PRESET = "typescript-eslint/strictTypeChecked";
 
-/** Rules with a numeric limit, and the limit ESLint uses when the rule is on without options. */
-const LIMIT_RULES = [
+/**
+ * Rules with a numeric limit, and the limit ESLint uses when the rule is on without options. A rule from a plugin is
+ * only checked when the standard requires that plugin (`plugin`, a tool item): team@1.1.0 dropped
+ * eslint-plugin-sonarjs, so it no longer checks `complexity.cognitive` through ESLint (#39).
+ */
+const LIMIT_RULES: readonly { key: string; rule: string; option: RegExp; fallback: number; plugin?: string }[] = [
   { key: "complexity.cyclomatic", rule: "complexity", option: /^(\d+)|\bmax(?:imum)?\s*:\s*(\d+)/, fallback: 20 },
   {
     key: "complexity.cognitive",
     rule: "sonarjs/cognitive-complexity",
     option: /^(\d+)/,
     fallback: 15,
+    plugin: "tools.eslint-plugin-sonarjs",
   },
-] as const;
+];
 
 /** A rule's state when its entry is written as literals; undefined when it is absent or not literal. */
 export interface RuleLimit {
@@ -68,7 +73,8 @@ export async function checkEslint(root: string, judge: SettingsJudge): Promise<v
   }
   const { file } = found;
   checkPreset(found.text, file, judge);
-  for (const { key, rule, option, fallback } of LIMIT_RULES) {
+  for (const { key, rule, option, fallback, plugin } of LIMIT_RULES) {
+    if (plugin !== undefined && !judge.inStandard(plugin)) continue;
     const repair = setAt(file, ["rules", rule], (max) => ["error", max]);
     judge.limit(key, readRule(found.text, rule, option, fallback), file, `ESLint ${rule}`, repair);
   }
