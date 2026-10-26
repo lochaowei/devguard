@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { pathToolHint } from "../distribution.ts";
 import { FIX_LAYERS, runCheck, type CheckOptions, type CheckResult } from "../check.ts";
 import { parseDeclaration } from "../declaration/parse.ts";
@@ -10,6 +12,7 @@ import type { KeyPath, Repair } from "../fix/repair.ts";
 import { createDeclarationLayer, readDeclaration } from "../layers/declaration.ts";
 import { rangeInForce } from "../layers/tool-versions.ts";
 import type { Finding } from "../report/finding.ts";
+import { pythonManager } from "../tools/python-manager.ts";
 import { createToolRunner, type PackageRequest, type ToolRunner } from "../tools/runner.ts";
 import { pinnedVersions, type Pinned } from "../versions/pinned.ts";
 import { inRange, parseRange } from "../versions/range.ts";
@@ -174,14 +177,23 @@ function toolChanges(cwd: string, t: Target, after: CheckResult): ToolChange[] {
 
 type Managed = "python" | "typescript" | "go";
 
+/** The package manager `standard upgrade` runs: the language's own, with Python's chosen per component. */
+type Manager = "uv" | "poetry" | "npm" | "go";
+
 /** A Go module version needs all three parts: [0, 10] → "0.10.0". */
 const semver = (parts: readonly number[]) => [0, 1, 2].map((i) => parts[i] ?? 0).join(".");
 
 /** How each package manager installs a version in a range, and which mirror it downloads from. */
-const MANAGERS: Readonly<Record<Managed, { command: readonly string[]; mirror: string; spec(c: ToolChange): string }>> =
+const MANAGERS: Readonly<Record<Manager, { command: readonly string[]; mirror: string; spec(c: ToolChange): string }>> =
   {
-    python: { command: ["uv", "add", "--dev"], mirror: "mirrors.pypi", spec: (c) => `${c.name}${c.range}` },
-    typescript: {
+    uv: { command: ["uv", "add", "--dev"], mirror: "mirrors.pypi", spec: (c) => `${c.name}${c.range}` },
+    // Poetry downloads from the [[tool.poetry.source]] the mirror check requires; `mirrors.pypi` is only shown.
+    poetry: {
+      command: ["poetry", "add", "--group", "dev"],
+      mirror: "mirrors.pypi",
+      spec: (c) => `${c.name}@${c.range}`,
+    },
+    npm: {
       command: ["npm", "install", "--save-dev"],
       mirror: "mirrors.npm",
       spec: (c) => `${c.name}@${c.range.replaceAll(",", " ")}`,
@@ -203,14 +215,26 @@ function manualCommand(change: ToolChange): PlannedCommand {
   return { display: `${how}（請自行執行）` };
 }
 
-function managerCommand(group: readonly ToolChange[], language: Managed, mirrorOf: (key: string) => string) {
-  const manager = MANAGERS[language];
+interface CommandContext {
+  mirrorOf: (key: string) => string;
+  /** Whether a repo-relative file exists: the lockfiles that tell uv from Poetry. */
+  exists: (file: string) => boolean;
+}
+
+function managerOf(language: Managed, dir: string, exists: (file: string) => boolean): Manager {
+  if (language === "python") return pythonManager(dir, exists);
+  return language === "typescript" ? "npm" : "go";
+}
+
+function managerCommand(group: readonly ToolChange[], language: Managed, ctx: CommandContext) {
   const dir = group[0]?.dir ?? "";
+  const name = managerOf(language, dir, ctx.exists);
+  const manager = MANAGERS[name];
   const [file, ...verb] = manager.command;
   const args = [...verb, ...group.map((c) => manager.spec(c))];
-  const mirror = mirrorOf(manager.mirror);
-  const request: PackageRequest = { language, dir, args, mirror };
-  const sumdb = language === "go" ? mirrorOf("mirrors.gosumdb") : "";
+  const mirror = ctx.mirrorOf(manager.mirror);
+  const request: PackageRequest = { language, ...(name === "poetry" ? { manager: name } : {}), dir, args, mirror };
+  const sumdb = language === "go" ? ctx.mirrorOf("mirrors.gosumdb") : "";
   if (sumdb !== "") request.sumdb = sumdb;
   const where = dir === "" ? "" : `cd ${dir.replace(/\/$/, "")} && `;
   return { display: `${where}${[file, ...args].join(" ")}（鏡像：${mirror}）`, request };
@@ -219,7 +243,11 @@ function managerCommand(group: readonly ToolChange[], language: Managed, mirrorO
 const isManaged = (c: ToolChange): c is ToolChange & { language: Managed } =>
   c.version !== undefined && c.language !== "java";
 
-function commandsFor(changes: readonly ToolChange[], global: Record<string, EffectiveItem>): PlannedCommand[] {
+function commandsFor(
+  changes: readonly ToolChange[],
+  global: Record<string, EffectiveItem>,
+  exists: (file: string) => boolean,
+): PlannedCommand[] {
   const mirrorOf = (key: string) => {
     const value = global[key]?.value;
     return typeof value === "string" ? value : "";
@@ -230,7 +258,7 @@ function commandsFor(changes: readonly ToolChange[], global: Record<string, Effe
     groups.set(id, [...(groups.get(id) ?? []), change]);
   }
   const managed = [...groups.values()].flatMap((group) =>
-    group[0] ? [managerCommand(group, group[0].language, mirrorOf)] : [],
+    group[0] ? [managerCommand(group, group[0].language, { mirrorOf, exists })] : [],
   );
   return [...managed, ...changes.filter((c) => !isManaged(c)).map(manualCommand)];
 }
@@ -268,7 +296,7 @@ export async function planStandardUpgrade(options: UpgradeOptions): Promise<Upgr
     redundant,
     newFindings,
     tools,
-    commands: commandsFor(tools, after.resolution?.global ?? {}),
+    commands: commandsFor(tools, after.resolution?.global ?? {}, (file) => existsSync(join(options.cwd, file))),
     changes: await planChanges(options.cwd, [...declarationEdits, ...configRepairs]),
   };
 }

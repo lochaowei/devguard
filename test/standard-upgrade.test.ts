@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -244,6 +244,48 @@ describe("devguard standard upgrade (SPEC §5.5)", () => {
     expect(out).toContain("cd svc && go get -tool mvdan.cc/gofumpt@v0.10.0（");
     expect(out).toMatch(/把版本在 \S+ 內的 golangci-lint binary 放進 PATH（請自行執行）/);
     expect(out).toContain("請在 api/pom.xml 把 maven-pmd-plugin 改成 >=3.27,<4 內的版本");
+  });
+});
+
+describe("devguard standard upgrade of a Poetry component (#53)", () => {
+  /** A Python component with poetry.lock (ruff 0.17.2 locked), its pyproject.toml written by `fix`. */
+  async function poetryRepo(): Promise<string> {
+    const dir = repo({
+      ".devguard.yaml":
+        "standard: team@1.0.0\ncomponents:\n  - path: api/\n    language: python\n    overrides:\n      deps.manager: poetry\n",
+      "api/poetry.lock": '[[package]]\nname = "ruff"\nversion = "0.17.2"\n',
+    });
+    const quiet: Interaction = {
+      yes: true,
+      interactive: false,
+      write: () => undefined,
+      confirm: () => Promise.resolve(false),
+    };
+    expect(await runFix({ cwd: dir, today: TODAY, io: quiet })).toBe(0);
+    return dir;
+  }
+
+  it("previews the poetry add command it will run", async () => {
+    const { out } = await upgrade(await poetryRepo(), { target: "team@1.1.0" });
+    expect(out).toContain("cd api && poetry add --group dev ruff@>=0.18,<0.19（鏡像：");
+    expect(out).not.toContain("uv add");
+  });
+
+  it("--apply runs poetry add --group dev, never uv, and writes no uv.lock", async () => {
+    const dir = await poetryRepo();
+    const { tools, managed } = fakeTools();
+    expect((await upgrade(dir, { target: "team@1.1.0", apply: true, tools })).code).toBe(0);
+    expect(managed).toEqual([
+      {
+        language: "python",
+        manager: "poetry",
+        dir: "api/",
+        args: ["add", "--group", "dev", "ruff@>=0.18,<0.19"],
+        mirror: team_1_0_0.global["mirrors.pypi"]?.value,
+      },
+    ]);
+    expect(existsSync(join(dir, "api/uv.lock"))).toBe(false);
+    expect(existsSync(join(dir, "uv.lock"))).toBe(false);
   });
 });
 
