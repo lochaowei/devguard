@@ -184,6 +184,83 @@ describe("uv: [[tool.uv.index]] in pyproject.toml points at the PyPI mirror (SPE
   });
 });
 
+const NEXUS_SOURCE = `[[tool.poetry.source]]\nname = "nexus"\nurl = "${PYPI}"\npriority = "primary"\n`;
+
+describe("Poetry: [[tool.poetry.source]] in pyproject.toml points at the PyPI mirror (#53)", () => {
+  const poetry = (pyproject?: string, yaml = decl("python")): Record<string, string> => ({
+    ".devguard.yaml": yaml,
+    "poetry.lock": "",
+    ...(pyproject === undefined ? {} : { "pyproject.toml": pyproject }),
+  });
+
+  it("reports a missing nexus source, not a uv index, and repairs it by adding one", async () => {
+    const findings = await check(poetry('[tool.poetry]\nname = "a"\n'));
+    expect(rules(findings)).toEqual(["error:mirrors/missing"]);
+    expect(findings[0]?.message).toContain("[[tool.poetry.source]]");
+    expect(findings[0]?.fix).toMatch(/^devguard fix/);
+    expect(findings[0]?.repairs).toEqual([
+      {
+        op: "add",
+        file: "pyproject.toml",
+        path: ["tool", "poetry", "source"],
+        value: { name: "nexus", url: PYPI, priority: "primary" },
+      },
+    ]);
+  });
+
+  it("passes with the nexus source, even with mirrors.auth: env (credentials come from POETRY_HTTP_BASIC_NEXUS_*)", async () => {
+    expect(await check(poetry(NEXUS_SOURCE))).toEqual([]);
+    expect(await check(poetry(NEXUS_SOURCE, decl("python", "mirrors:\n  auth: env\n")))).toEqual([]);
+  });
+
+  it("reports a nexus source on pypi.org, and other sources that point at an external source", async () => {
+    const toml =
+      NEXUS_SOURCE.replace(PYPI, "https://pypi.org/simple") +
+      '\n[[tool.poetry.source]]\nname = "pytorch"\nurl = "https://download.pytorch.org/whl/cu121"\npriority = "supplemental"\n';
+    const findings = await check(poetry(toml));
+    expect(rules(findings)).toEqual(["error:mirrors/external", "error:mirrors/external"]);
+    expect(findings.map((f) => f.message).join()).toContain("https://download.pytorch.org/whl/cu121");
+    expect(findings.flatMap((f) => f.repairs ?? [])).toEqual([
+      { op: "set", file: "pyproject.toml", path: ["tool", "poetry", "source", 0, "url"], value: PYPI },
+    ]);
+  });
+
+  it("repairs a nexus source whose priority is not primary, since Poetry would still use PyPI", async () => {
+    for (const toml of [
+      NEXUS_SOURCE.replace('"primary"', '"supplemental"'),
+      NEXUS_SOURCE.replace(/priority.*\n/, ""),
+    ]) {
+      const findings = await check(poetry(toml));
+      expect(rules(findings)).toEqual(["error:mirrors/missing"]);
+      expect(findings[0]?.message).toContain("priority");
+      expect(findings[0]?.repairs).toEqual([
+        { op: "set", file: "pyproject.toml", path: ["tool", "poetry", "source", 0, "priority"], value: "primary" },
+      ]);
+    }
+  });
+
+  it("reports credentials embedded in a source URL without printing them", async () => {
+    const findings = await check(poetry(NEXUS_SOURCE.replace("https://", "https://alice:s3cret@")));
+    expect(rules(findings)).toContain("error:mirrors/plaintext-credentials");
+    expect(findings.find((f) => f.rule === "mirrors/plaintext-credentials")?.fix).toContain(
+      "POETRY_HTTP_BASIC_NEXUS_USERNAME / POETRY_HTTP_BASIC_NEXUS_PASSWORD",
+    );
+    expect(JSON.stringify(findings)).not.toContain("s3cret");
+  });
+
+  it("devguard fix adds or repairs the nexus source, after which check is clean", async () => {
+    const layers = [declarationLayer, mirrorsLayer];
+    const yaml = decl("python", "mirrors:\n  auth: env\n");
+    const broken = NEXUS_SOURCE.replace(PYPI, "https://pypi.org/simple").replace('"primary"', '"supplemental"');
+    for (const pyproject of [undefined, '[tool.poetry]\nname = "a"\n', broken]) {
+      const dir = repo(poetry(pyproject, yaml));
+      expect(await runFix({ cwd: dir, today: TODAY, io: YES }, layers)).toBe(0);
+      expect((await runCheck({ cwd: dir, today: TODAY }, layers)).findings).toEqual([]);
+      expect(readFileSync(join(dir, "pyproject.toml"), "utf8")).not.toContain("tool.uv");
+    }
+  });
+});
+
 const MAVEN = "https://nexus.example.internal/repository/maven-public/";
 const POM = "<project><modelVersion>4.0.0</modelVersion></project>\n";
 

@@ -52,7 +52,7 @@ devguard check [檔案…] [--staged] [--only lint|format|typecheck] [--full]
 | 7 | `settings-typescript` | `config` | `package.json`、`tsconfig.json`、ESLint flat config、Prettier、Biome、Vitest / Jest 覆蓋率門檻 |
 | 8 | `tool-versions` | `consistency` | lockfile / 建置檔鎖定的工具版本（與 PATH 上的 `golangci-lint`）是否在標準的 `tools.*` 範圍內 |
 | 9 | `gitattributes` | `config` | repo 根目錄 `.gitattributes` 有 `* text=auto eol=lf` |
-| 10 | `mirrors` | `config` | 專案層級的鏡像設定（uv、npm、Maven、Gradle）指向宣告的內部鏡像 |
+| 10 | `mirrors` | `config` | 專案層級的鏡像設定（uv、Poetry、npm、Maven、Gradle）指向宣告的內部鏡像。Poetry 專案（最近的 lockfile 是 `poetry.lock`）檢查 `[[tool.poetry.source]]`（`name = "nexus"`、`priority = "primary"`），不檢查 `[[tool.uv.index]]` |
 | 11 | `claude-code` | `config` | `.claude/` 的 rules、hooks、`/standards-doctor` 與標準一致 |
 | 12 | `vscode` | `config` | `.vscode/` 的 extensions、settings、tasks |
 | 13 | `code` | `code` | 用各元件的工具跑 lint、format、typecheck |

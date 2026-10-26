@@ -4,6 +4,7 @@ import { posix, win32 } from "node:path";
 import type { Language } from "../standard/types.ts";
 import { nodeExec, type Command, type Exec } from "../process/exec.ts";
 import { goEnv } from "./go-env.ts";
+import { pythonManager } from "./python-manager.ts";
 import { isEnoent, readIfExistsSync } from "../shared/fs.ts";
 
 export interface ToolRequest {
@@ -35,6 +36,11 @@ export interface ToolResult {
 /** A command of the component's package manager (uv, npm, go), e.g. `devguard standard upgrade --apply`. */
 export interface PackageRequest {
   language: Language;
+  /**
+   * Python only: Poetry, for a component whose nearest Python lockfile is poetry.lock (`pythonManager`); uv when
+   * absent. Poetry downloads from the project's `[[tool.poetry.source]]`, so no mirror variable is set for it.
+   */
+  manager?: "poetry";
   /** Component directory, normalized as in ToolRequest. */
   dir: string;
   args: readonly string[];
@@ -93,7 +99,11 @@ interface Env {
 }
 
 /** Programs the CLI starts by name, with the install hint shown when they are missing. */
-const LAUNCHERS: Readonly<Record<string, string>> = { uv: "scoop install uv", go: "scoop install go" };
+const LAUNCHERS: Readonly<Record<string, string>> = {
+  uv: "scoop install uv",
+  poetry: "scoop install poetry",
+  go: "scoop install go",
+};
 
 function inDir(dir: string, command: string): string {
   return dir === "" ? command : `cd ${dir.replace(/\/$/, "")} && ${command}`;
@@ -105,13 +115,10 @@ function searchDirs(root: string, dir: string, path: typeof win32): string[] {
   return parts.map((_, i) => path.join(root, ...parts.slice(0, parts.length - i))).concat(root);
 }
 
-/** Poetry when the nearest Python lockfile is `poetry.lock`; uv otherwise (SPEC §6.1 `deps.manager`). */
-function usesPoetry(dirs: readonly string[], env: Env): boolean {
-  for (const d of dirs) {
-    if (env.exists(env.path.join(d, "uv.lock"))) return false;
-    if (env.exists(env.path.join(d, "poetry.lock"))) return true;
-  }
-  return false;
+/** Poetry when the nearest Python lockfile is `poetry.lock` (`pythonManager`); `dirs` ends with the repo root. */
+function usesPoetry(req: ToolRequest, dirs: readonly string[], env: Env): boolean {
+  const root = dirs.at(-1) ?? "";
+  return pythonManager(req.dir, (file) => env.exists(env.path.join(root, file))) === "poetry";
 }
 
 /**
@@ -120,7 +127,7 @@ function usesPoetry(dirs: readonly string[], env: Env): boolean {
  */
 function python(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
   const cwd = dirs[0] ?? "";
-  const poetry = usesPoetry(dirs, env);
+  const poetry = usesPoetry(req, dirs, env);
   const bin = dirs
     .map((d) =>
       env.windows
@@ -225,6 +232,7 @@ function packageManager(req: PackageRequest, cwd: string, env: Env): Resolved {
   const args = [...req.args];
   switch (req.language) {
     case "python":
+      if (req.manager === "poetry") return { ok: true, command: { file: "poetry", args, cwd } };
       return { ok: true, command: { file: "uv", args, cwd, env: { UV_DEFAULT_INDEX: req.mirror } } };
     case "typescript": {
       const npm = onPath("npm", env);

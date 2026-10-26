@@ -23,7 +23,8 @@ type Toml = Record<string, unknown>;
 const strings = (v: unknown): string[] =>
   (Array.isArray(v) ? v : [v]).filter((s): s is string => typeof s === "string");
 
-function readToml(text: string | undefined): Toml | undefined {
+/** A pyproject.toml: `{}` when absent (fix creates it), undefined when it is not valid TOML. */
+export function readToml(text: string | undefined): Toml | undefined {
   try {
     return text === undefined ? {} : (parseToml(text) as Toml);
   } catch {

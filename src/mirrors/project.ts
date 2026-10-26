@@ -3,13 +3,21 @@ import type { Finding } from "../report/finding.ts";
 import type { MirrorChecker, MirrorComponent, MirrorSettings, ReadFile } from "./common.ts";
 import { checkJava } from "./java.ts";
 import { checkNpm } from "./npm.ts";
+import { checkPoetry } from "./poetry.ts";
 import { checkUv } from "./uv.ts";
+import { readPythonManager } from "../tools/python-manager.ts";
 
 export type { MirrorSettings, ReadFile } from "./common.ts";
 
+/** Python: uv's `[[tool.uv.index]]`, or Poetry's `[[tool.poetry.source]]` when the nearest lockfile is poetry.lock. */
+const checkPython: MirrorChecker = async (component, mirrors, read) => {
+  const checker = (await readPythonManager(component.dir, read)) === "poetry" ? checkPoetry : checkUv;
+  return checker(component, mirrors, read);
+};
+
 /** Go has no project-level mirror setting: doctor checks `go env` instead (src/environment/go-mirrors.ts). */
 const CHECKERS: Partial<Record<Language, MirrorChecker>> = {
-  python: checkUv,
+  python: checkPython,
   typescript: checkNpm,
   java: checkJava,
 };
