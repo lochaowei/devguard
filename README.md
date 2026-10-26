@@ -354,7 +354,7 @@ devguard --version | --help
 |---|---|
 | `check` | 依序執行專案宣告、未涵蓋檔案、四語言設定、依賴規則、工具版本、`.gitattributes`、鏡像、VS Code、Claude Code 與程式碼檢查（lint、格式、型別），不含環境檢查。給 CI 與 git hook 使用。指定檔案時，程式碼檢查只針對這些檔案 |
 | `check --staged` | 只檢查 staged 的檔案，與 pre-commit hook 相同：formatter 與單檔 linter 讀 staged 版本（stdin），依賴相關檔案 staged 時才跑依賴規則 |
-| `check --full` | 再加上各元件的完整測試、行 / 分支覆蓋率門檻與（開啟時的）弱點掃描，與 pre-push hook 相同；不能與檔案參數同時使用 |
+| `check --full` | 再加上各元件的完整測試、行 / 分支覆蓋率門檻與（開啟時的）弱點掃描，與設定 `DEVGUARD_PRE_PUSH=full` 時的 pre-push hook 相同；不能與檔案參數同時使用 |
 | `doctor` | `check` 加上環境檢查：工具是否安裝、git hook 是否安裝（含既有 hook 框架與 `pre-commit install`）、VS Code 擴充套件、Claude Code 版本、Go 鏡像、帳密變數是否存在、npm audit 端點、標準是否有更新。只回報並附上修正指令，不自動安裝 |
 | `fix` | 修正**設定**（互動式終端機先預覽 diff、確認後套用）：工具設定檔、`.vscode/`、`.claude/`、被修改過的 devguard git hook、`.gitattributes`、`lombok.config`。CLI 產生的檔案整份重新產生；共用的結構化檔只改 CLI 管理的 key；建置檔與程式碼形式的設定只印出片段（SPEC §9.2） |
 | `fix --code` | 修正**程式碼**：格式化與可自動修正的 lint（Ruff、ESLint、Prettier、Biome、golangci-lint、Spotless），修正後回報剩餘問題 |
@@ -447,7 +447,7 @@ web/ (TypeScript)
   - 只檢查 staged 檔案；若檔案為「部分 staged（partially staged）」，CLI **不做 `git stash`**，而是透過 `git show :<path>` 取出 staged 內容由 stdin 送交單檔工具（`ruff`、`eslint`、`prettier`、`biome`、`golangci-lint fmt --stdin`）檢查，避免工作區未暫存修改造成誤判；無 stdin 模式的工具（`mypy`、`pyright`、`tsc`、`golangci-lint run`、Java wrapper）則檢查工作區版本並印出提示。
   - 當依賴相關檔案（如 `pyproject.toml`、`uv.lock`、`package.json`、`go.mod`、`pom.xml` 等）被 staged 時，一併執行依賴規則檢查（lockfile 與禁用套件）。
   - hook 只檢查不自動改檔；失敗時會印出可直接複製執行的 `devguard fix --code <files>` 指令。
-- **`pre-push`（等同 `devguard check --full`）**：完整執行所有檢查層、單元測試、行/分支覆蓋率門檻與（開啟時的）弱點掃描。
+- **`pre-push`**：預設不跑任何檢查、直接放行，日常 WIP push 不會被完整測試擋住；完整測試與覆蓋率交給 CI 的 `devguard check --full`。開發者設定環境變數 `DEVGUARD_PRE_PUSH=full` 後，才在 push 前執行 `check --full` 中的單元測試、行/分支覆蓋率門檻與（開啟時的）弱點掃描。
 
 ### 內部鏡像與帳密變數（`mirrors.auth: env`）
 
@@ -468,7 +468,7 @@ web/ (TypeScript)
   devguard standard upgrade           # 預覽升級至最新內建標準的設定差異、既有覆寫變化與需執行的套件指令
   devguard standard upgrade --apply   # 實際更新 .devguard.yaml、修補設定檔，並透過內部鏡像執行套件管理指令
   ```
-- **開啟弱點掃描（`deps.vulnScan: true`）**：在元件 `overrides` 將 `deps.vulnScan` 設為 `true` 後，`devguard check --full` 與 `pre-push` 會執行對應語言的弱點掃描（Python：`uv export` + `pip-audit`；Go：`govulncheck`；TypeScript：`npm audit`；Java：OWASP `dependency-check`）。若需暫時忽略特定弱點，可在 `deps.ignoredVulns` 填入 `{ id, reason, until }`。
+- **開啟弱點掃描（`deps.vulnScan: true`）**：在元件 `overrides` 將 `deps.vulnScan` 設為 `true` 後，`devguard check --full` 與開啟完整測試（`DEVGUARD_PRE_PUSH=full`）的 `pre-push` 會執行對應語言的弱點掃描（Python：`uv export` + `pip-audit`；Go：`govulncheck`；TypeScript：`npm audit`；Java：OWASP `dependency-check`）。若需暫時忽略特定弱點，可在 `deps.ignoredVulns` 填入 `{ id, reason, until }`。
 
 ## 開發
 

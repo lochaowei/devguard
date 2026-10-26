@@ -31,15 +31,34 @@ function vitest(pct: number, failed: string[] = []) {
   });
 }
 
-async function prePush(dir: string, tools: ToolRunner) {
+const FULL = { DEVGUARD_PRE_PUSH: "full" };
+
+async function prePush(dir: string, tools: ToolRunner, env: Record<string, string | undefined> = FULL) {
   const handler = HOOK_HANDLERS["git-pre-push"];
   if (!handler) throw new Error("git-pre-push is not registered");
   let out = "";
-  const code = await handler({ cwd: dir, today: TODAY, tools, write: (t) => (out += t) });
+  const code = await handler({ cwd: dir, today: TODAY, tools, env, write: (t) => (out += t) });
   return { code, out };
 }
 
-describe("devguard hook git-pre-push (SPEC §7.1, §7.4)", () => {
+describe("devguard hook git-pre-push by default (SPEC §7.1)", () => {
+  it("lets the push through without running the tests", async () => {
+    const { tools, calls } = vitest(10, ["a breaks"]);
+    const r = await prePush(project(declare("./", "typescript"), { "a.ts": "export const a = 1;\n" }), tools, {});
+    expect(calls).toEqual([]);
+    expect(r).toEqual({ code: 0, out: "" });
+  });
+
+  it("treats any other DEVGUARD_PRE_PUSH value as not opted in", async () => {
+    const { tools, calls } = vitest(10, ["a breaks"]);
+    const dir = project(declare("./", "typescript"), { "a.ts": "export const a = 1;\n" });
+    const r = await prePush(dir, tools, { DEVGUARD_PRE_PUSH: "1" });
+    expect(calls).toEqual([]);
+    expect(r.code).toBe(0);
+  });
+});
+
+describe("devguard hook git-pre-push with DEVGUARD_PRE_PUSH=full (SPEC §7.1, §7.4)", () => {
   it("passes silently when the tests pass and coverage meets the standard", async () => {
     const { tools, calls } = vitest(95);
     const r = await prePush(project(declare("./", "typescript"), { "a.ts": "export const a = 1;\n" }), tools);

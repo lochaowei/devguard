@@ -22,8 +22,10 @@ const write = (name: string, text: string) => {
 };
 const commit = (message: string) => git("commit", "-qam", message, "--no-verify");
 
-function push(): { code: number; output: string } {
-  const r = spawnSync("git", ["push", "-q", "origin", "HEAD:main"], { cwd: dir, encoding: "utf8" });
+/** `git push`; `full` opts the push into the full tests (`DEVGUARD_PRE_PUSH=full`), otherwise the variable is unset. */
+function push(full: boolean): { code: number; output: string } {
+  const env: Record<string, string | undefined> = { ...process.env, DEVGUARD_PRE_PUSH: full ? "full" : undefined };
+  const r = spawnSync("git", ["push", "-q", "origin", "HEAD:main"], { cwd: dir, encoding: "utf8", env });
   return { code: r.status ?? 1, output: `${r.stdout}${r.stderr}` };
 }
 
@@ -76,16 +78,26 @@ afterAll(() => {
 });
 
 describe("pre-push hook in a real git push (SPEC §7.1, §7.4)", { timeout: 180_000 }, () => {
-  it("lets the push through without any output when the tests pass and coverage is met", () => {
-    const r = push();
+  it("by default lets the push through without running the tests, even when one fails", () => {
+    write("sum.test.ts", SUM_TEST.replace("toBe(3)", "toBe(4)"));
+    commit("broken test, pushed as WIP");
+    const r = push(false);
+    expect(r.output).toBe("");
+    expect(r.code).toBe(0);
+    write("sum.test.ts", SUM_TEST);
+    commit("fixed test");
+  });
+
+  it("with DEVGUARD_PRE_PUSH=full lets the push through without any output when the tests pass and coverage is met", () => {
+    const r = push(true);
     expect(r.output).toBe("");
     expect(r.code).toBe(0);
   });
 
-  it("blocks the push when a test fails", () => {
+  it("with DEVGUARD_PRE_PUSH=full blocks the push when a test fails", () => {
     write("sum.test.ts", SUM_TEST.replace("toBe(3)", "toBe(4)"));
     commit("broken test");
-    const r = push();
+    const r = push(true);
     expect(r.code).not.toBe(0);
     expect(r.output).toContain("test/failed");
     expect(r.output).toContain("adds");
@@ -93,11 +105,11 @@ describe("pre-push hook in a real git push (SPEC §7.1, §7.4)", { timeout: 180_
     commit("fixed test");
   });
 
-  it("blocks the push when coverage is below the standard", () => {
+  it("with DEVGUARD_PRE_PUSH=full blocks the push when coverage is below the standard", () => {
     const untested = Array.from({ length: 20 }, (_, i) => `export const f${String(i)} = (): number => ${String(i)};`);
     write("sum.ts", [SUM, ...untested, ""].join("\n"));
     commit("untested code");
-    const r = push();
+    const r = push(true);
     expect(r.code).not.toBe(0);
     expect(r.output).toContain("coverage/");
   });

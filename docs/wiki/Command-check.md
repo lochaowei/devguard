@@ -2,7 +2,7 @@
 
 檢查專案宣告（`.devguard.yaml`）、各工具設定檔與程式碼是否符合預設標準。只回報，不修改任何檔案。
 
-日常開發、CI 與 VS Code 的 `standards: check` task 都用它；pre-commit hook 跑的就是 `check --staged`，pre-push hook 跑的是 `check --full` 中的測試與覆蓋率部分。
+日常開發、CI 與 VS Code 的 `standards: check` task 都用它；pre-commit hook 跑的就是 `check --staged`，pre-push hook 在開發者設定 `DEVGUARD_PRE_PUSH=full` 時跑 `check --full` 中的測試與覆蓋率部分（預設不跑）。`check --full` 本身不受這個環境變數影響，一律完整執行測試、覆蓋率與弱點掃描，供 CI 與發佈前的本地檢查使用。
 
 本頁的範例都以[示範專案](CLI-Reference.md#示範專案)實際執行取得。
 
@@ -154,7 +154,7 @@ $ devguard check --strict > /dev/null; echo $?
 
 ### `--full`：測試與覆蓋率
 
-測試與覆蓋率的問題長這樣（取自 [pre-push hook](Command-hook.md#git-pre-push)，它跑的就是 `--full` 的這兩層）：
+測試與覆蓋率的問題長這樣（取自開啟完整測試的 [pre-push hook](Command-hook.md#git-pre-push)，它跑的就是 `--full` 的這兩層）：
 
 ```text
 標準：team@1.0.0

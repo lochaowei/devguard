@@ -33,7 +33,7 @@ devguard doctor [--quiet] [--exit-zero] [--format text|json|sarif|vscode|claude]
 | 順序 | 檢查 | 規則 ID（`environment/…`、`mirrors/…`） | 什麼時候檢查 |
 |---|---|---|---|
 | 1 | 標準是否有更新：CLI 內建了宣告標準的較新 minor / patch 版本，提示執行 [`standard upgrade`](Command-standard-upgrade.md) | — | 一律 |
-| 2 | git hook：`core.hooksPath` 沒有停用 hook 或與框架衝突；hook 檔存在、是 devguard 的、checksum 沒變；或 hook 框架的設定有呼叫 devguard，且 pre-commit 框架已執行 `pre-commit install` | `not-a-git-repo`、`hooks-path-disabled`、`hooks-path-conflict`、`hooks-path-missing`、`hook-missing`、`hook-modified`、`hook-foreign`、`framework-entry-missing`、`framework-not-installed` | 一律 |
+| 2 | git hook：`core.hooksPath` 沒有停用 hook 或與框架衝突；hook 檔存在、是 devguard 的、checksum 沒變；或 hook 框架的設定有呼叫 devguard，且 pre-commit 框架已執行 `pre-commit install` | `not-a-git-repo`、`hooks-path-disabled`、`hooks-path-conflict`、`hooks-path-missing`、`hook-missing`、`hook-modified`、`hook-foreign`、`framework-entry-missing`、`framework-not-installed`（pre-push 的這幾項在沒有設定 `DEVGUARD_PRE_PUSH=full` 時只是提示，見[下方](#pre-push-的問題什麼時候算錯誤)） | 一律 |
 | 3 | Claude Code：`claude --version` 達到 `claude.minVersion`；`.git/devguard/claude-last-seen` 存在（SessionStart hook 至少執行過一次） | `claude-version`、`claude-missing`（提示）、`claude-never-ran` | 專案有 devguard 的 Claude Code 設定時 |
 | 4 | VS Code 擴充套件：用 `code --list-extensions` 檢查推薦的已安裝、不推薦的沒有安裝 | 全部是提示，不會讓 `doctor` 失敗：`vscode-extension-missing`、`vscode-extension-unwanted`、`vscode-cli-missing`、`vscode-cli-failed` | 宣告有元件時 |
 | 5 | Go 的使用者層級鏡像：`go env GOPROXY` 只指向內部鏡像，`GOSUMDB` 透過鏡像且不是 `off` | `go-proxy`、`gosumdb`、`gosumdb-off` | 有 Go 元件時 |
@@ -78,7 +78,7 @@ $ devguard doctor
 hook 被改過或被刪掉：
 
 ```text
-$ devguard doctor --quiet
+$ DEVGUARD_PRE_PUSH=full devguard doctor --quiet
 …
   錯誤  git pre-push hook（C:\work\demo\.git\hooks\pre-push）被修改過，checksum 不符  [environment/hook-modified]
         需手動修正：devguard install
@@ -88,6 +88,10 @@ $ devguard doctor --quiet
 ```
 
 被改過的 hook 用 `devguard fix --yes` 或 `devguard install --yes` 都能恢復；被刪掉的要用 `install`。
+
+### pre-push 的問題什麼時候算錯誤
+
+pre-push hook 預設不跑任何檢查（見 [`hook git-pre-push`](Command-hook.md#git-pre-push)），所以沒有設定 `DEVGUARD_PRE_PUSH=full` 時，pre-push 的 `hook-missing`、`hook-modified`、`hook-foreign`、`framework-entry-missing`、`framework-not-installed` 只列為**提示**，訊息結尾註明「沒有設定 DEVGUARD_PRE_PUSH=full，push 時不跑測試，所以只列為提示」。提示不影響 exit code，`--quiet` 也不會印出。設定之後，這些就和 pre-commit 的問題一樣是錯誤。`core.hooksPath` 的問題會讓所有 hook 失效，一律是錯誤。
 
 ---
 

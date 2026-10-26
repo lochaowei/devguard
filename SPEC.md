@@ -16,7 +16,7 @@
 |---|---|---|
 | 第一道：VS Code | 撰寫時 | 擴充套件即時顯示問題 |
 | 第二道：Claude Code | Claude 編輯檔案時 | 事前告知標準、事中檢查並回饋、提供診斷指令 |
-| 第三道：git hook | commit 與 push 時 | pre-commit 擋下不合格的變更；pre-push 跑完整測試 |
+| 第三道：git hook | commit 與 push 時 | pre-commit 擋下不合格的變更；pre-push 只在開發者以 `DEVGUARD_PRE_PUSH=full` 開啟時跑完整測試 |
 
 **核心原則**
 - 先檢查，再修正。修正一定先預覽，或由開發者明確下指令才執行。
@@ -209,7 +209,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 公司環境不允許下載外部檔案，所以四種語言都**預設關閉**（`deps.vulnScan: false`）。
 - 專案自行開啟算收緊，不需要寫理由。
 - 開啟後才套用各語言的 `deps.vulnFailOn` 與 `deps.ignoredVulns`。
-- 執行時機：只在 pre-push、`check --full` 與 CI。
+- 執行時機：只在 `check --full` 與 CI，以及開啟完整測試的 pre-push（§7.4）。
 
 各工具在內網的資料來源（已查證）：
 
@@ -345,10 +345,10 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | lint、格式 | 擴充套件即時顯示 | 被編輯的檔案 | 這一輪改過的檔案 | staged 檔案 | — |
 | 型別檢查 | 擴充套件即時顯示 | — | 這一輪改過的檔案 | staged 檔案所屬的元件 | — |
 | 依賴規則（lockfile、禁用清單） | — | — | — | 只在依賴相關檔案被 staged 時 | — |
-| 測試與覆蓋率 | 可手動執行的 task | — | — | — | 完整執行 |
-| 進階：弱點掃描 | — | — | — | — | 開啟時執行 |
+| 測試與覆蓋率 | 可手動執行的 task | — | — | — | `DEVGUARD_PRE_PUSH=full` 時完整執行 |
+| 進階：弱點掃描 | — | — | — | — | `DEVGUARD_PRE_PUSH=full` 且開啟時執行 |
 
-`devguard check --full` 與 CI 執行全部檢查。
+`devguard check --full` 與 CI 執行全部檢查，不受 `DEVGUARD_PRE_PUSH` 影響。pre-push 預設不跑任何檢查、直接放行，讓日常的 WIP push 不會被完整測試與覆蓋率計算擋住；完整測試與覆蓋率由 CI 的 `check --full` 把關（§7.4）。
 
 指定檔案時（檔案參數、`--staged`、pre-commit、Claude 的兩個 hook），formatter 會處理的非原始碼檔案（Prettier 的 `.json`、`.md`、`.yaml`、`.css`…，Biome 的 `.json`、`.css`…）也交給所屬的 TypeScript 元件做格式檢查，範圍與整個元件的檢查一致；只有這類檔案時不跑 lint 與型別檢查。
 
@@ -443,10 +443,13 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
   - 型別檢查（mypy、pyright、tsc）、golangci-lint 與 Java 工具（Spotless、Checkstyle、PMD）沒有 stdin 模式，而且本來就會讀磁碟上的其他檔案，所以仍然檢查工作目錄的版本。
   - 印出的警告要說明哪些檢查用的是工作目錄版本。
 - **hook 只做檢查、不做修正**：失敗時印出 `devguard fix --code <files>`。
+- **pre-push 的完整測試由開發者開啟**：`install` 照常安裝 pre-push hook，但 hook 只在環境變數 `DEVGUARD_PRE_PUSH` 為 `full` 時，才執行 `check --full` 中的測試、覆蓋率與弱點掃描；未設定或其他值時直接放行，什麼都不印。開關放在開發者的環境而不是專案宣告，所以不改變 §4 的格式，切換時也不需要重新執行 `install`。
 - **「已安裝」的環境檢查**
   1. 讀取 `core.hooksPath` 及其設定來源。
   2. 若使用既有框架，確認其設定中有呼叫 CLI 的項目；使用 pre-commit 框架時，另外確認 `pre-commit install --hook-type pre-commit --hook-type pre-push` 已執行（hooks 目錄中有 pre-commit 產生的 hook）。沒有使用框架時，確認 hook 檔存在、有 CLI 標記，且 checksum 正確。
   3. `core.hooksPath` 指向 `/dev/null` 或不存在的目錄時，回報錯誤。
+
+  步驟 2 中 pre-push 的問題（hook 不存在或被修改、框架設定缺項目、尚未以 `--hook-type pre-push` 執行 `pre-commit install`），在沒有設定 `DEVGUARD_PRE_PUSH=full` 時只列為**提示**，因為這時 pre-push 本來就不跑任何檢查；設定之後才算錯誤。
 - **促使開發者安裝**：VS Code 的 folderOpen task 與 Claude Code 的 SessionStart 都會執行 doctor。doctor 只回報問題並附上 `devguard install` 指令，不會自動安裝。
 
 來源：[pre-commit 框架比較研究](.scratch/coding-standards-guard/research/02-precommit-framework-options.md)、[CLI 實作語言與分發方式決策](.scratch/coding-standards-guard/issues/05-cli-runtime-decision.md)
