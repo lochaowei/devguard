@@ -121,7 +121,7 @@ $ devguard fix
 ### 執行流程
 
 1. 解析宣告，對範圍內的檔案跑程式碼檢查（lint、format、typecheck）。
-2. 挑出標為可自動修正的問題，依元件規劃要執行的修正步驟。例如 TypeScript 是 `eslint --fix`，接著 `prettier --write`。
+2. 挑出標為可自動修正的問題，依元件規劃要執行的修正步驟。例如 TypeScript 是 `eslint --fix`，接著 `prettier --write`。指定的檔案中，TypeScript 元件內 formatter 會處理的非原始碼檔案（`.json`、`.md` 等）只交給 formatter（`prettier --write` 或 `biome format --write`）；只有這類檔案時不跑 lint 修正。
 3. 依互動規則預覽並套用。某個步驟失敗時會記成一筆問題，其餘步驟照常執行。
 4. 套用後**再檢查一次**，列出剩下的問題，例如型別錯誤或無法自動修正的 lint。
 

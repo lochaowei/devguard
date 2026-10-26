@@ -28,15 +28,18 @@ function print(ctx: HookContext, text: string): void {
   (ctx.stdout ?? ctx.write)(text);
 }
 
-/** The code checks of the given categories (SPEC §7.1), through the same CodeCheckers as `check`. */
+/**
+ * The code checks of the given categories (SPEC §7.1), through the same CodeCheckers as `check`; a target keeps
+ * only those of its own categories (non-source files get the format check alone).
+ */
 function codeChecks(categories: readonly CodeCategory[]): CheckLayer {
   return {
     id: "code",
     async run(ctx) {
-      const targets = (await codeTargets(ctx)).map((t) => ({
-        ...t,
-        target: { ...t.target, categories: new Set(categories) },
-      }));
+      const targets = (await codeTargets(ctx)).flatMap((t) => {
+        const kept = new Set(categories.filter((c) => t.target.categories.has(c)));
+        return kept.size === 0 ? [] : [{ ...t, target: { ...t.target, categories: kept } }];
+      });
       return { findings: await checkTargets(targets, codeCheckContext(ctx)) };
     },
   };
