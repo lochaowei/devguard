@@ -1,0 +1,47 @@
+# Publishes docs/wiki/ (the source of truth) to the GitHub Wiki whenever it changes on main.
+# Direct edits on the wiki are overwritten; change the pages in the repo instead.
+name: wiki
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/wiki/**", "scripts/sync-wiki.ts"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.18"
+
+      - name: Check out the wiki
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: git clone "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki
+
+      - name: Sync pages
+        run: node scripts/sync-wiki.ts wiki
+
+      - name: Commit and push
+        working-directory: wiki
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "wiki is already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs: sync from ${GITHUB_REPOSITORY}@${GITHUB_SHA::7}"
+          git push
