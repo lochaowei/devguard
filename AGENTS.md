@@ -4,7 +4,7 @@
 
 ### Issue tracker
 
-Issues live in GitHub Issues on lochaowei/devguard (via `gh`). See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues on lochaowei/devguard (via `gh`). See `docs/agents/issue-tracker.md`. Other agents work here concurrently: claim an issue before implementing it (**Claiming work** in that file).
 
 ### Triage labels
 

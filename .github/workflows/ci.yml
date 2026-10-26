@@ -1,0 +1,36 @@
+# Runs the project's own checks on every pull request and on main, so nothing merges unchecked.
+# On Windows, like release.yml: devguard ships as a Windows exe (SPEC §3.1).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.18"
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run test:coverage
+
+      # Dogfood: devguard checks its own declaration and code against team@1.0.0.
+      - name: devguard check
+        run: npm run devguard -- check
