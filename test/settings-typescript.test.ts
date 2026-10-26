@@ -34,7 +34,9 @@ export default [
 
 const VITEST = `import { defineConfig } from "vitest/config";
 export default defineConfig({
-  test: { coverage: { thresholds: { lines: 80, branches: 80, functions: 80, statements: 80 } } },
+  test: {
+    coverage: { include: ["src/**/*.ts"], thresholds: { lines: 80, branches: 80, functions: 80, statements: 80 } },
+  },
 });
 `;
 
@@ -181,7 +183,7 @@ describe("TypeScript settings check: ESLint", () => {
 });
 
 const vitest = (thresholds: string) =>
-  `import { defineConfig } from "vitest/config";\nexport default defineConfig({ test: { coverage: { thresholds: { ${thresholds} } } } });\n`;
+  `import { defineConfig } from "vitest/config";\nexport default defineConfig({ test: { coverage: { include: ["src/**"], thresholds: { ${thresholds} } } } });\n`;
 
 describe("TypeScript settings check: coverage thresholds", () => {
   it("reports thresholds below the declaration and hints at ones above it", async () => {
@@ -213,7 +215,7 @@ describe("TypeScript settings check: coverage thresholds", () => {
     expect(summary(await check(project({ "vitest.config.ts": shared })))).toEqual([
       "hint:settings/unconfirmed:vitest.config.ts",
     ]);
-    const noThresholds = `export default { test: { coverage: { provider: "v8" } } };\n`;
+    const noThresholds = `export default { test: { coverage: { provider: "v8", include: ["src/**"] } } };\n`;
     expect(summary(await check(project({ "vitest.config.ts": noThresholds })))).toEqual([
       "error:settings/looser:vitest.config.ts",
     ]);
@@ -227,11 +229,14 @@ describe("TypeScript settings check: coverage thresholds", () => {
 
   it("checks coverageThreshold.global when the test tool is Jest", async () => {
     const decl = DECL + "    overrides:\n      test.tool: jest\n";
-    const jest = `module.exports = { coverageThreshold: { global: { lines: 80, branches: 60, functions: 80, statements: -10 } } };\n`;
+    const jest = `module.exports = { collectCoverageFrom: ["src/**"], coverageThreshold: { global: { lines: 80, branches: 60, functions: 80, statements: -10 } } };\n`;
     const fs = await check(project({ ".devguard.yaml": decl, "vitest.config.ts": undefined, "jest.config.js": jest }));
     expect(summary(fs)).toEqual(["error:settings/looser:jest.config.js", "hint:settings/unconfirmed:jest.config.js"]);
     const pkg = JSON.stringify({
-      jest: { coverageThreshold: { global: { lines: 80, branches: 80, functions: 80, statements: 80 } } },
+      jest: {
+        collectCoverageFrom: ["src/**"],
+        coverageThreshold: { global: { lines: 80, branches: 80, functions: 80, statements: 80 } },
+      },
     });
     expect(
       await check(project({ ".devguard.yaml": decl, "vitest.config.ts": undefined, "package.json": pkg })),
@@ -239,6 +244,33 @@ describe("TypeScript settings check: coverage thresholds", () => {
     expect(summary(await check(project({ ".devguard.yaml": decl, "vitest.config.ts": undefined })))).toEqual([
       "error:settings/missing-file:jest.config.js",
     ]);
+  });
+});
+
+describe("TypeScript settings check: which files coverage counts (#45)", () => {
+  const scope = (fs: Finding[]) => fs.filter((f) => f.rule === "settings/coverage-include");
+  const thresholds = "thresholds: { lines: 80, branches: 80, functions: 80, statements: 80 }";
+
+  it("reports a Vitest config without coverage.include, printing the setting to add", async () => {
+    const noInclude = `export default { test: { coverage: { ${thresholds} } } };\n`;
+    const [f, ...rest] = scope(await check(project({ "vitest.config.ts": noInclude })));
+    expect(rest).toEqual([]);
+    expect(f).toMatchObject({ level: "error", file: "vitest.config.ts" });
+    expect(f?.message).toMatch(/^Vitest coverage\.include 沒有設定/);
+    expect(f?.fix).toContain("devguard fix 會印出要套用的片段");
+  });
+
+  it("reports a Jest config without collectCoverageFrom", async () => {
+    const decl = DECL + "    overrides:\n      test.tool: jest\n";
+    const jest = `module.exports = { coverageThreshold: { global: { lines: 80, branches: 80, functions: 80, statements: 80 } } };\n`;
+    const fs = await check(project({ ".devguard.yaml": decl, "vitest.config.ts": undefined, "jest.config.js": jest }));
+    expect(scope(fs).map((f) => f.file)).toEqual(["jest.config.js"]);
+    expect(scope(fs)[0]?.message).toMatch(/^Jest collectCoverageFrom 沒有設定/);
+  });
+
+  it("leaves a config that pulls its settings from elsewhere alone", async () => {
+    const shared = `import base from "./base";\nexport default mergeConfig(base, { test: { coverage: {} } });\n`;
+    expect(scope(await check(project({ "vitest.config.ts": shared })))).toEqual([]);
   });
 });
 

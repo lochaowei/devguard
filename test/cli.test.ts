@@ -120,7 +120,7 @@ function writeTsConfigs(dir: string, coverage: number): void {
     ".prettierrc": '{ "printWidth": 120, "endOfLine": "lf" }\n',
     ".npmrc": "registry=https://nexus.example.internal/repository/npm-proxy/\n",
     "eslint.config.js": ESLINT_CONFIG,
-    "vitest.config.ts": `export default { test: { coverage: { thresholds: { ${thresholds} } } } };\n`,
+    "vitest.config.ts": `export default { test: { coverage: { include: ["src/**"], thresholds: { ${thresholds} } } } };\n`,
   };
   for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text);
 }
