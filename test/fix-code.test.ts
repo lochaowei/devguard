@@ -141,6 +141,43 @@ describe("devguard fix --code (SPEC §9.1, §9.3)", () => {
     ]);
   });
 
+  it("formats given non-source files of a TypeScript component without lint-fixing them", async () => {
+    const calls: ToolRequest[] = [];
+    let formatted = false;
+    const tools: ToolRunner = {
+      run(req) {
+        calls.push(req);
+        if (req.args?.includes("--write")) formatted = true;
+        const listing = req.args?.includes("--list-different") === true && !formatted;
+        const stdout = listing ? "package.json\n" : req.tool === "eslint" ? "[]" : "";
+        return Promise.resolve({ code: listing ? 1 : 0, stdout, stderr: "" });
+      },
+    };
+    const { io, output } = session({ yes: true });
+    const scope = { files: ["web/messy.ts", "web/package.json"], full: false };
+    const cwd = repo({ ".devguard.yaml": decl("web", "typescript"), "web/package.json": '{"a":1}\n' });
+    expect(await runCodeFix({ cwd, today: TODAY, tools, listFiles, io, scope })).toBe(0);
+    const fixes = calls.filter((c) => c.args?.includes("--fix") || c.args?.includes("--write"));
+    expect(fixes.map((c) => [c.tool, c.dir, c.args])).toEqual([
+      ["eslint", "web/", ["--fix", "--no-warn-ignored", "messy.ts"]],
+      ["prettier", "web/", ["--write", "--log-level", "warn", "messy.ts", "package.json"]],
+    ]);
+    expect(output()).toContain("prettier --write --log-level warn messy.ts package.json");
+  });
+
+  it("previews no ESLint run when only non-source files are given", async () => {
+    const tools: ToolRunner = {
+      run: (req) =>
+        Promise.resolve({ code: req.args?.includes("--list-different") ? 1 : 0, stdout: "package.json\n", stderr: "" }),
+    };
+    const { io, output } = session();
+    const scope = { files: ["web/package.json"], full: false };
+    const cwd = repo({ ".devguard.yaml": decl("web", "typescript"), "web/package.json": '{"a":1}\n' });
+    await runCodeFix({ cwd, today: TODAY, tools, listFiles, io, scope });
+    expect(output()).toContain("prettier --write --log-level warn package.json");
+    expect(output()).not.toContain("eslint");
+  });
+
   it("runs no fixer when nothing is fixable, and reports the problems left", async () => {
     const { tools, fixCalls } = typescriptTools();
     // Already formatted and lint-fixed: only the unfixable no-unused-vars is left.

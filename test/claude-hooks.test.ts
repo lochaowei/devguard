@@ -143,6 +143,36 @@ describe("devguard hook claude-post-edit (SPEC §7.3)", () => {
     expect(calls).toEqual([]);
   });
 
+  it("format-checks an edited non-source file of a TypeScript component, without linting it", async () => {
+    const { dir, write } = repo();
+    write(".devguard.yaml", `${DECL}  - path: ./web\n    language: typescript\n`);
+    write("web/package.json", '{"name":"x"}\n');
+    const calls: ToolRequest[] = [];
+    const tools: ToolRunner = {
+      run(req) {
+        calls.push(req);
+        const listing = req.args?.includes("--list-different") === true;
+        return Promise.resolve({ code: listing ? 1 : 0, stdout: listing ? "package.json\n" : "{}\n", stderr: "" });
+      },
+    };
+    let stdout = "";
+    await HOOK_HANDLERS["claude-post-edit"]?.({
+      cwd: dir,
+      today: TODAY,
+      tools,
+      write: () => undefined,
+      stdout: (t) => (stdout += t),
+      stdin: () => Promise.resolve(JSON.stringify(postEdit(dir, "web/package.json"))),
+    });
+    const json = JSON.parse(stdout) as { decision: string; reason: string };
+    expect(json.decision).toBe("block");
+    expect(json.reason).toContain("web/package.json:1");
+    expect(calls.map((c) => [c.tool, ...(c.args ?? [])])).toEqual([
+      ["prettier", "--list-different", "package.json"],
+      ["prettier", "package.json"],
+    ]);
+  });
+
   it("ignores a file outside the project", async () => {
     const { dir } = repo();
     const input = { ...postEdit(dir, "x"), tool_input: { file_path: join(tmpdir(), "elsewhere.py") } };
@@ -208,6 +238,16 @@ describe("devguard hook claude-stop (SPEC §7.3)", () => {
     expect(code).toBe(0);
     expect(json?.decision).toBeUndefined();
     expect(json?.systemMessage).toContain("api/app.py");
+  });
+
+  it("only format-checks a TypeScript component when just its non-source files changed", async () => {
+    const { dir, write } = repo();
+    write(".devguard.yaml", `${DECL}  - path: ./web\n    language: typescript\n`);
+    write("web/README.md", "# web\n");
+    const { code, stdout, calls } = await runHook("claude-stop", dir, stop(dir, false));
+    expect(code).toBe(0);
+    expect(stdout).toBe("");
+    expect(calls.map((c) => [c.tool, ...(c.args ?? [])])).toEqual([["prettier", "--list-different", "README.md"]]);
   });
 
   it("prints nothing when nothing changed", async () => {

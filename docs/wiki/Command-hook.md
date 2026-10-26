@@ -122,7 +122,7 @@ devguard：3 個錯誤、1 個偏離、0 個提示
 
 1. 從 stdin 讀取 Claude Code 的 hook 輸入，取出 `tool_input.file_path`。
 2. 路徑不在專案目錄內時直接通過。
-3. 只對這個檔案跑 lint 與 format（不跑 typecheck，避免每次編輯都檢查整個專案）。只回報程式碼問題，宣告本身的問題留給 `doctor`。
+3. 只對這個檔案跑 lint 與 format（不跑 typecheck，避免每次編輯都檢查整個專案）。TypeScript 元件內 formatter 會處理的非原始碼檔案（`.json`、`.md` 等）只做格式檢查。只回報程式碼問題，宣告本身的問題留給 `doctor`。
 4. 有錯誤時在 stdout 印出 `{"decision":"block","reason":"…"}`，Claude Code 會把 `reason` 交給 Claude 繼續修正。
 5. 一律 exit `0`。
 
@@ -140,7 +140,7 @@ $ echo '{"tool_name":"Write","tool_input":{"file_path":"C:\\work\\demo\\src\\sub
 ### 執行流程
 
 1. 用 `git status` 找出工作目錄中所有變更與新增的檔案（刪除的不算）。透過 Bash 改的檔案也會被找到。
-2. 對這些檔案跑 lint、format、typecheck。
+2. 對這些檔案跑 lint、format、typecheck。TypeScript 元件內 formatter 會處理的非原始碼檔案只做格式檢查；元件只有這類檔案變更時不跑 typecheck。
 3. 沒有錯誤就通過。
 4. 有錯誤時，依 hook 輸入的 `stop_hook_active` 決定：
    - **`false`**（第一次）：印出 `{"decision":"block","reason":"…"}`，讓 Claude 繼續修正。

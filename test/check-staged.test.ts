@@ -78,6 +78,34 @@ describe("devguard check --staged (SPEC §3.2): the pre-commit hook's checks", (
     expect(calls.find((c) => c.args?.[0] === "check")?.stdin).toBe("import os\n");
   });
 
+  it("format-checks staged non-source files of a TypeScript component, as the whole-project check does", async () => {
+    const { dir, git, write } = repo();
+    write(".devguard.yaml", "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: typescript\n");
+    write("settings.json", '{"name":"x"}\n');
+    write("notes.txt", "anything\n");
+    git("add", ".devguard.yaml", "settings.json", "notes.txt");
+    write("settings.json", '{ "name": "x" }\n');
+    // Prettier reformats the staged settings.json; everything else is already formatted.
+    const calls: ToolRequest[] = [];
+    const tools: ToolRunner = {
+      run(req) {
+        calls.push(req);
+        const isSettings = req.args?.includes("settings.json") === true;
+        return Promise.resolve({ code: 0, stdout: isSettings ? '{ "name": "x" }\n' : (req.stdin ?? ""), stderr: "" });
+      },
+    };
+    const r = await cli(dir, ["check", "--staged", "--format", "json"], tools);
+    const report = JSON.parse(r.out) as { findings: { rule: string; file?: string }[] };
+    expect(report.findings.map((f) => [f.rule, f.file])).toEqual([["prettier/format", "settings.json"]]);
+    expect(r.code).toBe(1);
+    // Prettier doesn't format notes.txt, so nothing checks it.
+    expect(calls.map((c) => [c.tool, ...(c.args ?? [])])).toEqual([
+      ["prettier", "--stdin-filepath", ".devguard.yaml"],
+      ["prettier", "--stdin-filepath", "settings.json"],
+    ]);
+    expect(calls[1]?.stdin).toBe('{"name":"x"}\n');
+  });
+
   it("passes when nothing is staged, without running any tool", async () => {
     const { dir } = repo();
     const { tools, calls } = fakeTools();
