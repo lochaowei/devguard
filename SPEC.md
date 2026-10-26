@@ -103,7 +103,7 @@
 放在 repo 根目錄的單一 YAML 檔。
 
 ```yaml
-standard: team@1.0.0            # 繼承哪一版預設標準（必須寫確切版本）
+standard: team@1.1.0            # 繼承哪一版預設標準（必須寫確切版本）
 components:                     # 元件 = 目錄 + 語言
   - path: ./
     language: python
@@ -257,7 +257,13 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 
 ---
 
-## 6. 各語言的預設標準（`team@1.0.0` 草案）
+## 6. 各語言的預設標準（`team@1.0.0` 草案，及 `team@1.1.0`）
+
+本節的表格是 `team@1.0.0`。`team@1.1.0`（minor，§5.5）沿用 `team@1.0.0` 的所有項目，只有以下差異：
+
+- TypeScript 不再要求 `eslint-plugin-sonarjs`（移除 `tools.eslint-plugin-sonarjs`，見 §6.3、§12 第 8 項）。使用 `eslint+prettier` 時只檢查 ESLint 內建的 `complexity`，不檢查 `sonarjs/cognitive-complexity`；使用 Biome 時 `complexity.cognitive` 仍以 `noExcessiveCognitiveComplexity` 檢查。
+
+`devguard draft` 寫入、`doctor` 建議升級到的都是 CLI 內建的最新版本（目前是 `team@1.1.0`）。
 
 ### 6.1 Python
 
@@ -303,7 +309,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | `lint.rules` | typescript-eslint `strictTypeChecked` | flat config |
 | `format.printWidth` / `endOfLine` | 120 / `lf`（風格） | Prettier |
 | `typecheck.strict` | `strict`，加上 `noUncheckedIndexedAccess`、`noImplicitOverride`、`noFallthroughCasesInSwitch` | `tsconfig.json`，用 `tsc --noEmit` 檢查 |
-| `complexity.cyclomatic` / `cognitive` | 10 / 15 | ESLint `complexity` / `eslint-plugin-sonarjs` 的 `cognitive-complexity`（**授權為 LGPL-3.0-only，需法務確認，見 §12**）；使用 Biome 時改開 `noExcessiveCognitiveComplexity` |
+| `complexity.cyclomatic` / `cognitive` | 10 / 15 | ESLint `complexity` / `eslint-plugin-sonarjs` 的 `cognitive-complexity`（**授權為 LGPL-3.0-only，見 §12**；`team@1.1.0` 起不再要求，ESLint 只檢查 `complexity`）；使用 Biome 時改開 `noExcessiveCognitiveComplexity` |
 | `test.tool` | `vitest`；允許替代工具 `jest` | — |
 | `coverage.lines` | lines、branches、functions、statements 都是 80；覆蓋率必須涵蓋元件所有的原始碼，不只被測試 import 的檔案 | `coverage.thresholds` / `coverageThreshold.global`；並且必須設定 `coverage.include` / `collectCoverageFrom`，否則為錯誤 |
 | `deps.manager` | `npm`；允許替代工具 `pnpm`、`yarn` | — |
@@ -582,7 +588,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 5. 訂出 `team@1.0.0` 中各工具的確切版本範圍，以及 golangci-lint 的指定版本。
 6. 開發者的機器上有 Git for Windows（git hook 的 sh 依賴它）。
 7. 確認公司內部 marketplace 的類型。Microsoft 的私有 marketplace 需要 GitHub Enterprise，透過 `ExtensionGalleryServiceUrl` policy 設定；依原始碼推斷，`code --install-extension` 不會讀這個 policy（尚未實機確認）。
-8. **法務確認**：`eslint-plugin-sonarjs` 的授權是 LGPL-3.0-only。如果不允許使用，TypeScript 的認知複雜度要改用其他方式檢查。確認之前，devguard 自己的原始碼也沒有加入這個 plugin，認知複雜度暫不檢查（`devguard check` 對自己會一直顯示這一項提示）。
+8. **法務確認**：`eslint-plugin-sonarjs` 的授權是 LGPL-3.0-only。`team@1.1.0` 已不再要求它（§6）：使用 ESLint 的 TypeScript 專案只檢查循環複雜度，認知複雜度不檢查，devguard 自己也宣告 `team@1.1.0`。仍宣告 `team@1.0.0` 的專案照舊要求這個 plugin。
 9. 只在打算開啟進階弱點掃描時才需要：
    - 一台能連到 NVD API 的機器，每天更新 Nexus raw hosted repo 中的 NVD 鏡像（給 Dependency-Check 使用）
    - `mirrors.govulndb` raw proxy

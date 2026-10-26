@@ -90,7 +90,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.0.0
+standard: team@1.1.0
 components:
   - path: ./
     language: python
@@ -164,7 +164,7 @@ default = true
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.0.0
+standard: team@1.1.0
 components:
   - path: ./
     language: go
@@ -234,13 +234,13 @@ formatters:
   npm init -y
   npm pkg set type=module "engines.node=>=22"
   npm i -D "typescript@>=6 <7" "eslint@>=10 <11" "typescript-eslint@>=8 <9" \
-    "eslint-plugin-sonarjs@>=3 <4" "prettier@>=3 <4" "vitest@>=5 <6" "@vitest/coverage-v8@>=5 <6"
+    "prettier@>=3 <4" "vitest@>=5 <6" "@vitest/coverage-v8@>=5 <6"
   ```
   > 若改用 **Biome**：`npm i -D "@biomejs/biome@>=2 <3"`；若改用 **Jest**：`npm i -D "jest@>=30 <31"`。
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.0.0
+standard: team@1.1.0
 components:
   - path: ./
     language: typescript
@@ -261,24 +261,22 @@ components:
    ```js
    // eslint.config.js
    import { defineConfig } from "eslint/config";
-   import sonarjs from "eslint-plugin-sonarjs";
    import tseslint from "typescript-eslint";
 
    export default defineConfig(
      { ignores: ["coverage/", "dist/", "node_modules/"] },
      tseslint.configs.strictTypeChecked,
      {
-       plugins: { sonarjs },
        languageOptions: {
          parserOptions: { projectService: { allowDefaultProject: ["eslint.config.js"] } },
        },
        rules: {
          complexity: ["error", 10],
-         "sonarjs/cognitive-complexity": ["error", 15],
        },
      },
    );
    ```
+   > `team@1.1.0` 起不再要求 `eslint-plugin-sonarjs`（授權為 LGPL-3.0-only），ESLint 只檢查內建的 `complexity`。仍宣告 `team@1.0.0` 的專案要另外安裝 `eslint-plugin-sonarjs@>=3 <4` 並加上 `"sonarjs/cognitive-complexity": ["error", 15]`，或執行 [`devguard standard upgrade`](Command-standard-upgrade.md) 升級。
    ```ts
    // vitest.config.ts
    import { defineConfig } from "vitest/config";
@@ -320,7 +318,7 @@ components:
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.0.0
+standard: team@1.1.0
 components:
   - path: ./
     language: java
@@ -420,7 +418,7 @@ components:
 若同一個 repo 同時包含多個服務（例如 `backend/` 為 Go、`worker/` 為 Python、`web/` 為 TypeScript），只需在 repo 根目錄放一份 `.devguard.yaml`：
 
 ```yaml
-standard: team@1.0.0
+standard: team@1.1.0
 components:
   - path: backend/
     language: go

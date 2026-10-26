@@ -1,4 +1,4 @@
-standard: team@1.0.0
+standard: team@1.1.0
 mirrors:
   # Pointing a mirror off the internal host is looser than the standard (SPEC §4.2), so it needs a reason.
   npm:

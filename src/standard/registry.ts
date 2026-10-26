@@ -1,8 +1,9 @@
 import { team_1_0_0 } from "./team-1.0.0.ts";
+import { team_1_1_0 } from "./team-1.1.0.ts";
 import type { Standard } from "./types.ts";
 
-/** All standard versions bundled with this CLI release (SPEC §5.5). */
-export const BUNDLED_STANDARDS: readonly Standard[] = [team_1_0_0];
+/** All standard versions bundled with this CLI release (SPEC §5.5), oldest first: the last one is the newest. */
+export const BUNDLED_STANDARDS: readonly Standard[] = [team_1_0_0, team_1_1_0];
 
 export type StandardLookup =
   | { ok: true; standard: Standard }

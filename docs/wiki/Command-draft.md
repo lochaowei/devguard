@@ -78,7 +78,7 @@ $ devguard draft
 ```yaml
 # 由 devguard draft 依既有的工具設定產生的草稿（SPEC §4.3）。
 # 與預設標準相同的項目已省略；比預設寬鬆的項目附有 TODO 理由，填寫理由之前 devguard check 不會通過。
-standard: team@1.0.0
+standard: team@1.1.0
 components:
   - path: ./
     language: python

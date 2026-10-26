@@ -34,6 +34,7 @@ src/
 ├── standard/
 │   ├── types.ts            Standard、ItemDef（9 種項目類型）與 Language 型別
 │   ├── team-1.0.0.ts       內建預設標準 team@1.0.0 定義
+│   ├── team-1.1.0.ts       team@1.1.0：沿用 team@1.0.0，移除 eslint-plugin-sonarjs
 │   └── registry.ts         內建標準版本查找、未知/過新/已移除/已棄用版本判定
 ├── declaration/
 │   ├── parse.ts            解析並驗證 .devguard.yaml 語法與結構
