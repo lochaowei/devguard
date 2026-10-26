@@ -107,7 +107,7 @@ $ devguard check src/first.ts --format json
 | Exit code | 意義 |
 |---|---|
 | `0` | 通過：沒有錯誤（只有偏離或提示也算通過）；或 `fix` / `install` 已套用、沒有需要修改的地方 |
-| `1` | 有錯誤；或加上 `--strict` 時有偏離；或 `fix` / `install` / `standard upgrade` 有變更但沒有套用 |
+| `1` | 有錯誤；或加上 `--strict` 時有偏離；或 `fix` / `install` 有變更但沒有套用；或 `standard upgrade` 只預覽而有變更待套用 |
 | `2` | CLI 本身出錯：用法錯誤、不認得的指令或格式、`check` 時專案工具沒有安裝、`draft` 時宣告已存在、內部例外 |
 
 各指令的細節見各指令頁的「輸出與 exit code」。

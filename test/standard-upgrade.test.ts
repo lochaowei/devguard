@@ -158,10 +158,17 @@ describe("devguard standard upgrade (SPEC §5.5)", () => {
     expect(out).toMatch(/多餘的覆寫.*\n.*coverage\.lines/);
     expect(out).toContain("ruff 0.17.2 不在新的版本範圍 >=0.18,<0.19 內");
     expect(out).toContain("uv add --dev ruff>=0.18,<0.19");
-    expect(out).toContain("--apply");
     expect(read(dir, ".devguard.yaml")).toBe(before.decl);
     expect(read(dir, "pyproject.toml")).toBe(before.py);
     expect(managed).toEqual([]);
+  });
+
+  it("a preview with changes pending exits 1, so CI can tell an upgrade is due (SPEC §11)", async () => {
+    const dir = await pythonRepo(OVERRIDES);
+    const { code, out } = await upgrade(dir, { target: "team@1.1.0" });
+    expect(code).toBe(1);
+    expect(out.trimEnd().split("\n").at(-1)).toBe("只預覽，沒有套用。加上 --apply 才會套用。");
+    expect(out).not.toContain("非互動環境");
   });
 
   it("--apply updates the declaration and config files, then runs the commands through the mirror", async () => {
