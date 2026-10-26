@@ -1,0 +1,60 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "standards: doctor",
+      "type": "process",
+      "command": "devguard",
+      "args": ["doctor", "--quiet"],
+      "problemMatcher": [],
+      "runOptions": {
+        "runOn": "folderOpen"
+      }
+    },
+    {
+      "label": "standards: check",
+      "type": "process",
+      "command": "devguard",
+      "args": ["check", "--format", "vscode"],
+      "problemMatcher": {
+        "owner": "devguard",
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^(.*):(\\d+):(\\d+): (error|warning|info): (.*) \\[(.*)\\]$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5,
+          "code": 6
+        }
+      }
+    },
+    {
+      "label": "standards: fix",
+      "type": "process",
+      "command": "devguard",
+      "args": ["fix"],
+      "problemMatcher": []
+    },
+    {
+      "label": "standards: test & coverage",
+      "type": "process",
+      "command": "devguard",
+      "args": ["check", "--full", "--format", "vscode"],
+      "problemMatcher": {
+        "owner": "devguard",
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^(.*):(\\d+):(\\d+): (error|warning|info): (.*) \\[(.*)\\]$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5,
+          "code": 6
+        }
+      }
+    }
+  ]
+}

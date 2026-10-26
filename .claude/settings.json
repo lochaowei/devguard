@@ -1,0 +1,40 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "devguard",
+            "args": ["hook", "claude-session-start", "--cwd", "${CLAUDE_PROJECT_DIR}"],
+            "onFailure": "block"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "devguard",
+            "args": ["hook", "claude-post-edit", "--cwd", "${CLAUDE_PROJECT_DIR}"],
+            "onFailure": "block"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "devguard",
+            "args": ["hook", "claude-stop", "--cwd", "${CLAUDE_PROJECT_DIR}"]
+          }
+        ]
+      }
+    ]
+  }
+}
