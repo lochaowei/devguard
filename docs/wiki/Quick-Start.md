@@ -130,6 +130,7 @@ name = "nexus"
 url = "https://nexus.example.internal/repository/pypi-proxy/simple"
 default = true
 ```
+Poetry 專案（最近的 lockfile 是 `poetry.lock`）改為寫入 `[[tool.poetry.source]]`（`name = "nexus"`、同一個 `url`、`priority = "primary"`），不寫 `[[tool.uv.index]]`。
 同時建立 `.gitattributes`（`* text=auto eol=lf`）、`.vscode/`（設定 Ruff 為預設 formatter、存檔執行 `fixAll` 與 `organizeImports`、指定 `.venv` 直譯器）、`.claude/` 與 git hooks。
 
 #### 檢查與修正指令

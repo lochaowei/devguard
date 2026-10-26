@@ -138,7 +138,7 @@ describe("code checks in devguard check", () => {
     ]);
   });
 
-  it("leaves a file to a nested component of another language when it is that component's source", async () => {
+  it("leaves a file to a nested component of another language when it is that component's source (#55, #56)", async () => {
     const { tools, calls } = passingTools();
     const nested =
       "standard: team@1.0.0\ncomponents:\n  - {path: web/, language: typescript}\n  - {path: web/api/, language: python}\n";

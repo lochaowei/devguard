@@ -250,7 +250,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
   - 需要調整的工具版本
   - 需要執行的套件管理指令
 
-  加上 `--apply` 才實際修改宣告與設定檔，並透過內部鏡像執行套件管理指令。預覽不會詢問；有變更待套用時以 `1` 結束（§11）。Python 元件依最近的 lockfile 選擇指令（與 §5.2 執行工具的判斷相同）：uv 專案執行 `uv add --dev`（以 `UV_DEFAULT_INDEX` 指向 `mirrors.pypi`）；Poetry 專案執行 `poetry add --group dev <套件>@<範圍>`，鏡像來自 `[[tool.poetry.source]]`（§10.2），不改用 uv。
+  加上 `--apply` 才實際修改宣告與設定檔，並透過內部鏡像執行套件管理指令。預覽不會詢問；有變更待套用時以 `1` 結束（§11）。Python 元件依最近的 lockfile 選擇指令（與 §5.2 執行工具的判斷相同）：uv 專案執行 `uv add --dev`（以 `UV_DEFAULT_INDEX` 指向 `mirrors.pypi`）；Poetry 專案執行 `poetry add --group dev <套件><範圍>`（PEP 508 形式，例如 `ruff>=0.18,<0.19`），鏡像來自 `[[tool.poetry.source]]`（§10.2），不改用 uv。預覽中 Python 指令含 `>`、`<`、`,` 或空白的引數加上雙引號，可以直接貼到 shell 執行。
 - **強制升級**：團隊可以把某個標準版本標為棄用並設定截止日。截止日之前只顯示提示，之後回報錯誤。
 
 來源：[預設標準的版本發佈與專案升級方式](.scratch/coding-standards-guard/issues/12-standards-versioning.md)
@@ -272,7 +272,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | `typecheck.strict` | `true` | mypy `strict` / pyright `strict` |
 | `test.tool` | pytest + pytest-cov | — |
 | `coverage.lines` | 行覆蓋率與分支覆蓋率**各自**都要達到 80%（`branch = true`），與 TS、Java 一致 | CLI 執行 `coverage json`，從 `totals` 分別計算行與分支的覆蓋率並自行判定。不使用 `fail_under`，因為它在 branch 模式下檢查的是行加分支的合併總數。 |
-| `deps.manager` | `uv`；允許替代工具 `poetry` | — |
+| `deps.manager` | `uv`；允許替代工具 `poetry` | 決定 `deps.lockfile` 要求哪個 lockfile。執行工具（§5.2）、鏡像設定（§10.2）、鏡像帳密（§10.3）與 `standard upgrade`（§5.5）不讀這個項目，只看最近的 Python lockfile：`poetry.lock` 時用 Poetry，否則用 uv |
 | `deps.lockfile` | `uv.lock`（或 `poetry.lock`）必須提交；只有不帶 hash 的 `requirements.txt` 不算 lockfile | CLI 檢查 |
 | 進階：`deps.vulnFailOn` | 任何等級 | 先執行 `uv export --frozen --no-emit-project --format requirements.txt -o <tmp>`，再執行 `pip-audit -r <tmp> --disable-pip`（匯出結果預設帶 hash）；`ignoredVulns` 轉成 `--ignore-vuln`；資料來源見 §5.3 |
 
@@ -513,7 +513,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 | 工具 | 位置 | 層級 |
 |---|---|---|
 | uv | `pyproject.toml` 的 `[[tool.uv.index]]`（`name = "nexus"`、`default = true`；需要登入時再加 `authenticate = "always"`） | 專案，提交 |
-| Poetry（最近的 Python lockfile 是 `poetry.lock`） | `pyproject.toml` 的 `[[tool.poetry.source]]`（`name = "nexus"`、`priority = "primary"`）；檢查並取代 uv 的 `[[tool.uv.index]]` | 專案，提交 |
+| Poetry（最近的 Python lockfile 是 `poetry.lock`） | `pyproject.toml` 的 `[[tool.poetry.source]]`（`name = "nexus"`、`url = <mirrors.pypi>`、`priority = "primary"`）；檢查並取代 uv 的 `[[tool.uv.index]]` | 專案，提交 |
 | npm / pnpm / yarn | 專案的 `.npmrc`（`registry=`） | 專案，提交 |
 | Maven | `.mvn/maven.config`（`--settings .mvn/settings.xml`）+ `.mvn/settings.xml`（mirror） | 專案，提交 |
 | Gradle | `settings.gradle` 的 `dependencyResolutionManagement.repositories` | 專案；CLI 只印出片段 |

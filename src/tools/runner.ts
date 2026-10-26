@@ -4,7 +4,7 @@ import { posix, win32 } from "node:path";
 import type { Language } from "../standard/types.ts";
 import { nodeExec, type Command, type Exec } from "../process/exec.ts";
 import { goEnv } from "./go-env.ts";
-import { pythonManager } from "./python-manager.ts";
+import { PYTHON_MANAGERS, pythonManager, type PythonManager } from "./python-manager.ts";
 import { isEnoent, readIfExistsSync } from "../shared/fs.ts";
 
 export interface ToolRequest {
@@ -36,16 +36,16 @@ export interface ToolResult {
 /** A command of the component's package manager (uv, npm, go), e.g. `devguard standard upgrade --apply`. */
 export interface PackageRequest {
   language: Language;
-  /**
-   * Python only: Poetry, for a component whose nearest Python lockfile is poetry.lock (`pythonManager`); uv when
-   * absent. Poetry downloads from the project's `[[tool.poetry.source]]`, so no mirror variable is set for it.
-   */
-  manager?: "poetry";
+  /** Python only: the component's manager (`pythonManager`); uv when absent. */
+  manager?: PythonManager;
   /** Component directory, normalized as in ToolRequest. */
   dir: string;
   args: readonly string[];
-  /** The internal mirror (`mirrors.pypi` / `mirrors.npm` / `mirrors.go`): the only place packages come from. */
-  mirror: string;
+  /**
+   * The internal mirror (`mirrors.pypi` / `mirrors.npm` / `mirrors.go`): the only place packages come from. Required
+   * for every manager but one that reads it from the project's own settings (Poetry's `[[tool.poetry.source]]`).
+   */
+  mirror?: string;
   /** Go only: the checksum database mirror (`mirrors.gosumdb`). */
   sumdb?: string;
 }
@@ -115,10 +115,9 @@ function searchDirs(root: string, dir: string, path: typeof win32): string[] {
   return parts.map((_, i) => path.join(root, ...parts.slice(0, parts.length - i))).concat(root);
 }
 
-/** Poetry when the nearest Python lockfile is `poetry.lock` (`pythonManager`); `dirs` ends with the repo root. */
-function usesPoetry(req: ToolRequest, dirs: readonly string[], env: Env): boolean {
-  const root = dirs.at(-1) ?? "";
-  return pythonManager(req.dir, (file) => env.exists(env.path.join(root, file))) === "poetry";
+/** The manager of the Python component at `dir` (`pythonManager`), its lockfiles looked up under the repo `root`. */
+function managerAt(dir: string, root: string, env: Env): PythonManager {
+  return pythonManager(dir, (file) => env.exists(env.path.join(root, file)));
 }
 
 /**
@@ -127,7 +126,7 @@ function usesPoetry(req: ToolRequest, dirs: readonly string[], env: Env): boolea
  */
 function python(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
   const cwd = dirs[0] ?? "";
-  const poetry = usesPoetry(req, dirs, env);
+  const manager = PYTHON_MANAGERS[managerAt(req.dir, dirs.at(-1) ?? "", env)];
   const bin = dirs
     .map((d) =>
       env.windows
@@ -136,11 +135,10 @@ function python(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
     )
     .find((p) => env.exists(p));
   if (!bin) {
-    const install = poetry ? "poetry config virtualenvs.in-project true && poetry install" : "uv sync";
-    return { ok: false, message: `找不到 ${req.tool}：專案環境（.venv）中沒有安裝`, install: inDir(req.dir, install) };
+    const install = inDir(req.dir, manager.install);
+    return { ok: false, message: `找不到 ${req.tool}：專案環境（.venv）中沒有安裝`, install };
   }
-  if (poetry) return { ok: true, command: { file: bin, args: [...(req.args ?? [])], cwd } };
-  return { ok: true, command: { file: "uv", args: ["run", "--no-sync", req.tool, ...(req.args ?? [])], cwd } };
+  return { ok: true, command: { ...manager.runTool(bin, req.tool, req.args ?? []), cwd } };
 }
 
 function typescript(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
@@ -228,19 +226,21 @@ const RESOLVERS: Readonly<Record<Language, (req: ToolRequest, dirs: readonly str
 };
 
 /** The package manager of a language, pointed at the mirror through its own environment variables. */
-function packageManager(req: PackageRequest, cwd: string, env: Env): Resolved {
+function packageManager(req: PackageRequest, mirror: string, cwd: string, env: Env): Resolved {
   const args = [...req.args];
   switch (req.language) {
-    case "python":
-      if (req.manager === "poetry") return { ok: true, command: { file: "poetry", args, cwd } };
-      return { ok: true, command: { file: "uv", args, cwd, env: { UV_DEFAULT_INDEX: req.mirror } } };
+    case "python": {
+      const manager = PYTHON_MANAGERS[req.manager ?? "uv"];
+      const viaEnv = manager.mirror.from === "env" ? { env: manager.mirror.env(mirror) } : {};
+      return { ok: true, command: { file: manager.program, args, cwd, ...viaEnv } };
+    }
     case "typescript": {
       const npm = onPath("npm", env);
       if (!npm) return { ok: false, message: "找不到 npm", install: "scoop install nodejs-lts" };
-      return { ok: true, command: { file: npm, args, cwd, env: { npm_config_registry: req.mirror } } };
+      return { ok: true, command: { file: npm, args, cwd, env: { npm_config_registry: mirror } } };
     }
     case "go": {
-      const env = goEnv({ proxy: req.mirror, ...(req.sumdb ? { sumdb: req.sumdb } : {}) });
+      const env = goEnv({ proxy: mirror, ...(req.sumdb ? { sumdb: req.sumdb } : {}) });
       return { ok: true, command: { file: "go", args, cwd, env } };
     }
     case "java":
@@ -273,8 +273,10 @@ export function createToolRunner(deps: ToolRunnerDeps): Required<ToolRunner> {
   return {
     run: (req) => start(RESOLVERS[req.language](req, searchDirs(deps.cwd, req.dir, env.path), env), req.stdin),
     async manage(req) {
-      if (req.mirror.trim() === "") throw new Error("沒有設定內部鏡像，不執行套件管理指令");
-      return start(packageManager(req, dirOf(req.dir), env));
+      const ownMirror = req.language === "python" && PYTHON_MANAGERS[req.manager ?? "uv"].mirror.from === "project";
+      const mirror = req.mirror ?? "";
+      if (!ownMirror && mirror.trim() === "") throw new Error("沒有設定內部鏡像，不執行套件管理指令");
+      return start(packageManager(req, mirror, dirOf(req.dir), env));
     },
   };
 }

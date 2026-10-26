@@ -21,8 +21,8 @@ interface Group {
   language: Language;
   /** Repo-relative source files of the language. */
   files: string[];
-  /** Repo-relative files that are no source file, for a checker whose tools decide what they handle (#55, #56). */
-  others?: string[];
+  /** Repo-relative files that are not source files, for a checker whose tools decide what they handle (#55, #56). */
+  nonSource?: string[];
 }
 
 /** Files grouped by owning component; files no component covers form one group per language at the repo root. */
@@ -44,7 +44,7 @@ function groupFiles(owned: readonly OwnedFile[]): Group[] {
  * file goes to the deepest component whose checker takes every file, and its tools decide whether to handle it
  * (#55, #56). Source files of the other languages stay with their own owner.
  */
-function addOthers(groups: Group[], components: readonly ResolvedComponent[], files: readonly string[]): Group[] {
+function addNonSource(groups: Group[], components: readonly ResolvedComponent[], files: readonly string[]): Group[] {
   const taking = components
     .filter((c) => CODE_CHECKERS[c.language]?.takesEveryFile === true)
     .sort((a, b) => b.dir.length - a.dir.length);
@@ -56,7 +56,7 @@ function addOthers(groups: Group[], components: readonly ResolvedComponent[], fi
       group = { owner: { kind: "component", component }, dir: component.dir, language: component.language, files: [] };
       groups.push(group);
     }
-    (group.others ??= []).push(file);
+    (group.nonSource ??= []).push(file);
   }
   return groups;
 }
@@ -83,7 +83,7 @@ function toTarget(group: Group, scope: CheckScope, standard: Standard, global: R
     dir: group.dir,
     language: group.language,
     effective: effectiveValues(group, standard, global),
-    ...(listFiles ? { files: relative([...group.files, ...(group.others ?? [])]) } : {}),
+    ...(listFiles ? { files: relative([...group.files, ...(group.nonSource ?? [])]) } : {}),
     categories: new Set(categories),
   };
 }
@@ -103,12 +103,12 @@ export async function codeTargets(ctx: LayerContext): Promise<PlannedTarget[]> {
   const components = ctx.resolution?.components ?? [];
   const files = await scopedFiles(ctx);
   const grouped = groupFiles(assignFiles(components, files));
-  const groups = ctx.scope.files === undefined ? grouped : addOthers(grouped, components, files);
+  const groups = ctx.scope.files === undefined ? grouped : addNonSource(grouped, components, files);
   return groups.flatMap((group) => {
     const checker: CodeChecker | undefined = CODE_CHECKERS[group.language];
     const target = toTarget(group, ctx.scope, standard, global);
     if (!checker || target.categories.size === 0) return [];
-    return [{ checker, target, owned: [...group.files, ...(group.others ?? [])] }];
+    return [{ checker, target, owned: [...group.files, ...(group.nonSource ?? [])] }];
   });
 }
 
