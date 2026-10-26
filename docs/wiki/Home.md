@@ -10,7 +10,7 @@
 |---|---|---|
 | **第一道：VS Code** | 撰寫與存檔時 | 擴充套件即時顯示 lint、格式與型別問題；提供 `standards:*` tasks |
 | **第二道：Claude Code** | Claude 讀寫檔案時 | `.claude/rules/` 事前載入元件標準、`PostToolUse` / `Stop` hook 事中檢查並回饋、`/standards-doctor` 診斷與修正 |
-| **第三道：git hook** | `git commit` / `git push` | `pre-commit` 擋下不合格的 staged 變更；`pre-push` 執行完整測試與覆蓋率檢查 |
+| **第三道：git hook** | `git commit` / `git push` | `pre-commit` 擋下不合格的 staged 變更；`pre-push` 在開發者設定 `DEVGUARD_PRE_PUSH=full` 時執行完整測試與覆蓋率檢查（預設交給 CI 的 `check --full`） |
 
 ## 文件導覽
 

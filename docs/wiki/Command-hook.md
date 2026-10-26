@@ -19,7 +19,7 @@ devguard hook git-pre-commit|git-pre-push|claude-session-start|claude-post-edit|
 | 名稱 | 觸發時機 | 檢查範圍 | 輸出到 | 有問題時的效果 |
 |---|---|---|---|---|
 | [`git-pre-commit`](#git-pre-commit) | `git commit` | staged 的檔案：lint、format、所屬元件的 typecheck；有依賴檔被 staged 時加上依賴規則 | stderr（git 顯示給開發者） | exit `1`，**擋下 commit** |
-| [`git-pre-push`](#git-pre-push) | `git push` | 所有元件的測試與覆蓋率；開啟 `deps.vulnScan` 的元件加上弱點掃描 | stderr | exit `1`，**擋下 push** |
+| [`git-pre-push`](#git-pre-push) | `git push` | 預設不檢查、直接放行。設定 `DEVGUARD_PRE_PUSH=full` 時：所有元件的測試與覆蓋率；開啟 `deps.vulnScan` 的元件加上弱點掃描 | stderr | 預設 exit `0`；開啟時 exit `1`，**擋下 push** |
 | [`claude-session-start`](#claude-session-start) | Claude Code 開始工作階段 | `doctor --quiet` | stdout，Claude Code 加進工作階段的 context | 只提供資訊，exit `0` |
 | [`claude-post-edit`](#claude-post-edit) | Claude 用 `Edit` / `Write` 改完一個檔案 | 該檔案的 lint、format | stdout 的 JSON：`decision: "block"` | Claude 收到問題並繼續修正，exit `0` |
 | [`claude-stop`](#claude-stop) | Claude 要結束這一輪 | 工作目錄中所有變更檔案的 lint、format、typecheck | stdout 的 JSON：`decision: "block"` 或 `systemMessage` | Claude 繼續修正；第二次仍失敗就放行並告訴開發者，exit `0` |
@@ -69,14 +69,26 @@ $ devguard check --staged
 
 ### 執行流程
 
-1. 不管這次 push 了哪些 commit（不讀 git 傳入的 remote 與 refs），都執行 `declaration`、`tests`、`vuln` 三層，等同 `check --full` 中的測試、覆蓋率與弱點掃描。
-2. 通過時什麼都不印。
-3. 有錯誤時印出報告，以 exit `1` 擋下 push。
+1. 環境變數 `DEVGUARD_PRE_PUSH` 不是 `full`（未設定或其他值）時，什麼都不跑、不印，以 exit `0` 放行。日常的 WIP push 不會被完整測試與覆蓋率計算擋住；這些由 CI 的 [`check --full`](Command-check.md) 把關。
+2. 設定 `DEVGUARD_PRE_PUSH=full` 時，不管這次 push 了哪些 commit（不讀 git 傳入的 remote 與 refs），都執行 `declaration`、`tests`、`vuln` 三層，等同 `check --full` 中的測試、覆蓋率與弱點掃描。
+3. 通過時什麼都不印。
+4. 有錯誤時印出報告，以 exit `1` 擋下 push。
+
+開關是開發者自己的環境變數，不寫在 `.devguard.yaml`，切換時也不需要重新執行 `install`。想讓每次 push 都先跑完整測試，可以設成使用者環境變數：
+
+```text
+# PowerShell（永久，新開的終端機生效）
+[Environment]::SetEnvironmentVariable("DEVGUARD_PRE_PUSH", "full", "User")
+# Git Bash（只對這次 push）
+DEVGUARD_PRE_PUSH=full git push
+```
 
 ### 範例
 
+設定 `DEVGUARD_PRE_PUSH=full` 時，覆蓋率不足會擋下 push：
+
 ```text
-$ git push origin main
+$ DEVGUARD_PRE_PUSH=full git push origin main
 標準：team@1.0.0
 
 ./ (TypeScript)
@@ -164,7 +176,8 @@ $ echo '{"stop_hook_active":true}' | devguard hook claude-stop
 | 現象 | 原因與處理 |
 |---|---|
 | 想暫時略過 git hook | `git commit --no-verify` / `git push --no-verify`。CI 仍會用 `check` 與 `check --full` 檢查 |
-| pre-push 很慢 | 它會跑所有元件的完整測試，與這次 push 的內容無關。這是設計如此 |
+| pre-push 很慢 | 設定了 `DEVGUARD_PRE_PUSH=full`：它會跑所有元件的完整測試，與這次 push 的內容無關。不需要時移除這個環境變數，交給 CI 的 `check --full` |
+| pre-push 沒有跑測試 | 預設就是如此。要在 push 前把關，設定 `DEVGUARD_PRE_PUSH=full`，或在 push 前自己執行 `devguard check --full` |
 | pre-commit 印出的 `修正程式碼：devguard fix --code …` 列出 `node_modules/` 下的檔案 | `tsc` 檢查整個元件，依賴本身的型別錯誤也會被回報。通常表示依賴沒裝完整（例如缺 peer dependency），重新安裝依賴 |
 | Claude Code 的 hook 似乎沒有執行 | 執行 `devguard doctor`。`environment/claude-never-ran` 表示還沒信任此資料夾，或 hook 從未執行過 |
 
