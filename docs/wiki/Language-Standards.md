@@ -1,4 +1,4 @@
-# 各語言預設標準（`team@1.0.0`、`team@1.1.0`）與檢查對照表
+# 各語言預設標準（`team@1.0.0`、`team@1.1.0`、`legacy@1.0.0`）與檢查對照表
 
 本文整理內建預設標準 `team@1.0.0`（定義於 [`src/standard/team-1.0.0.ts`](../../src/standard/team-1.0.0.ts)）在四種語言中的預設值、設定檢查項目、程式碼檢查執行方式，以及 `--full` 測試與覆蓋率檢查邏輯。
 
@@ -9,6 +9,21 @@
 - 工具版本範圍：`tools.ruff` `>=0.17,<1`、`tools.pyright` `>=1.1.400,<2`、`tools.vitest` `>=4.1,<6`、`tools.spotless-maven-plugin` `>=2.44,<4`、`tools.spotless-gradle-plugin` `>=7,<9`、`tools.checkstyle` `>=10.21,<15`。下限不低於上游仍在修補的版本線。
 
 下文各語言的「工具版本範圍」列的是 `team@1.0.0` 的值，`team@1.1.0` 的差異標在括號中。
+
+### 既有專案的基線標準 `legacy@1.0.0`
+
+`legacy@1.0.0`（定義於 [`src/standard/legacy-1.0.0.ts`](../../src/standard/legacy-1.0.0.ts)）給既有專案先納管用，不必為下列項目寫一堆 `reason`／`until` 偏離；之後以 [`devguard standard upgrade`](Command-standard-upgrade.md) 升級到 `team@1.1.0`。它沿用 `team@1.1.0` 的所有項目，只放寬（見 [SPEC §6.5](../../SPEC.md)）：
+
+| 項目 | `legacy@1.0.0` |
+|---|---|
+| `coverage.lines` | `0`：`--full` 仍執行測試，但不判定覆蓋率，也不要求覆蓋率設定（Vitest / Jest 門檻與 `include`、Python `branch = true`）或覆蓋率報告 |
+| `typecheck.strict` | `false`（TypeScript、Python） |
+| `typecheck.options` | `[]`（TypeScript） |
+| `complexity.cyclomatic` / `cognitive` | `20` / `25` |
+| `deps.banned` | 只保留 Python `pycrypto`、TypeScript `request`、Java `log4j:log4j`；Go 為空。JUnit 4（`junit:junit`）等不再禁用 |
+| `java.minVersion` | `"8"`，明確寫在 `legacy@1.0.0` 中，不繼承 `team@1.1.0` |
+
+`devguard draft` 不會寫入 `legacy`，要使用時把草稿的 `standard` 改成 `legacy@1.0.0`。`doctor` 不會建議從 `legacy` 升級到 `team`（會收緊），也不會建議從 `team` 改用 `legacy`。
 
 ---
 
