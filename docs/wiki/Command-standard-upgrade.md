@@ -77,6 +77,7 @@ $ devguard standard upgrade
 
 標準項目的差異：
   TypeScript｜eslint-plugin-sonarjs 版本範圍：">=3,<4"（移除）
+  TypeScript｜vitest 版本範圍：">=5,<6" → ">=4.1,<6"
 
 對本專案的影響：
 多餘的覆寫（--apply 會從宣告中刪除）：

@@ -34,7 +34,7 @@ paths:
 - typescript 版本範圍（tools.typescript）：>=6,<7
 - typescript-eslint 版本範圍（tools.typescript-eslint）：>=8,<9
 - biome 版本範圍（tools.biome）：>=2,<3
-- vitest 版本範圍（tools.vitest）：>=5,<6
+- vitest 版本範圍（tools.vitest）：>=4.1,<6
 - jest 版本範圍（tools.jest）：>=30,<31
 
 ## 目前的偏離

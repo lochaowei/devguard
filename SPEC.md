@@ -271,6 +271,12 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 本節的表格是 `team@1.0.0`。`team@1.1.0`（minor，§5.5）沿用 `team@1.0.0` 的所有項目，只有以下差異：
 
 - TypeScript 不再要求 `eslint-plugin-sonarjs`（移除 `tools.eslint-plugin-sonarjs`，見 §6.3、§12 第 8 項）。使用 `eslint+prettier` 時只檢查 ESLint 內建的 `complexity`，不檢查 `sonarjs/cognitive-complexity`；使用 Biome 時 `complexity.cognitive` 仍以 `noExcessiveCognitiveComplexity` 檢查。
+- 放寬版本範圍（#36）。語言最低版本取上游在 2026-10-27 仍支援的最舊版本；工具版本範圍的下限不低於上游仍在修補的最舊版本線，已經是這個下限的就不改。
+  - `java.minVersion`：17 → **8**（OpenJDK jdk8u 仍在維護，Temurin 8 至少到 2030 年 12 月）。`python.minVersion` 3.11（3.10 已於 2026-10-01 EOL）、`node.minVersion` 22（20 已於 2026-04-30 EOL）、`go.minVersion` 1.26（1.25 在 1.27.0 發佈時結束支援）都已是仍受支援的最舊版本，不變。
+  - Python：`tools.ruff` `>=0.17,<1`、`tools.pyright` `>=1.1.400,<2`。
+  - TypeScript：`tools.vitest` `>=4.1,<6`（Vitest 4.1 仍會收到安全性修正）。
+  - Java：`tools.spotless-maven-plugin` `>=2.44,<4`、`tools.spotless-gradle-plugin` `>=7,<9`、`tools.checkstyle` `>=10.21,<15`。
+  - 其餘工具範圍不變：ESLint 9（2026-08-06 EOL）、TypeScript 5、Jest 29、Biome 1、pytest 7、pytest-cov 6 之前、mypy 1.18 之前的版本線上游都不再發佈修正；Go 工具的現行版本已在範圍內。
 
 `devguard draft` 寫入、`doctor` 建議升級到的都是 CLI 內建的最新版本（目前是 `team@1.1.0`）。
 
