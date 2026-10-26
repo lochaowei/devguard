@@ -143,7 +143,8 @@ async function typecheck(target: CodeTarget, ctx: CodeCheckContext): Promise<Fin
  * Biome skips files it does not handle; without `--no-errors-on-unmatched` a batch of only such files exits 1
  * ("No files were processed").
  */
-const BIOME_UNKNOWN = ["--files-ignore-unknown=true", "--no-errors-on-unmatched"];
+const BIOME_SKIP_UNKNOWN = "--files-ignore-unknown=true";
+const BIOME_UNKNOWN = [BIOME_SKIP_UNKNOWN, "--no-errors-on-unmatched"];
 
 /** `::error title=lint/x/y,file=src/a.ts,line=4,...::message` from `biome --reporter=github`. */
 const GITHUB_ANNOTATION = /^::(error|warning|notice) (.*?)::(.*)$/;
@@ -195,15 +196,15 @@ async function biomeStaged(
 ): Promise<Finding[]> {
   const request = { language: "typescript", tool: "biome", dir: target.dir, stdin: text } as const;
   // A file Biome does not handle comes back unchanged, exit 0.
-  const path = [`--stdin-file-path=${file}`, "--files-ignore-unknown=true"];
+  const stdinArgs = [`--stdin-file-path=${file}`, BIOME_SKIP_UNKNOWN];
   if (command === "format") {
-    const result = await ctx.tools.run({ ...request, args: ["format", ...path] });
+    const result = await ctx.tools.run({ ...request, args: ["format", ...stdinArgs] });
     if (result.code !== 0) return [toolFailed(target, "biome", result)];
     if (result.stdout === text) return [];
     const at = { file: toRepoPath(ctx.cwd, target.dir, file), line: firstDifferentLine(text, result.stdout) };
     return [codeFinding(target, { rule: "biome/format", message: "格式不符合 Biome", ...at })];
   }
-  const result = await ctx.tools.run({ ...request, args: ["lint", "--reporter=github", ...path] });
+  const result = await ctx.tools.run({ ...request, args: ["lint", "--reporter=github", ...stdinArgs] });
   const findings = biomeAnnotations(target, ctx, `${result.stdout}\n${result.stderr}`, command, file);
   return findings.length === 0 && result.code !== 0 ? [toolFailed(target, "biome", result)] : findings;
 }
