@@ -250,7 +250,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
   - 需要調整的工具版本
   - 需要執行的套件管理指令
 
-  加上 `--apply` 才實際修改宣告與設定檔，並透過內部鏡像執行套件管理指令。預覽不會詢問；有變更待套用時以 `1` 結束（§11）。
+  加上 `--apply` 才實際修改宣告與設定檔，並透過內部鏡像執行套件管理指令。預覽不會詢問；有變更待套用時以 `1` 結束（§11）。Python 元件依最近的 lockfile 選擇指令（與 §5.2 執行工具的判斷相同）：uv 專案執行 `uv add --dev`（以 `UV_DEFAULT_INDEX` 指向 `mirrors.pypi`）；Poetry 專案執行 `poetry add --group dev <套件>@<範圍>`，鏡像來自 `[[tool.poetry.source]]`（§10.2），不改用 uv。
 - **強制升級**：團隊可以把某個標準版本標為棄用並設定截止日。截止日之前只顯示提示，之後回報錯誤。
 
 來源：[預設標準的版本發佈與專案升級方式](.scratch/coding-standards-guard/issues/12-standards-versioning.md)
@@ -513,6 +513,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 | 工具 | 位置 | 層級 |
 |---|---|---|
 | uv | `pyproject.toml` 的 `[[tool.uv.index]]`（`name = "nexus"`、`default = true`；需要登入時再加 `authenticate = "always"`） | 專案，提交 |
+| Poetry（最近的 Python lockfile 是 `poetry.lock`） | `pyproject.toml` 的 `[[tool.poetry.source]]`（`name = "nexus"`、`priority = "primary"`）；檢查並取代 uv 的 `[[tool.uv.index]]` | 專案，提交 |
 | npm / pnpm / yarn | 專案的 `.npmrc`（`registry=`） | 專案，提交 |
 | Maven | `.mvn/maven.config`（`--settings .mvn/settings.xml`）+ `.mvn/settings.xml`（mirror） | 專案，提交 |
 | Gradle | `settings.gradle` 的 `dependencyResolutionManagement.repositories` | 專案；CLI 只印出片段 |
@@ -534,6 +535,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
   |---|---|
   | npm（**例外**） | `.npmrc` 寫 `//nexus.example.internal/repository/npm-proxy/:_auth=${NEXUS_NPM_AUTH}`，值是 `username:password` 的 base64；或改用 `:_authToken=${NEXUS_NPM_TOKEN}`。帳密相關的 key 必須帶 registry 前綴；npm 不接受明文的 `_password`，所以無法直接使用 `NEXUS_USERNAME` / `NEXUS_PASSWORD`。 |
   | uv | `UV_INDEX_NEXUS_USERNAME` / `UV_INDEX_NEXUS_PASSWORD`（名稱取自 index 的 `name`，轉成大寫，非英數字元換成 `_`） |
+  | Poetry | `POETRY_HTTP_BASIC_NEXUS_USERNAME` / `POETRY_HTTP_BASIC_NEXUS_PASSWORD`（名稱取自 source 的 `name`，轉成大寫） |
   | Maven | `.mvn/settings.xml` 的 `<server>` 寫 `${env.NEXUS_USERNAME}`；`<server>` 的 id 必須和 mirror 的 id 相同 |
   | Gradle | repository 的 `name` 設為 `nexus`，並加上 `credentials(PasswordCredentials)`，即可讀取 `ORG_GRADLE_PROJECT_nexusUsername` / `ORG_GRADLE_PROJECT_nexusPassword`（或 `~/.gradle/gradle.properties`） |
   | Go | `NETRC` 環境變數所指的檔案；沒有設定時用 `%USERPROFILE%\_netrc`。只寫主機名稱，僅適用 HTTPS |

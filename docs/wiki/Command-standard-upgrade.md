@@ -46,7 +46,8 @@ devguard standard upgrade [目標版本] [--apply] [--cwd <dir>]
 
 | 語言 | 指令 | 鏡像 |
 |---|---|---|
-| Python | `uv add --dev <套件><範圍>` | `mirrors.pypi` |
+| Python（uv） | `uv add --dev <套件><範圍>` | `mirrors.pypi`（以 `UV_DEFAULT_INDEX` 帶入） |
+| Python（Poetry，最近的 lockfile 是 `poetry.lock`） | `poetry add --group dev <套件>@<範圍>`；找不到 `poetry` 時提示 `scoop install poetry`，不改用 uv | `pyproject.toml` 的 `[[tool.poetry.source]]`（不另外設定環境變數） |
 | TypeScript | `npm install --save-dev <套件>@<範圍>` | `mirrors.npm` |
 | Go | `go get -tool <模組>@v<範圍下限>`（`go get` 只接受單一版本） | `mirrors.go`，並設定 `mirrors.gosumdb` |
 | Java、PATH 上的工具 | **不執行**，只印出要手動修改的地方，標示 `（請自行執行）` | — |
