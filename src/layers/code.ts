@@ -8,6 +8,7 @@ import {
 } from "../code/types.ts";
 import type { ResolvedComponent } from "../declaration/resolve.ts";
 import type { Finding } from "../report/finding.ts";
+import { findOwner } from "../declaration/lookup.ts";
 import { assignFiles, type OwnedFile } from "../repo/files.ts";
 import { BUNDLED_STANDARDS } from "../standard/registry.ts";
 import type { Language, Standard } from "../standard/types.ts";
@@ -18,9 +19,10 @@ interface Group {
   owner: OwnedFile["owner"];
   dir: string;
   language: Language;
+  /** Repo-relative source files of the language. */
   files: string[];
-  /** Repo-relative files only the formatter checks (#43). */
-  formatOnly?: string[];
+  /** Repo-relative files that are no source file, for a checker whose tools decide what they handle (#55, #56). */
+  others?: string[];
 }
 
 /** Files grouped by owning component; files no component covers form one group per language at the repo root. */
@@ -37,33 +39,24 @@ function groupFiles(owned: readonly OwnedFile[]): Group[] {
   return [...groups.values()];
 }
 
-const extension = (file: string) => {
-  const name = file.slice(file.lastIndexOf("/") + 1);
-  const dot = name.lastIndexOf(".");
-  return dot <= 0 ? "" : name.slice(dot).toLowerCase();
-};
-
 /**
- * A file list leaves out what is not a source file, but a whole-directory format run also checks the other files the
- * component's formatter handles. Each such file goes to the deepest component whose formatter takes it (#43).
+ * A file list leaves out what is not a source file, but a whole-directory run hands the tools every file. Each such
+ * file goes to the deepest component whose checker takes every file, and its tools decide whether to handle it
+ * (#55, #56). Source files of the other languages stay with their own owner.
  */
-function addFormatOnly(groups: Group[], components: readonly ResolvedComponent[], files: readonly string[]): Group[] {
-  const owned = new Set(groups.flatMap((g) => g.files));
-  const formatting = components
-    .filter((c) => CODE_CHECKERS[c.language]?.formatsAlso !== undefined)
+function addOthers(groups: Group[], components: readonly ResolvedComponent[], files: readonly string[]): Group[] {
+  const taking = components
+    .filter((c) => CODE_CHECKERS[c.language]?.takesEveryFile === true)
     .sort((a, b) => b.dir.length - a.dir.length);
-  for (const file of files.filter((f) => !owned.has(f))) {
-    const component = formatting.find((c) => {
-      const also = CODE_CHECKERS[c.language]?.formatsAlso?.(values(c.effective)) ?? [];
-      return file.startsWith(c.dir) && also.includes(extension(file));
-    });
+  for (const file of files.filter((f) => findOwner(components, f).kind === "out-of-scope")) {
+    const component = taking.find((c) => file.startsWith(c.dir));
     if (!component) continue;
     let group = groups.find((g) => g.owner.kind === "component" && g.owner.component === component);
     if (!group) {
       group = { owner: { kind: "component", component }, dir: component.dir, language: component.language, files: [] };
       groups.push(group);
     }
-    (group.formatOnly ??= []).push(file);
+    (group.others ??= []).push(file);
   }
   return groups;
 }
@@ -83,15 +76,14 @@ function toTarget(group: Group, scope: CheckScope, standard: Standard, global: R
   const listFiles = scope.files !== undefined || group.owner.kind !== "component";
   const relative = (files: readonly string[]) => files.map((f) => f.slice(group.dir.length));
   const asked: readonly CodeCategory[] = scope.only ? [scope.only] : CODE_CATEGORIES;
-  // Only non-source files in scope: there is nothing to lint or type-check.
-  const categories = group.files.length === 0 ? asked.filter((c) => c === "format") : asked;
+  // Only non-source files in scope: there is nothing to type-check (SPEC §7.1).
+  const categories = group.files.length === 0 ? asked.filter((c) => c !== "typecheck") : asked;
   return {
     ...(group.owner.kind === "component" ? { component: group.owner.component.name } : {}),
     dir: group.dir,
     language: group.language,
     effective: effectiveValues(group, standard, global),
-    ...(listFiles ? { files: relative(group.files) } : {}),
-    ...(group.formatOnly ? { formatOnly: relative(group.formatOnly) } : {}),
+    ...(listFiles ? { files: relative([...group.files, ...(group.others ?? [])]) } : {}),
     categories: new Set(categories),
   };
 }
@@ -111,12 +103,12 @@ export async function codeTargets(ctx: LayerContext): Promise<PlannedTarget[]> {
   const components = ctx.resolution?.components ?? [];
   const files = await scopedFiles(ctx);
   const grouped = groupFiles(assignFiles(components, files));
-  const groups = ctx.scope.files === undefined ? grouped : addFormatOnly(grouped, components, files);
+  const groups = ctx.scope.files === undefined ? grouped : addOthers(grouped, components, files);
   return groups.flatMap((group) => {
     const checker: CodeChecker | undefined = CODE_CHECKERS[group.language];
     const target = toTarget(group, ctx.scope, standard, global);
     if (!checker || target.categories.size === 0) return [];
-    return [{ checker, target, owned: [...group.files, ...(group.formatOnly ?? [])] }];
+    return [{ checker, target, owned: [...group.files, ...(group.others ?? [])] }];
   });
 }
 

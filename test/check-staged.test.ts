@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -50,13 +50,14 @@ function fakeTools(dir = "C:/x") {
   return { tools, calls };
 }
 
-async function cli(dir: string, args: string[], tools: ToolRunner) {
+/** Runs the CLI; without `tools`, the real tools run. */
+async function cli(dir: string, args: string[], tools: ToolRunner | undefined) {
   let out = "";
   let err = "";
   const code = await runCli(args, {
     cwd: dir,
     today: TODAY,
-    tools,
+    ...(tools ? { tools } : {}),
     stdout: (t) => (out += t),
     stderr: (t) => (err += t),
     stdin: () => Promise.resolve(""),
@@ -78,33 +79,53 @@ describe("devguard check --staged (SPEC §3.2): the pre-commit hook's checks", (
     expect(calls.find((c) => c.args?.[0] === "check")?.stdin).toBe("import os\n");
   });
 
-  it("format-checks staged non-source files of a TypeScript component, as the whole-project check does", async () => {
-    const { dir, git, write } = repo();
-    write(".devguard.yaml", "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: typescript\n");
-    write("settings.json", '{"name":"x"}\n');
-    write("notes.txt", "anything\n");
-    git("add", ".devguard.yaml", "settings.json", "notes.txt");
-    write("settings.json", '{ "name": "x" }\n');
-    // Prettier reformats the staged settings.json; everything else is already formatted.
-    const calls: ToolRequest[] = [];
-    const tools: ToolRunner = {
-      run(req) {
-        calls.push(req);
-        const isSettings = req.args?.includes("settings.json") === true;
-        return Promise.resolve({ code: 0, stdout: isSettings ? '{ "name": "x" }\n' : (req.stdin ?? ""), stderr: "" });
-      },
-    };
-    const r = await cli(dir, ["check", "--staged", "--format", "json"], tools);
-    const report = JSON.parse(r.out) as { findings: { rule: string; file?: string }[] };
-    expect(report.findings.map((f) => [f.rule, f.file])).toEqual([["prettier/format", "settings.json"]]);
-    expect(r.code).toBe(1);
-    // Prettier doesn't format notes.txt, so nothing checks it.
-    expect(calls.map((c) => [c.tool, ...(c.args ?? [])])).toEqual([
-      ["prettier", "--stdin-filepath", ".devguard.yaml"],
-      ["prettier", "--stdin-filepath", "settings.json"],
-    ]);
-    expect(calls[1]?.stdin).toBe('{"name":"x"}\n');
-  });
+  describe(
+    "staged files besides the sources of a TypeScript component, with the real ESLint and Prettier (#55, #56)",
+    {
+      timeout: 120_000,
+    },
+    () => {
+      /** A TypeScript component at the root that borrows this repo's node_modules; `staged` is added on top. */
+      function typescriptRepo(staged: Record<string, string>) {
+        const { dir, git, write } = repo();
+        symlinkSync(join(import.meta.dirname, "..", "node_modules"), join(dir, "node_modules"), "junction");
+        write(".gitignore", "node_modules\n");
+        write(".devguard.yaml", "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: typescript\n");
+        write("eslint.config.js", 'export default [{ rules: { "no-unused-vars": "error" } }];\n');
+        write("package.json", '{ "type": "module" }\n');
+        git("add", ".");
+        git("commit", "-q", "--no-verify", "-m", "typescript");
+        for (const [name, text] of Object.entries(staged)) write(name, text);
+        git("add", ...Object.keys(staged));
+        return dir;
+      }
+      const brief = (out: string) =>
+        (JSON.parse(out) as { findings: { rule: string; file?: string }[] }).findings.map(
+          (f) => `${f.rule} ${f.file ?? ""}`,
+        );
+
+      it("reports ESLint findings for a staged .mjs and exits 1", async () => {
+        const dir = typescriptRepo({ "tool.mjs": "export const used = 1;\nconst unused = 2;\n" });
+        const r = await cli(dir, ["check", "--staged", "--format", "json"], undefined);
+        expect(brief(r.out)).toEqual(["eslint/no-unused-vars tool.mjs"]);
+        expect(r.code).toBe(1);
+      });
+
+      it("reports a format finding for a staged .prettierrc that Prettier would change", async () => {
+        const dir = typescriptRepo({ ".prettierrc": "printWidth:    120\n" });
+        const r = await cli(dir, ["check", "--staged", "--format", "json"], undefined);
+        expect(brief(r.out)).toEqual(["prettier/format .prettierrc"]);
+        expect(r.code).toBe(1);
+      });
+
+      it("reports nothing, and no tool failure, for staged files no tool handles", async () => {
+        const dir = typescriptRepo({ LICENSE: "MIT   License\n", "notes.txt": "anything    goes\n" });
+        const r = await cli(dir, ["check", "--staged", "--format", "json"], undefined);
+        expect(brief(r.out)).toEqual([]);
+        expect(r.code).toBe(0);
+      });
+    },
+  );
 
   it("passes when nothing is staged, without running any tool", async () => {
     const { dir } = repo();

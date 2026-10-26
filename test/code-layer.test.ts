@@ -55,7 +55,7 @@ describe("code checks in devguard check", () => {
     const r = await check({ tools, files: ["web/src/a.ts", "main.go", "README.md"] });
     expect(summary(calls)).toEqual([
       "web/:eslint --format json --no-warn-ignored .",
-      "web/:prettier --list-different .",
+      "web/:prettier --list-different --ignore-unknown .",
       "web/:tsc --noEmit --pretty false",
       ":golangci-lint run --output.json.path=stdout --show-stats=false --path-mode=abs ./...",
     ]);
@@ -93,43 +93,58 @@ describe("code checks in devguard check", () => {
     await check({ tools, files: ["web/a.ts", "web/b.ts"], scope: { files: ["web/b.ts", "notes.md"], full: false } });
     expect(summary(calls)).toEqual([
       "web/:eslint --format json --no-warn-ignored b.ts",
-      "web/:prettier --list-different b.ts",
+      "web/:prettier --list-different --ignore-unknown b.ts",
       "web/:tsc --noEmit --pretty false",
     ]);
   });
 
-  it("formats the other files Prettier handles in a TypeScript component, as the whole-project run does (#43)", async () => {
+  it("hands every file of a TypeScript component to its linter and formatter, which skip what they don't handle (#55, #56)", async () => {
     const { tools, calls } = passingTools();
-    const files = ["web/b.ts", "web/package.json", "web/docs/a.md", "web/logo.png", "notes.md"];
+    const files = ["web/b.ts", "web/tool.mjs", "web/.prettierrc", "web/docs/a.md", "web/LICENSE", "notes.md", "x.go"];
     await check({ tools, files: ["web/b.ts"], scope: { files, full: false } });
+    const handed = "b.ts tool.mjs .prettierrc docs/a.md LICENSE";
     expect(summary(calls)).toEqual([
-      "web/:eslint --format json --no-warn-ignored b.ts",
-      "web/:prettier --list-different b.ts package.json docs/a.md",
+      `web/:eslint --format json --no-warn-ignored ${handed}`,
+      `web/:prettier --list-different --ignore-unknown ${handed}`,
       "web/:tsc --noEmit --pretty false",
+      ":golangci-lint run --output.json.path=stdout --show-stats=false --path-mode=abs .",
     ]);
   });
 
-  it("only formats when the given files are all non-source files: no lint, no type check (#43)", async () => {
+  it("lints and formats but does not type-check when the given files are all non-source files (#55, #56)", async () => {
     const { tools, calls } = passingTools();
-    await check({ tools, files: ["web/b.ts"], scope: { files: ["web/package.json"], full: false } });
-    expect(summary(calls)).toEqual(["web/:prettier --list-different package.json"]);
+    await check({ tools, files: ["web/b.ts"], scope: { files: ["web/tool.mjs", "web/package.json"], full: false } });
+    expect(summary(calls)).toEqual([
+      "web/:eslint --format json --no-warn-ignored tool.mjs package.json",
+      "web/:prettier --list-different --ignore-unknown tool.mjs package.json",
+    ]);
     const typecheckOnly = passingTools();
     const scope = { files: ["web/package.json"], only: "typecheck" as const, full: false };
     await check({ tools: typecheckOnly.tools, files: ["web/b.ts"], scope });
     expect(typecheckOnly.calls).toEqual([]);
   });
 
-  it("formats the files Biome handles when the component uses Biome (#43)", async () => {
+  it("hands every file to Biome when the component uses it, with unknown files ignored (#55, #56)", async () => {
     const { tools, calls } = passingTools();
     const biome =
       "standard: team@1.0.0\ncomponents:\n  - {path: web/, language: typescript, overrides: {lint.tool: biome}}\n";
-    const files = ["web/b.ts", "web/package.json", "web/README.md"];
+    const files = ["web/b.ts", "web/tool.mjs", "web/README.md", "web/LICENSE"];
     await check({ cwd: project(biome), tools, files: ["web/b.ts"], scope: { files, full: false } });
+    const flags = "--reporter=github --files-ignore-unknown=true --no-errors-on-unmatched";
     expect(summary(calls)).toEqual([
-      "web/:biome lint --reporter=github b.ts",
-      "web/:biome format --reporter=github b.ts package.json",
+      `web/:biome lint ${flags} b.ts tool.mjs README.md LICENSE`,
+      `web/:biome format ${flags} b.ts tool.mjs README.md LICENSE`,
       "web/:tsc --noEmit --pretty false",
     ]);
+  });
+
+  it("leaves a file to a nested component of another language when it is that component's source", async () => {
+    const { tools, calls } = passingTools();
+    const nested =
+      "standard: team@1.0.0\ncomponents:\n  - {path: web/, language: typescript}\n  - {path: web/api/, language: python}\n";
+    const scope = { files: ["web/api/app.py"], only: "lint" as const, full: false };
+    await check({ cwd: project(nested), tools, files: ["web/api/app.py"], scope });
+    expect(calls.map((c) => c.tool)).toEqual(["ruff"]);
   });
 
   it("runs only the category named by --only", async () => {
