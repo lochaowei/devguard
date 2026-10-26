@@ -66,6 +66,8 @@ command -v devguard >/dev/null 2>&1 || { echo 'devguard：找不到 CLI（devgua
 
 三個 hook 的行為見 [`hook`](Command-hook.md)。
 
+產生的 `.claude/` 檔案已經符合 Prettier 的格式（JSON 依宣告的 `format.printWidth` 決定陣列是否排成一行），用 Prettier 格式化也不會改變內容，不需要加進 `.prettierignore`。
+
 ---
 
 ## 輸出與 exit code
@@ -92,7 +94,9 @@ $ devguard install
 +paths:
 +  - "**/*.{ts,tsx,mts,cts}"
 +---
++
 +<!-- 由 CLI 產生（devguard），請勿手動修改；執行 devguard fix 重新產生 -->
++
 +# ./ (TypeScript) 的標準（team@1.0.0）
 …
 .claude/skills/standards-doctor/SKILL.md：新增，重新產生（由 CLI 產生）
@@ -119,7 +123,6 @@ $ devguard install --yes
 | `core.hooksPath = … ：pre-commit 在 core.hooksPath 有設定時拒絕安裝 hook` | 照訊息移除 `core.hooksPath`，再執行 `pre-commit install` 與 `pre-commit install --hook-type pre-push` |
 | `core.hooksPath 未設定，husky 的 hook 沒有安裝；請執行 npx husky` | husky 的 hook 要靠 `core.hooksPath` 生效。執行 `npx husky` |
 | 用 pre-commit 框架，`doctor` 仍說 hook 沒有安裝 | 框架設定中有項目還不夠，要執行 `pre-commit install`（以及 `--hook-type pre-push`）把 hook 寫進 hooks 目錄 |
-| `install` 之後 `check` 報 `.claude/…` 的 `prettier/format` | devguard 產生的 `.claude/` 檔案與 Prettier 格式不同。把 `.claude/` 加進 `.prettierignore`；不要用 Prettier 改寫它們，否則 `claude-code` 層會報不一致。追蹤：[#42](https://github.com/lochaowei/devguard/issues/42) |
 | commit 時出現 `devguard：找不到 CLI（devguard），已擋下這次 git commit` | `devguard.exe` 不在 PATH 上。照訊息安裝；緊急時可用 `git commit --no-verify` 暫時略過 |
 
 ---

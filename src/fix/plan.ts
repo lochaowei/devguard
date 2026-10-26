@@ -34,13 +34,18 @@ export interface ChangePlan {
 export const GENERATED_MARK = "由 CLI 產生";
 const HEADER_TEXT = `${GENERATED_MARK}（devguard），請勿手動修改；執行 devguard fix 重新產生`;
 
-/** Adds the "由 CLI 產生" header in the file's own comment syntax (after an XML declaration, shebang or front matter). */
+/**
+ * Adds the "由 CLI 產生" header in the file's own comment syntax (after an XML declaration, shebang or front matter).
+ * Markdown gets the blank lines Prettier puts around front matter and an HTML block, so formatting changes nothing.
+ */
 export function withGeneratedHeader(file: string, content: string): string {
   if (content.includes(GENERATED_MARK) || file.endsWith("maven.config")) return content;
   const xmlish = /\.(xml|md)$/.test(file);
   const header = xmlish ? `<!-- ${HEADER_TEXT} -->` : `# ${HEADER_TEXT}`;
   const lead = /^(<\?xml[^>]*\?>\r?\n|#![^\n]*\n|---\n[\s\S]*?\n---\n)/.exec(content)?.[0] ?? "";
-  return `${lead}${header}\n${content.slice(lead.length)}`;
+  const rest = content.slice(lead.length);
+  if (!file.endsWith(".md")) return `${lead}${header}\n${rest}`;
+  return `${lead}${lead === "" ? "" : "\n"}${header}\n\n${rest.replace(/^\n+/, "")}`;
 }
 
 const keyEdit = (r: Repair): r is Extract<Repair, KeyEdit> => r.op !== "generate" && r.op !== "snippet";
