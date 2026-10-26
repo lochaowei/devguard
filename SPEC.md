@@ -128,7 +128,7 @@ mirrors:
 - 一個元件 = 一個 `path` 加一個 `language`。同一個目錄有多種語言時，就寫成多個元件。
 - 每個檔案歸屬於**路徑前綴最長、而且語言和副檔名相符**的元件。
 - 沒有元件涵蓋的程式檔，**依副檔名推定語言**，套用該語言的預設標準（不含覆寫），並提示「建議在宣告中補上元件」。
-- 四種語言以外的檔案不在檢查範圍內。例外：指定檔案時（含 `--staged` 與各 hook，見 §7.1），TypeScript 元件內 formatter（Prettier 或 Biome）會處理的非原始碼檔案只做格式檢查。
+- 四種語言以外的檔案不在檢查範圍內。例外：指定檔案時（含 `--staged` 與各 hook，見 §7.1），TypeScript 元件內的非原始碼檔案交給該元件的 linter 與 formatter，由工具決定是否處理。
 
 ### 4.2 覆寫規則
 
@@ -344,7 +344,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 
 `devguard check --full` 與 CI 執行全部檢查。
 
-指定檔案時（檔案參數、`--staged`、pre-commit、Claude 的兩個 hook），formatter 會處理的非原始碼檔案（Prettier 的 `.json`、`.md`、`.yaml`、`.css`…，Biome 的 `.json`、`.css`…）也交給所屬的 TypeScript 元件做格式檢查，範圍與整個元件的檢查一致；只有這類檔案時不跑 lint 與型別檢查。
+指定檔案時（檔案參數、`--staged`、pre-commit、Claude 的兩個 hook、`fix --code`），TypeScript 元件內的非原始碼檔案（`.js`、`.mjs`、`.json`、`.md`、`.prettierrc`、`LICENSE` 等）也交給最深的 TypeScript 元件的 linter 與 formatter，由工具決定處理哪些：ESLint 用 `--no-warn-ignored`，Prettier 用 `--ignore-unknown`，Biome 用 `--files-ignore-unknown=true` 與 `--no-errors-on-unmatched`。工具設定的 ignore（`.prettierignore`、ESLint 的 `ignores`、Biome 的 `files`）照常生效；工具不處理的檔案不產生 finding，staged（stdin）時也一樣。因此回報的 lint 與格式問題，與整個元件的檢查對同一組檔案回報的相同。其他語言的原始碼仍歸各自的元件。型別檢查不變：只有元件內有原始碼檔案時才跑。
 
 ### 7.2 第一道：VS Code
 

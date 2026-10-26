@@ -270,7 +270,7 @@ describe("devguard fix --code", () => {
     const r = await run(["fix", "--code", "--cwd", dir, join(dir, "a.ts")]);
     expect(r.code).toBe(1);
     expect(r.out).toContain("[eslint/prefer-const]");
-    expect(r.out).toContain("prettier --write --log-level warn a.ts");
+    expect(r.out).toContain("prettier --write --ignore-unknown --log-level warn a.ts");
     expect(readFileSync(join(dir, "a.ts"), "utf8")).toBe(MESSY);
   });
 

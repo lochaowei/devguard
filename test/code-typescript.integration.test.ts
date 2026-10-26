@@ -84,6 +84,71 @@ describe("TypeScript code checks with the real tools", { timeout: 120_000 }, () 
     expect(await lintAndFormat("format")).toEqual(["prettier/format clean.ts:1"]);
   });
 
+  describe("files besides the TypeScript sources: the tools decide which they handle (#55, #56)", () => {
+    const others: Record<string, string> = {
+      "tool.mjs": "export const used = 1;\nconst unused = 2;\n",
+      ".babelrc": '{"presets":[]}\n',
+      ".editorconfig.yaml": "root:   true\n",
+      LICENSE: "MIT   License\n",
+      "notes.txt": "anything   goes\n",
+    };
+    const all = [".devguard.yaml", "package.json", ".prettierrc", "tsconfig.json", "eslint.config.js"];
+    const listed = [...all, "typed.ts", "messy.ts", "clean.ts", ...Object.keys(others)];
+    const lintAndFormat = (findings: Finding[]) =>
+      brief(findings.filter((f) => /^(eslint|prettier)\//.test(f.rule))).sort();
+    const run = (scope: CheckScope, stagedText?: (path: string) => Promise<string | undefined>) =>
+      runCheck(
+        {
+          cwd: dir,
+          today: TODAY,
+          listFiles: () => Promise.resolve(listed),
+          scope,
+          ...(stagedText ? { stagedText } : {}),
+        },
+        [declarationLayer, codeLayer],
+      ).then((r) => r.findings);
+
+    beforeAll(() => {
+      for (const [name, text] of Object.entries(others)) writeFileSync(join(dir, name), text);
+    });
+    afterAll(() => {
+      for (const name of Object.keys(others)) rmSync(join(dir, name), { force: true });
+    });
+
+    it("reports the same lint and format findings for the given files as the whole-component check", async () => {
+      const whole = lintAndFormat(await run({ full: true }));
+      expect(whole).toEqual(
+        [
+          "eslint/@typescript-eslint/no-unused-vars messy.ts:2",
+          "eslint/prefer-const messy.ts:2",
+          "eslint/@typescript-eslint/no-unused-vars tool.mjs:2",
+          "prettier/format messy.ts:2",
+          "prettier/format .babelrc:1",
+          "prettier/format .editorconfig.yaml:1",
+        ].sort(),
+      );
+      expect(lintAndFormat(await run({ files: listed, full: false }))).toEqual(whole);
+    });
+
+    it("checks the staged versions the same way, with nothing for the files no tool handles", async () => {
+      const staged = (path: string) =>
+        Promise.resolve(path in others || path === ".prettierrc" ? (others[path] ?? "printWidth:   120\n") : undefined);
+      const files = [...Object.keys(others), ".prettierrc"];
+      const findings = await run({ files, full: false }, staged);
+      expect(findings.filter((f) => f.rule === "code/tool-failed")).toEqual([]);
+      expect(lintAndFormat(findings)).toEqual(
+        [
+          "eslint/@typescript-eslint/no-unused-vars tool.mjs:2",
+          "prettier/format .babelrc:1",
+          "prettier/format .editorconfig.yaml:1",
+          "prettier/format .prettierrc:1",
+        ].sort(),
+      );
+      // Only non-source files are given: no type check.
+      expect(findings.filter((f) => f.rule.startsWith("tsc/"))).toEqual([]);
+    });
+  });
+
   it("checks only the given file and category", async () => {
     expect(brief(await check({ files: ["clean.ts"], full: false }))).toContain("tsc/TS2322 typed.ts:1");
     expect(await check({ files: ["clean.ts"], only: "lint", full: false })).toEqual([]);

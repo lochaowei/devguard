@@ -91,7 +91,7 @@ describe("devguard fix --code (SPEC §9.1, §9.3)", () => {
     const code = await runCodeFix({ cwd, today: TODAY, tools, listFiles, io });
     expect(fixCalls()).toEqual([
       ["eslint", "web/", ["--fix", "--no-warn-ignored", "."]],
-      ["prettier", "web/", ["--write", "--log-level", "warn", "."]],
+      ["prettier", "web/", ["--write", "--ignore-unknown", "--log-level", "warn", "."]],
     ]);
     const text = output();
     expect(text).toContain("已套用");
@@ -111,7 +111,7 @@ describe("devguard fix --code (SPEC §9.1, §9.3)", () => {
     expect(fixCalls()).toEqual([]);
     const text = output();
     expect(text).toContain("eslint --fix --no-warn-ignored .");
-    expect(text).toContain("prettier --write --log-level warn .");
+    expect(text).toContain("prettier --write --ignore-unknown --log-level warn .");
     expect(text).toContain("web/messy.ts:2  use const  [eslint/prefer-const]");
     expect(text).toContain("[prettier/format]");
     expect(text).not.toContain("eslint/no-unused-vars");
@@ -137,11 +137,11 @@ describe("devguard fix --code (SPEC §9.1, §9.3)", () => {
     await runCodeFix({ cwd: tsRepo(), today: TODAY, tools, listFiles, io, scope });
     expect(fixCalls()).toEqual([
       ["eslint", "web/", ["--fix", "--no-warn-ignored", "messy.ts"]],
-      ["prettier", "web/", ["--write", "--log-level", "warn", "messy.ts"]],
+      ["prettier", "web/", ["--write", "--ignore-unknown", "--log-level", "warn", "messy.ts"]],
     ]);
   });
 
-  it("formats given non-source files of a TypeScript component without lint-fixing them", async () => {
+  it("hands given non-source files of a TypeScript component to the lint fixer and the formatter (#55, #56)", async () => {
     const calls: ToolRequest[] = [];
     let formatted = false;
     const tools: ToolRunner = {
@@ -154,28 +154,38 @@ describe("devguard fix --code (SPEC §9.1, §9.3)", () => {
       },
     };
     const { io, output } = session({ yes: true });
-    const scope = { files: ["web/messy.ts", "web/package.json"], full: false };
+    const scope = { files: ["web/messy.ts", "web/tool.mjs", "web/package.json"], full: false };
     const cwd = repo({ ".devguard.yaml": decl("web", "typescript"), "web/package.json": '{"a":1}\n' });
     expect(await runCodeFix({ cwd, today: TODAY, tools, listFiles, io, scope })).toBe(0);
     const fixes = calls.filter((c) => c.args?.includes("--fix") || c.args?.includes("--write"));
+    const files = ["messy.ts", "tool.mjs", "package.json"];
     expect(fixes.map((c) => [c.tool, c.dir, c.args])).toEqual([
-      ["eslint", "web/", ["--fix", "--no-warn-ignored", "messy.ts"]],
-      ["prettier", "web/", ["--write", "--log-level", "warn", "messy.ts", "package.json"]],
+      ["eslint", "web/", ["--fix", "--no-warn-ignored", ...files]],
+      ["prettier", "web/", ["--write", "--ignore-unknown", "--log-level", "warn", ...files]],
     ]);
-    expect(output()).toContain("prettier --write --log-level warn messy.ts package.json");
+    expect(output()).toContain("prettier --write --ignore-unknown --log-level warn messy.ts tool.mjs package.json");
   });
 
-  it("previews no ESLint run when only non-source files are given", async () => {
+  it("lint-fixes a given .mjs file of a TypeScript component (#56)", async () => {
+    const calls: ToolRequest[] = [];
+    let fixed = false;
     const tools: ToolRunner = {
-      run: (req) =>
-        Promise.resolve({ code: req.args?.includes("--list-different") ? 1 : 0, stdout: "package.json\n", stderr: "" }),
+      run(req) {
+        calls.push(req);
+        if (req.args?.includes("--fix")) fixed = true;
+        const messages = fixed
+          ? []
+          : [{ ruleId: "prefer-const", severity: 2, message: "Use const.", line: 1, fix: {} }];
+        const stdout = req.tool === "eslint" ? JSON.stringify([{ filePath: "tool.mjs", messages }]) : "";
+        return Promise.resolve({ code: 0, stdout, stderr: "" });
+      },
     };
-    const { io, output } = session();
-    const scope = { files: ["web/package.json"], full: false };
-    const cwd = repo({ ".devguard.yaml": decl("web", "typescript"), "web/package.json": '{"a":1}\n' });
-    await runCodeFix({ cwd, today: TODAY, tools, listFiles, io, scope });
-    expect(output()).toContain("prettier --write --log-level warn package.json");
-    expect(output()).not.toContain("eslint");
+    const { io } = session({ yes: true });
+    const scope = { files: ["web/tool.mjs"], full: false };
+    const cwd = repo({ ".devguard.yaml": decl("web", "typescript"), "web/tool.mjs": "let a = 1;\nexport { a };\n" });
+    expect(await runCodeFix({ cwd, today: TODAY, tools, listFiles, io, scope })).toBe(0);
+    expect(calls.find((c) => c.args?.includes("--fix"))?.args).toEqual(["--fix", "--no-warn-ignored", "tool.mjs"]);
+    expect(calls.some((c) => c.tool === "tsc")).toBe(false);
   });
 
   it("runs no fixer when nothing is fixable, and reports the problems left", async () => {
@@ -312,8 +322,8 @@ describe("devguard fix --code (SPEC §9.1, §9.3)", () => {
           : {},
       );
       expect(result.fixes.map((f) => [f.tool, f.args])).toEqual([
-        ["biome", ["lint", "--write", "."]],
-        ["biome", ["format", "--write", "."]],
+        ["biome", ["lint", "--write", "--files-ignore-unknown=true", "--no-errors-on-unmatched", "."]],
+        ["biome", ["format", "--write", "--files-ignore-unknown=true", "--no-errors-on-unmatched", "."]],
       ]);
     });
   });

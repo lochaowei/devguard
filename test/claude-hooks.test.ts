@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -54,7 +54,8 @@ function fakeTools(dir: string) {
           }));
         return Promise.resolve({ code: found.length > 0 ? 1 : 0, stdout: JSON.stringify(found), stderr: "" });
       }
-      return Promise.resolve({ code: 0, stdout: req.stdin ?? "", stderr: "" });
+      const stdout = req.tool === "eslint" ? "[]" : (req.stdin ?? "");
+      return Promise.resolve({ code: 0, stdout, stderr: "" });
     },
   };
   return { tools, calls };
@@ -143,35 +144,48 @@ describe("devguard hook claude-post-edit (SPEC §7.3)", () => {
     expect(calls).toEqual([]);
   });
 
-  it("format-checks an edited non-source file of a TypeScript component, without linting it", async () => {
-    const { dir, write } = repo();
-    write(".devguard.yaml", `${DECL}  - path: ./web\n    language: typescript\n`);
-    write("web/package.json", '{"name":"x"}\n');
-    const calls: ToolRequest[] = [];
-    const tools: ToolRunner = {
-      run(req) {
-        calls.push(req);
-        const listing = req.args?.includes("--list-different") === true;
-        return Promise.resolve({ code: listing ? 1 : 0, stdout: listing ? "package.json\n" : "{}\n", stderr: "" });
-      },
-    };
-    let stdout = "";
-    await HOOK_HANDLERS["claude-post-edit"]?.({
-      cwd: dir,
-      today: TODAY,
-      tools,
-      write: () => undefined,
-      stdout: (t) => (stdout += t),
-      stdin: () => Promise.resolve(JSON.stringify(postEdit(dir, "web/package.json"))),
-    });
-    const json = JSON.parse(stdout) as { decision: string; reason: string };
-    expect(json.decision).toBe("block");
-    expect(json.reason).toContain("web/package.json:1");
-    expect(calls.map((c) => [c.tool, ...(c.args ?? [])])).toEqual([
-      ["prettier", "--list-different", "package.json"],
-      ["prettier", "package.json"],
-    ]);
-  });
+  describe(
+    "an edited file besides the sources of a TypeScript component, with the real tools (#55, #56)",
+    {
+      timeout: 120_000,
+    },
+    () => {
+      /** A TypeScript component in web/ that borrows this repo's node_modules; returns the hook's stdout. */
+      async function postEditReal(file: string, text: string) {
+        const { dir, write } = repo();
+        write(".devguard.yaml", `${DECL}  - path: ./web\n    language: typescript\n`);
+        write("web/eslint.config.js", 'export default [{ rules: { "no-unused-vars": "error" } }];\n');
+        write("web/package.json", '{ "type": "module" }\n');
+        write(`web/${file}`, text);
+        symlinkSync(join(import.meta.dirname, "..", "node_modules"), join(dir, "web", "node_modules"), "junction");
+        let stdout = "";
+        await HOOK_HANDLERS["claude-post-edit"]?.({
+          cwd: dir,
+          today: TODAY,
+          write: () => undefined,
+          stdout: (t) => (stdout += t),
+          stdin: () => Promise.resolve(JSON.stringify(postEdit(dir, `web/${file}`))),
+        });
+        return stdout;
+      }
+
+      it("lints and format-checks an edited .js file", async () => {
+        const stdout = await postEditReal("tool.js", "export const used = 1;\nconst   unused = 2;\n");
+        const json = JSON.parse(stdout) as { decision: string; reason: string };
+        expect(json.decision).toBe("block");
+        expect(json.reason).toContain("no-unused-vars");
+        expect(json.reason).toContain("prettier/format");
+      });
+
+      it("reports no ESLint finding for an edited .md file, only its format", async () => {
+        const stdout = await postEditReal("README.md", "#   web\n");
+        const json = JSON.parse(stdout) as { decision: string; reason: string };
+        expect(json.reason).toContain("prettier/format");
+        expect(json.reason).not.toContain("eslint");
+        expect(json.reason).not.toContain("tool-failed");
+      });
+    },
+  );
 
   it("ignores a file outside the project", async () => {
     const { dir } = repo();
@@ -240,14 +254,17 @@ describe("devguard hook claude-stop (SPEC §7.3)", () => {
     expect(json?.systemMessage).toContain("api/app.py");
   });
 
-  it("only format-checks a TypeScript component when just its non-source files changed", async () => {
+  it("does not type-check a TypeScript component when just its non-source files changed", async () => {
     const { dir, write } = repo();
     write(".devguard.yaml", `${DECL}  - path: ./web\n    language: typescript\n`);
     write("web/README.md", "# web\n");
     const { code, stdout, calls } = await runHook("claude-stop", dir, stop(dir, false));
     expect(code).toBe(0);
     expect(stdout).toBe("");
-    expect(calls.map((c) => [c.tool, ...(c.args ?? [])])).toEqual([["prettier", "--list-different", "README.md"]]);
+    expect(calls.map((c) => [c.tool, ...(c.args ?? [])])).toEqual([
+      ["eslint", "--format", "json", "--no-warn-ignored", "README.md"],
+      ["prettier", "--list-different", "--ignore-unknown", "README.md"],
+    ]);
   });
 
   it("prints nothing when nothing changed", async () => {

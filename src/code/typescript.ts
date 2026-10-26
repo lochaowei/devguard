@@ -68,12 +68,16 @@ async function prettierLine(target: CodeTarget, ctx: CodeCheckContext, file: str
   return firstDifferentLine(original, formatted.stdout);
 }
 
-/** `prettier --stdin-filepath` prints the staged version formatted; any difference is a format finding. */
+/**
+ * `prettier --stdin-filepath` prints the staged version formatted; any difference is a format finding. With
+ * `--ignore-unknown` it prints nothing for a file it has no parser for, and a file that is not blank never formats to
+ * nothing, so empty output for such a file means Prettier skipped it.
+ */
 async function formatStaged(target: CodeTarget, ctx: CodeCheckContext, file: string, text: string): Promise<Finding[]> {
   const request = { language: "typescript", tool: "prettier", dir: target.dir, stdin: text } as const;
-  const result = await ctx.tools.run({ ...request, args: ["--stdin-filepath", file] });
+  const result = await ctx.tools.run({ ...request, args: ["--ignore-unknown", "--stdin-filepath", file] });
   if (result.code !== 0) return [toolFailed(target, "prettier", result)];
-  if (result.stdout === text) return [];
+  if (result.stdout === text || (result.stdout === "" && text.trim() !== "")) return [];
   const at = { file: toRepoPath(ctx.cwd, target.dir, file), line: firstDifferentLine(text, result.stdout) };
   return [codeFinding(target, { rule: "prettier/format", message: "格式不符合 Prettier", ...at })];
 }
@@ -83,7 +87,7 @@ async function format(target: CodeTarget, ctx: CodeCheckContext): Promise<Findin
   const findings: Finding[] = [];
   const { staged, onDisk } = await splitStaged(target, ctx);
   for (const { file, text } of staged) findings.push(...(await formatStaged(target, ctx, file, text)));
-  for (const result of await runBatched(ctx.tools, request, ["--list-different"], onDisk)) {
+  for (const result of await runBatched(ctx.tools, request, ["--list-different", "--ignore-unknown"], onDisk)) {
     if (result.code > 1) {
       findings.push(toolFailed(target, "prettier", result));
       continue;
@@ -125,6 +129,12 @@ async function typecheck(target: CodeTarget, ctx: CodeCheckContext): Promise<Fin
   const findings = result.stdout.split(/\r?\n/).flatMap((line) => tscFinding(target, ctx, line) ?? []);
   return findings.length > 0 ? findings : [toolFailed(target, "tsc", result)];
 }
+
+/**
+ * Biome skips files it does not handle; without `--no-errors-on-unmatched` a batch of only such files exits 1
+ * ("No files were processed").
+ */
+const BIOME_UNKNOWN = ["--files-ignore-unknown=true", "--no-errors-on-unmatched"];
 
 /** `::error title=lint/x/y,file=src/a.ts,line=4,...::message` from `biome --reporter=github`. */
 const GITHUB_ANNOTATION = /^::(error|warning|notice) (.*?)::(.*)$/;
@@ -175,14 +185,16 @@ async function biomeStaged(
   { file, text }: { file: string; text: string },
 ): Promise<Finding[]> {
   const request = { language: "typescript", tool: "biome", dir: target.dir, stdin: text } as const;
+  // A file Biome does not handle comes back unchanged, exit 0.
+  const path = [`--stdin-file-path=${file}`, "--files-ignore-unknown=true"];
   if (command === "format") {
-    const result = await ctx.tools.run({ ...request, args: ["format", `--stdin-file-path=${file}`] });
+    const result = await ctx.tools.run({ ...request, args: ["format", ...path] });
     if (result.code !== 0) return [toolFailed(target, "biome", result)];
     if (result.stdout === text) return [];
     const at = { file: toRepoPath(ctx.cwd, target.dir, file), line: firstDifferentLine(text, result.stdout) };
     return [codeFinding(target, { rule: "biome/format", message: "格式不符合 Biome", ...at })];
   }
-  const result = await ctx.tools.run({ ...request, args: ["lint", "--reporter=github", `--stdin-file-path=${file}`] });
+  const result = await ctx.tools.run({ ...request, args: ["lint", "--reporter=github", ...path] });
   const findings = biomeAnnotations(target, ctx, `${result.stdout}\n${result.stderr}`, command, file);
   return findings.length === 0 && result.code !== 0 ? [toolFailed(target, "biome", result)] : findings;
 }
@@ -190,7 +202,7 @@ async function biomeStaged(
 async function biome(target: CodeTarget, ctx: CodeCheckContext, command: "lint" | "format"): Promise<Finding[]> {
   const request = { language: "typescript", tool: "biome", dir: target.dir } as const;
   const { staged, onDisk } = await splitStaged(target, ctx);
-  const results = await runBatched(ctx.tools, request, [command, "--reporter=github"], onDisk);
+  const results = await runBatched(ctx.tools, request, [command, "--reporter=github", ...BIOME_UNKNOWN], onDisk);
   const findings = results.flatMap((result) => {
     const found = biomeAnnotations(target, ctx, result.stdout, command);
     return found.length === 0 && result.code !== 0 ? [toolFailed(target, "biome", result)] : found;
@@ -199,44 +211,13 @@ async function biome(target: CodeTarget, ctx: CodeCheckContext, command: "lint" 
   return findings;
 }
 
-/** What Prettier formats by default besides TypeScript, so a file list matches `prettier --list-different .`. */
-const PRETTIER_ALSO = [
-  ".js",
-  ".jsx",
-  ".mjs",
-  ".cjs",
-  ".json",
-  ".jsonc",
-  ".json5",
-  ".md",
-  ".markdown",
-  ".mdx",
-  ".yaml",
-  ".yml",
-  ".css",
-  ".scss",
-  ".less",
-  ".html",
-  ".vue",
-  ".graphql",
-  ".gql",
-  ".hbs",
-  ".handlebars",
-];
-
-/** What `biome format` formats besides TypeScript. */
-const BIOME_ALSO = [".js", ".jsx", ".mjs", ".cjs", ".json", ".jsonc", ".css", ".graphql", ".gql"];
-
-/** The target as the formatter sees it: its files plus the ones only the formatter checks. */
-const formatTarget = (target: CodeTarget): CodeTarget =>
-  target.formatOnly === undefined ? target : { ...target, files: [...(target.files ?? []), ...target.formatOnly] };
-
 /** ESLint + Prettier (or Biome) and `tsc --noEmit`, run from the component's node_modules (SPEC §6.3). */
 export const typescriptChecker: CodeChecker = {
   language: "typescript",
   // ESLint, Prettier and Biome read the staged version from stdin; tsc reads the whole project from disk.
   workingTreeTools: (target) => (target.categories.has("typecheck") ? ["tsc"] : []),
-  formatsAlso: (effective) => (effective["lint.tool"] === "biome" ? BIOME_ALSO : PRETTIER_ALSO),
+  // `--no-warn-ignored`, `--ignore-unknown` and `--files-ignore-unknown=true` let the tools skip what they don't handle.
+  takesEveryFile: true,
   async check(target, ctx) {
     const findings: Finding[] = [];
     const useBiome = target.effective["lint.tool"] === "biome";
@@ -244,8 +225,7 @@ export const typescriptChecker: CodeChecker = {
       findings.push(...(await (useBiome ? biome(target, ctx, "lint") : lint(target, ctx))));
     }
     if (target.categories.has("format")) {
-      const formatted = formatTarget(target);
-      findings.push(...(await (useBiome ? biome(formatted, ctx, "format") : format(formatted, ctx))));
+      findings.push(...(await (useBiome ? biome(target, ctx, "format") : format(target, ctx))));
     }
     if (target.categories.has("typecheck")) findings.push(...(await typecheck(target, ctx)));
     return findings;
@@ -253,15 +233,13 @@ export const typescriptChecker: CodeChecker = {
   /** Lint fixes first, then the formatter, so the formatter has the last word on layout. */
   fixSteps(target) {
     const files = target.files ?? ["."];
-    const formatted = formatTarget(target).files ?? ["."];
     const biome = target.effective["lint.tool"] === "biome";
     const lintFix = biome
-      ? { tool: "biome", args: ["lint", "--write"], files, okUpTo: 1 }
+      ? { tool: "biome", args: ["lint", "--write", ...BIOME_UNKNOWN], files, okUpTo: 1 }
       : { tool: "eslint", args: ["--fix", "--no-warn-ignored"], files, okUpTo: 1 };
     const formatFix = biome
-      ? { tool: "biome", args: ["format", "--write"], files: formatted, okUpTo: 1 }
-      : { tool: "prettier", args: ["--write", "--log-level", "warn"], files: formatted, okUpTo: 0 };
-    // Only files the formatter checks were given: there is nothing to lint-fix.
-    return Promise.resolve(files.length > 0 ? [lintFix, formatFix] : [formatFix]);
+      ? { tool: "biome", args: ["format", "--write", ...BIOME_UNKNOWN], files, okUpTo: 1 }
+      : { tool: "prettier", args: ["--write", "--ignore-unknown", "--log-level", "warn"], files, okUpTo: 0 };
+    return Promise.resolve([lintFix, formatFix]);
   },
 };
