@@ -37,7 +37,7 @@ devguard doctor [--quiet] [--exit-zero] [--format text|json|sarif|vscode|claude]
 | 3 | Claude Code：`claude --version` 達到 `claude.minVersion`；`.git/devguard/claude-last-seen` 存在（SessionStart hook 至少執行過一次） | `claude-version`、`claude-missing`（提示）、`claude-never-ran` | 專案有 devguard 的 Claude Code 設定時 |
 | 4 | VS Code 擴充套件：用 `code --list-extensions` 檢查推薦的已安裝、不推薦的沒有安裝 | 全部是提示，不會讓 `doctor` 失敗：`vscode-extension-missing`、`vscode-extension-unwanted`、`vscode-cli-missing`、`vscode-cli-failed` | 宣告有元件時 |
 | 5 | Go 的使用者層級鏡像：`go env GOPROXY` 只指向內部鏡像，`GOSUMDB` 透過鏡像且不是 `off` | `go-proxy`、`gosumdb`、`gosumdb-off` | 有 Go 元件時 |
-| 6 | 鏡像帳密（`mirrors.auth: env`）：各工具需要的環境變數或 netrc / `gradle.properties` 是否存在。**只檢查有沒有，絕不讀取或印出值** | `mirrors/credentials-missing`、`mirrors/netrc-missing` | 宣告 `mirrors.auth: env` 時 |
+| 6 | 鏡像帳密（`mirrors.auth: env`）：各工具需要的環境變數（例如 uv 的 `UV_INDEX_NEXUS_*`、Poetry 的 `POETRY_HTTP_BASIC_NEXUS_*`）或 netrc / `gradle.properties` 是否存在。**只檢查有沒有，絕不讀取或印出值** | `mirrors/credentials-missing`、`mirrors/netrc-missing` | 宣告 `mirrors.auth: env` 時 |
 | 7 | npm audit 是否可用：對 npm 鏡像的 bulk advisory endpoint 送一次請求，不是 200 時提示 | `npm-audit-unavailable`（提示） | 有 TypeScript 元件開啟 `deps.vulnScan` 時 |
 
 這些檢查只檢查本機狀態並給出指令，不會修改使用者層級的設定（例如 `go env -w`）。

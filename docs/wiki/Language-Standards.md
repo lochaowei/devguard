@@ -65,6 +65,7 @@
 ### 執行方式
 
 - **工具執行器**：`uv run --no-sync <tool>`（鎖定版本讀取自 `uv.lock` 或 `poetry.lock`）。Poetry 專案（最近的 lockfile 是 `poetry.lock`）改為直接執行專案內 `.venv` 中的工具，需要 `poetry config virtualenvs.in-project true`；以下的 `uv run --no-sync` 對 Poetry 專案都換成 `.venv` 中的執行檔
+- **內部鏡像**：uv 專案在 `pyproject.toml` 設定 `[[tool.uv.index]]`（`name = "nexus"`、`default = true`）；Poetry 專案改為 `[[tool.poetry.source]]`（`name = "nexus"`、`url = <mirrors.pypi>`、`priority = "primary"`），帳密只透過 `POETRY_HTTP_BASIC_NEXUS_USERNAME` / `POETRY_HTTP_BASIC_NEXUS_PASSWORD` 提供。兩者都由 `devguard fix` 寫入，`standard upgrade --apply` 對 Poetry 專案執行 `poetry add --group dev`
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
   - `tools.ruff`：`>=0.17,<0.18`（`team@1.1.0`：`>=0.17,<1`）
   - `tools.mypy`：`>=1.18,<2`

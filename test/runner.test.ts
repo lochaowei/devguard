@@ -283,6 +283,35 @@ describe("tool runner: package-manager commands go through the internal mirror (
     ]);
   });
 
+  it("Python with Poetry: poetry, which reads the mirror from [[tool.poetry.source]], never uv (#53)", async () => {
+    const { runner, started } = fakeRunner({});
+    await runner.manage({
+      language: "python",
+      manager: "poetry",
+      dir: "api/",
+      args: ["add", "--group", "dev", "ruff>=0.18,<0.19"],
+    });
+    expect(started).toEqual([
+      { file: "poetry", args: ["add", "--group", "dev", "ruff>=0.18,<0.19"], cwd: "C:\\repo\\api" },
+    ]);
+  });
+
+  it("uv still refuses to run without a mirror", async () => {
+    const { runner, started } = fakeRunner({});
+    await expect(runner.manage({ language: "python", dir: "", args: ["add"] })).rejects.toThrow("內部鏡像");
+    expect(started).toEqual([]);
+  });
+
+  it("Python with Poetry: reports a missing poetry with an install hint instead of falling back to uv", async () => {
+    const enoent: Exec = () => Promise.reject(Object.assign(new Error("spawn poetry ENOENT"), { code: "ENOENT" }));
+    const { runner } = fakeRunner({}, { exec: enoent });
+    const request = { language: "python", manager: "poetry", dir: "", args: ["add"] } as const;
+    expect(await missing(runner.manage(request))).toEqual({
+      message: "找不到 poetry",
+      install: "scoop install poetry",
+    });
+  });
+
   it("TypeScript: npm from PATH with the mirror as its registry", async () => {
     const { runner, started } = fakeRunner({ "C:\\scoop\\shims\\npm.cmd": "" });
     await runner.manage({

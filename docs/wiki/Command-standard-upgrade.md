@@ -47,12 +47,13 @@ devguard standard upgrade [目標版本] [--apply] [--cwd <dir>]
 
 | 語言 | 指令 | 鏡像 |
 |---|---|---|
-| Python | `uv add --dev <套件><範圍>` | `mirrors.pypi` |
+| Python（uv） | `uv add --dev "<套件><範圍>"` | `mirrors.pypi`（以 `UV_DEFAULT_INDEX` 帶入） |
+| Python（Poetry，最近的 lockfile 是 `poetry.lock`） | `poetry add --group dev "<套件><範圍>"`（PEP 508 形式，例如 `"ruff>=0.18,<0.19"`）；找不到 `poetry` 時提示 `scoop install poetry`，不改用 uv | `pyproject.toml` 的 `[[tool.poetry.source]]`（不另外設定環境變數；預覽顯示 `（鏡像：<元件>/pyproject.toml 的 [[tool.poetry.source]] nexus）`） |
 | TypeScript | `npm install --save-dev <套件>@<範圍>` | `mirrors.npm` |
 | Go | `go get -tool <模組>@v<範圍下限>`（`go get` 只接受單一版本） | `mirrors.go`，並設定 `mirrors.gosumdb` |
 | Java、PATH 上的工具 | **不執行**，只印出要手動修改的地方，標示 `（請自行執行）` | — |
 
-同一個元件的多個套件合併成一條指令，在元件目錄中執行。
+同一個元件的多個套件合併成一條指令，在元件目錄中執行。預覽中 Python 指令含 `>`、`<`、`,` 或空白的引數加上雙引號，可以直接貼到 shell 執行；npm 與 go 的指令照原樣印出。
 
 ---
 

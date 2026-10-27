@@ -122,6 +122,18 @@ describe("doctor: mirror credentials are present, never read (SPEC §10.3)", () 
     expect(await doctor(mirrorCredentialsCheck, { ".devguard.yaml": decl("python", AUTH) }, { env })).toEqual([]);
   });
 
+  it("Python with Poetry: reports the missing POETRY_HTTP_BASIC_NEXUS_* variables instead (#53)", async () => {
+    const files = { ".devguard.yaml": decl("python", AUTH), "poetry.lock": "" };
+    const findings = await doctor(mirrorCredentialsCheck, files);
+    expect(rules(findings)).toEqual(["error:mirrors/credentials-missing"]);
+    expect(findings[0]?.message).toContain("POETRY_HTTP_BASIC_NEXUS_USERNAME");
+    expect(findings[0]?.message).toContain("POETRY_HTTP_BASIC_NEXUS_PASSWORD");
+    expect(findings[0]?.message).not.toContain("UV_INDEX");
+
+    const env = { POETRY_HTTP_BASIC_NEXUS_USERNAME: "alice", POETRY_HTTP_BASIC_NEXUS_PASSWORD: "top-secret-value" };
+    expect(await doctor(mirrorCredentialsCheck, files, { env })).toEqual([]);
+  });
+
   it("never prints a credential's value", async () => {
     const env = { UV_INDEX_NEXUS_USERNAME: "alice-secret", NEXUS_USERNAME: "bob-secret" };
     const findings = await doctor(mirrorCredentialsCheck, { ".devguard.yaml": decl("python", AUTH) }, { env });

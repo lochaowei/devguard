@@ -17,14 +17,10 @@ export interface CodeTarget {
   effective: Readonly<Record<string, unknown>>;
   /**
    * Files to check, relative to `dir`. Absent means the whole directory: file-level checks run on "." and
-   * type checks on the whole project. Type checks always cover the whole project (SPEC §7.1).
+   * type checks on the whole project. Type checks always cover the whole project (SPEC §7.1). For a checker that
+   * `takesEveryFile`, the list also holds the component's other files in scope; its tools skip what they do not handle.
    */
   files?: readonly string[];
-  /**
-   * Files relative to `dir` that only the formatter checks: the other files it handles (`.json`, `.md`…), when
-   * `files` lists files, so the file list covers what a whole-directory run would (#43).
-   */
-  formatOnly?: readonly string[];
   /** The categories to run; never empty. */
   categories: ReadonlySet<CodeCategory>;
 }
@@ -58,8 +54,11 @@ export interface CodeChecker {
    * other files on disk anyway): type checkers, golangci-lint, the Java build tools. The pre-commit hook prints them.
    */
   workingTreeTools(target: CodeTarget): string[];
-  /** Extensions the formatter also checks besides the language's sources (`.json`, `.md`…), for `formatOnly`. */
-  formatsAlso?(effective: CodeTarget["effective"]): readonly string[];
+  /**
+   * Its linter and formatter decide which files they handle, so a file list also gives them every other file of the
+   * component in scope (`.mjs`, `.prettierrc`, `LICENSE`…), as a whole-directory run would see them (#55, #56).
+   */
+  takesEveryFile?: true;
 }
 
 /** One tool run that changes files in place, for `devguard fix --code` (SPEC §9.1). */
