@@ -5,7 +5,11 @@
 _Avoid_: 規範文件、設定（「設定」專指落地後的工具設定檔）
 
 **預設標準 (Default Standard)**
-CLI 內建、每種語言一份的標準（例如 `team@1.0.0`）。專案沒有自訂時套用。
+CLI 內建的最新 `team` 版本（`defaultStandard()`，目前是 `team@1.1.0`），涵蓋每種語言。`devguard draft` 寫入它，沒有專案宣告時的程式碼檢查也以它為準。不是所有內建標準：`team@1.0.0` 與基線標準也內建，但只在專案宣告時套用。
+
+**基線標準 (Baseline Standard)**
+給既有（brownfield）專案先納管用的內建標準 `legacy@1.0.0`：以 `team@1.1.0` 為基礎，放寬覆蓋率、strict 型別檢查、複雜度、禁用套件與 Java 最低版本。只在專案宣告它時套用，之後以 `devguard standard upgrade` 升級到 `team@1.1.0`。
+_Avoid_: legacy 標準、寬鬆版
 
 **專案宣告 (Project Declaration)**
 專案中宣告「本專案採用哪些語言的標準、繼承預設並覆寫哪些項目」的檔案（`.devguard.yaml`）。專案的標準 = 預設標準 + 專案宣告中的覆寫。
