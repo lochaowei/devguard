@@ -11,6 +11,10 @@ import { nodeExec, type Exec } from "../src/process/exec.ts";
 import type { Finding } from "../src/report/finding.ts";
 import { ToolMissingError, type ToolRunner } from "../src/tools/runner.ts";
 import { rules, TODAY } from "./helpers.ts";
+import { isolateGit } from "./git-isolation.ts";
+
+// Real git runs here: keep it off any repo or config outside this file's temp directories.
+isolateGit();
 
 const dirs: string[] = [];
 afterEach(() => {
