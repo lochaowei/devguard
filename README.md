@@ -12,7 +12,7 @@
 
 ## 目前狀態
 
-**v0.1.0：SPEC 的指令都已實作**（`check`、`doctor`、`fix`、`install`、`hook`、`draft`、`standard upgrade`）。以 Bun 打包成單一 exe，透過 GitHub Release 發佈（見[安裝](#安裝)）。見下方[路線圖](#路線圖)與[已知限制](#已知限制)。
+**v0.2.0：SPEC 的指令都已實作**（`check`、`doctor`、`fix`、`install`、`hook`、`draft`、`standard upgrade`）。以 Bun 打包成單一 exe，透過 GitHub Release 發佈（見[安裝](#安裝)）。見下方[路線圖](#路線圖)與[已知限制](#已知限制)。
 
 - **專案宣告與草稿**：解析並檢查 `.devguard.yaml`（9 種標準項目類型、覆寫與偏離規則、到期日檢查、未涵蓋程式檔提示），以及依既有設定產生宣告草稿（`devguard draft`，含 Gradle、pnpm、yarn、Poetry、Biome、Jest、pyright 等工具選擇）。
 - **四語言設定檢查與一致性檢查**：Python（`pyproject.toml`、`ruff.toml`、`pyrightconfig.json`）、Go（`.golangci.yml` / `.golangci.yaml`、`go.mod`）、TypeScript（`tsconfig.json`、ESLint、Prettier、Biome、Vitest / Jest、`package.json`）、Java（`pom.xml`、`build.gradle(.kts)`、`checkstyle.xml`、PMD ruleset、`lombok.config`）與共通 `.gitattributes`（`* text=auto eol=lf`）。monorepo 的子元件沿用上層目錄的共用設定檔。

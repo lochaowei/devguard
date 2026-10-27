@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { localDate } from "../src/check.ts";
 import type { Interaction } from "../src/fix/interaction.ts";
-import { runCli } from "../src/main.ts";
+import { runCli, VERSION } from "../src/main.ts";
 import type { ToolRequest, ToolRunner } from "../src/tools/runner.ts";
 import { isolateGit } from "./git-isolation.ts";
 
@@ -221,7 +221,7 @@ describe("devguard check", () => {
   });
 
   it("prints the version and help", async () => {
-    expect((await run(["--version"])).out).toBe("devguard 0.1.0\n");
+    expect((await run(["--version"])).out).toBe(`devguard ${VERSION}\n`);
     expect((await run(["--help"])).code).toBe(0);
   });
 });
@@ -398,7 +398,7 @@ describe("devguard doctor", () => {
 
 describe("the real CLI process (end to end)", { timeout: 120_000 }, () => {
   it("prints the version, and exits 2 with the usage on bad arguments", () => {
-    expect(spawn(["--version"])).toMatchObject({ code: 0, out: "devguard 0.1.0\n" });
+    expect(spawn(["--version"])).toMatchObject({ code: 0, out: `devguard ${VERSION}\n` });
     const bad = spawn(["frobnicate"]);
     expect(bad.code).toBe(2);
     expect(bad.err).toContain("用法：devguard");

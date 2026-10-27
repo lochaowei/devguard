@@ -2,13 +2,14 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { meetsMinimum } from "../scripts/build-exe.ts";
 import { pathWithoutNode, runSmoke } from "../scripts/smoke-exe.ts";
+import { VERSION } from "../src/main.ts";
 
 const CLI = [process.execPath, join(import.meta.dirname, "..", "src", "cli.ts")];
 
 // runSmoke starts the real CLI several times; under a loaded machine that takes longer than Vitest's default 5 s.
 describe("runSmoke", { timeout: 30_000 }, () => {
   it("passes --version and check on a sample project for a working devguard", () => {
-    const results = runSmoke(CLI, "0.1.0");
+    const results = runSmoke(CLI, VERSION);
     expect(results.map((r) => [r.name, r.ok])).toEqual([
       ["--version", true],
       ["check（範例專案）", true],
@@ -19,11 +20,11 @@ describe("runSmoke", { timeout: 30_000 }, () => {
   it("fails when the executable reports another version", () => {
     const results = runSmoke(CLI, "9.9.9");
     expect(results[0]).toMatchObject({ name: "--version", ok: false });
-    expect(results[0]?.detail).toContain("devguard 0.1.0");
+    expect(results[0]?.detail).toContain(`devguard ${VERSION}`);
   });
 
   it("fails every step when the executable cannot start", () => {
-    const results = runSmoke([join(import.meta.dirname, "no-such.exe")], "0.1.0");
+    const results = runSmoke([join(import.meta.dirname, "no-such.exe")], VERSION);
     expect(results.every((r) => !r.ok)).toBe(true);
   });
 });

@@ -1,6 +1,6 @@
 {
   "name": "devguard",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Checks and fixes coding-standard setup across VS Code, Claude Code and git hooks",
   "type": "module",
