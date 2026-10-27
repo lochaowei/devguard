@@ -8,7 +8,7 @@ import { codeLayer } from "../layers/code.ts";
 import { declarationLayer } from "../layers/declaration.ts";
 import { depsLayer } from "../layers/deps.ts";
 import type { CheckLayer } from "../layers/types.ts";
-import { nodeExec, type Exec } from "../process/exec.ts";
+import { nodeExec, type EnvVars, type Exec } from "../process/exec.ts";
 import type { Finding } from "../report/finding.ts";
 import { exitCodeFor, renderText } from "../report/render.ts";
 import { assignFiles } from "../repo/files.ts";
@@ -23,7 +23,7 @@ export interface HookContext extends Omit<CheckOptions, "scope" | "listFiles" | 
   /** Where structured output goes (Claude Code reads the hook's stdout); defaults to `write`. */
   stdout?: (text: string) => void;
   /** The process environment (`DEVGUARD_PRE_PUSH`); defaults to the real one, tests pass their own. */
-  env?: Readonly<Record<string, string | undefined>>;
+  env?: EnvVars;
 }
 
 interface StagedEntry {
