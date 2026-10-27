@@ -4,9 +4,9 @@
 
 `team@1.1.0`（定義於 [`src/standard/team-1.1.0.ts`](../../src/standard/team-1.1.0.ts)）是 CLI 內建的最新版本，`devguard draft` 寫入、`doctor` 建議升級到的都是它。它沿用 `team@1.0.0` 的所有項目，只有以下差異（都是放寬，見 [SPEC §6](../../SPEC.md)）：
 
-- TypeScript 不再要求 `eslint-plugin-sonarjs`（見 [TypeScript](#3-typescript)）。
-- `java.minVersion` 從 `"17"` 降為 `"8"`（OpenJDK 仍在維護 Java 8）。Python、Node、Go 的最低版本已是上游仍支援的最舊版本，不變。
-- 工具版本範圍：`tools.ruff` `>=0.17,<1`、`tools.pyright` `>=1.1.400,<2`、`tools.vitest` `>=4.1,<6`、`tools.spotless-maven-plugin` `>=2.44,<4`、`tools.spotless-gradle-plugin` `>=7,<9`、`tools.checkstyle` `>=10.21,<15`。下限不低於上游仍在修補的版本線。
+- TypeScript 不再要求 `eslint-plugin-sonarjs`（見 [TypeScript](#3-typescript)）。因此 `team@1.1.0` 與 `legacy@1.0.0` 下，TypeScript 的 `complexity.cognitive` 只在使用 Biome 時強制；使用 ESLint 時只是參考值。
+- 語言最低版本不變：`java.minVersion` 維持 `"17"`（需要 Java 8 的既有專案改用 `legacy@1.0.0`）；Python、Node、Go 的最低版本已是上游仍支援的最舊版本。
+- 工具版本範圍（#36 於 2026-10-27 審視並訂定）：`tools.ruff` `>=0.17,<1`、`tools.pyright` `>=1.1.400,<2`、`tools.vitest` `>=4.1,<6`、`tools.spotless-maven-plugin` `>=2.44,<4`、`tools.spotless-gradle-plugin` `>=7,<9`、`tools.checkstyle` `>=10.21,<15`。下限不低於上游仍在修補的版本線。
 
 下文各語言的「工具版本範圍」列的是 `team@1.0.0` 的值，`team@1.1.0` 的差異標在括號中。
 
@@ -21,7 +21,7 @@
 | `typecheck.options` | `[]`（TypeScript） |
 | `complexity.cyclomatic` / `cognitive` | `20` / `25` |
 | `deps.banned` | 只保留 Python `pycrypto`、TypeScript `request`、Java `log4j:log4j`；Go 為空。JUnit 4（`junit:junit`）等不再禁用 |
-| `java.minVersion` | `"8"`，明確寫在 `legacy@1.0.0` 中，不繼承 `team@1.1.0` |
+| `java.minVersion` | `"8"`（`team@1.1.0` 是 `"17"`），讓 Java 8 的既有專案可以納管 |
 
 `devguard draft` 不會寫入 `legacy`，要使用時把草稿的 `standard` 改成 `legacy@1.0.0`。`doctor` 不會建議從 `legacy` 升級到 `team`（會收緊），也不會建議從 `team` 改用 `legacy`。
 
@@ -132,7 +132,7 @@
 | `format.printWidth` / `endOfLine` | `120` / `"lf"` | 風格項目（`.prettierrc` 或 `biome.json`） |
 | `typecheck.strict` | `true` | `tsconfig.json` 的 `compilerOptions.strict` |
 | `typecheck.options` | `["noUncheckedIndexedAccess", "noImplicitOverride", "noFallthroughCasesInSwitch"]` | `tsconfig.json` 額外嚴格選項 |
-| `complexity.cyclomatic` / `cognitive` | `10` / `15` | ESLint `complexity` / `sonarjs/cognitive-complexity`（或 Biome `noExcessiveCognitiveComplexity`）。`team@1.1.0` 起使用 ESLint 時只檢查 `complexity`，不檢查 `sonarjs/cognitive-complexity`；Biome 照舊 |
+| `complexity.cyclomatic` / `cognitive` | `10` / `15` | ESLint `complexity` / `sonarjs/cognitive-complexity`（或 Biome `noExcessiveCognitiveComplexity`）。`team@1.1.0` 起使用 ESLint 時只檢查 `complexity`，不檢查 `sonarjs/cognitive-complexity`，`cognitive` 只是參考值（`legacy@1.0.0` 相同）；Biome 照舊強制 |
 | `test.tool` | `"vitest"` | 允許替代：`jest` |
 | `coverage.lines` | `80` | `lines`、`branches`、`functions`、`statements` 四項皆須達 80%；必須設定 Vitest `coverage.include`（或 Jest `collectCoverageFrom`），沒有測試的檔案才會算進去 |
 | `deps.manager` | `"npm"` | 允許替代：`pnpm`、`yarn` |
@@ -167,7 +167,7 @@
 
 | 項目 | 預設值 | 允許替代 / 備註 |
 |---|---|---|
-| `java.minVersion` | `"17"`（`team@1.1.0`：`"8"`） | Maven `maven.compiler.release` 或 Gradle Java toolchain |
+| `java.minVersion` | `"17"`（`legacy@1.0.0`：`"8"`） | Maven `maven.compiler.release` 或 Gradle Java toolchain |
 | `build.tool` | `"maven"` | 允許替代：`gradle`；必須提交 `./mvnw` 或 `./gradlew` wrapper |
 | `format.tool` | `"palantir-java-format"` | 透過 Spotless 執行 |
 | `lint.tool` / `lint.rules` | `"checkstyle+pmd"` / `["google_checks", "pmd-quickstart"]` | CLI 產生並檢查 `checkstyle.xml` 與 `pmd-ruleset.xml` |

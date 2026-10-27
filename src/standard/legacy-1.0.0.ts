@@ -10,7 +10,7 @@ import type { ItemDef, ItemValue, Language, Standard } from "./types.ts";
  * - `complexity.cyclomatic` 20, `complexity.cognitive` 25.
  * - `deps.banned` keeps only packages with known, unfixed vulnerabilities: Python `pycrypto`, TypeScript `request`,
  *   Java `log4j:log4j` (1.x). JUnit 4 (`junit:junit`), `nose`, `moment`, `node-fetch` and the Go modules are allowed.
- * - `java.minVersion` 8, set here rather than inherited, so Java 8 projects are admitted whatever team@1.1.0 says.
+ * - `java.minVersion` 8 (team@1.1.0 keeps 17), so Java 8 projects can be admitted.
  *
  * Every other item is team@1.1.0's, so upgrading only tightens these. legacy is never the default: `draft` writes
  * team, and team never upgrades to legacy.

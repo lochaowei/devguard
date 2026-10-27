@@ -162,7 +162,7 @@ describe("team@1.1.0 admits the current Java tool releases (#36)", () => {
   });
 });
 
-describe("team@1.1.0 lowers java.minVersion to Java 8, which OpenJDK still maintains (#36)", () => {
+describe("team@1.1.0 keeps java.minVersion 17; Java 8 projects use legacy@1.0.0 (#36)", () => {
   const releaseFindings = async (standard: string, release: string) => {
     const { findings } = await runCheck(
       {
@@ -178,14 +178,14 @@ describe("team@1.1.0 lowers java.minVersion to Java 8, which OpenJDK still maint
     return findings.filter((f) => f.message.includes("maven.compiler.release")).map((f) => `${f.level}:${f.rule}`);
   };
 
-  it("accepts a project compiled for Java 8 (written 1.8 or 8), which team@1.0.0 rejects", async () => {
-    expect(await releaseFindings("team@1.0.0", "1.8")).toEqual(["error:settings/looser"]);
-    expect(await releaseFindings("team@1.1.0", "1.8")).toEqual([]);
-    expect(await releaseFindings("team@1.1.0", "8")).toEqual([]);
+  it("rejects a project compiled for Java 8 and accepts Java 17", async () => {
+    expect(await releaseFindings("team@1.1.0", "1.8")).toEqual(["error:settings/looser"]);
+    expect(await releaseFindings("team@1.1.0", "8")).toEqual(["error:settings/looser"]);
+    expect(await releaseFindings("team@1.1.0", "17")).toEqual([]);
   });
 
-  it("still rejects Java 7, which no OpenJDK update project maintains", async () => {
-    expect(await releaseFindings("team@1.1.0", "1.7")).toEqual(["error:settings/looser"]);
+  it("legacy@1.0.0 accepts the same Java 8 project", async () => {
+    expect(await releaseFindings("legacy@1.0.0", "1.8")).toEqual([]);
   });
 });
 
@@ -196,21 +196,22 @@ describe("standard upgrade to team@1.1.0 shows the widened items (#36)", () => {
     '      java.minVersion:\n        value: "8"\n        reason: "legacy customers"\n' +
     '      tools.checkstyle:\n        value: ">=10.21,<15"\n        reason: "Checkstyle 14"\n';
 
-  it("previews the new ranges and the overrides they make pointless", async () => {
+  it("previews the new ranges and the overrides they make pointless, but not java.minVersion", async () => {
     const dir = repo({ ".devguard.yaml": JAVA_ON_1_0_0 });
     const { out } = await upgrade(dir);
-    expect(out).toContain('Java｜Java 最低版本："17" → "8"');
+    expect(out).not.toContain("Java 最低版本");
+    expect(out).not.toContain("java.minVersion（與新預設相同）");
     expect(out).toContain('Java｜checkstyle 版本範圍：">=10.21,<11" → ">=10.21,<15"');
     expect(out).toContain('Java｜spotless-maven-plugin 版本範圍：">=2.44,<3" → ">=2.44,<4"');
-    expect(out).toContain("java.minVersion（與新預設相同）");
     expect(out).toContain("tools.checkstyle（與新預設相同）");
   });
 
-  it("--apply drops those overrides", async () => {
+  it("--apply drops the Checkstyle override and keeps the java.minVersion deviation", async () => {
     const dir = repo({ ".devguard.yaml": JAVA_ON_1_0_0 });
     expect((await upgrade(dir, true)).code).toBe(0);
     expect(read(dir, ".devguard.yaml")).toBe(
-      "standard: team@1.1.0\ncomponents:\n  - path: ./\n    language: java\n    overrides: {}\n",
+      "standard: team@1.1.0\ncomponents:\n  - path: ./\n    language: java\n    overrides:\n" +
+        '      java.minVersion:\n        value: "8"\n        reason: "legacy customers"\n',
     );
   });
 });

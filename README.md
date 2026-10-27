@@ -147,7 +147,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
    ```bash
    npm pkg set type=module "engines.node=>=22"
    npm i -D "typescript@>=6 <7" "eslint@>=10 <11" "typescript-eslint@>=8 <9" \
-     "prettier@>=3 <4" "vitest@>=5 <6" "@vitest/coverage-v8@>=5 <6"
+     "prettier@>=3 <4" "vitest@>=4.1 <6" "@vitest/coverage-v8@>=4.1 <6"
    # 若改用 Biome：npm i -D "@biomejs/biome@>=2 <3"
    # 若改用 Jest：npm i -D "jest@>=30 <31"
    ```
@@ -334,7 +334,7 @@ mirrors:
 
 `check` 會讀出各元件用依賴管理鎖定的工具版本（`uv.lock` / `poetry.lock`、`package-lock.json`、`go.mod` 的 `tool`、`pom.xml` / `build.gradle(.kts)` 中的 plugin 版本），超出標準的版本範圍（`tools.<工具>` 項目）就回報錯誤。golangci-lint 例外：從 PATH 呼叫 `golangci-lint --version` 核對。專案用 pre-commit 框架時，其他工具 hook 的 `rev` 與鎖定版本不同會給提示（SPEC §8）。
 
-> **待團隊訂定**：`team@1.0.0`（與沿用它的 `team@1.1.0`）中各工具的版本範圍、golangci-lint 與 Dependency-Check plugin 的指定版本目前都是**佔位值**（SPEC §12 第 5 項），發佈前必須換成團隊訂定的值。
+> `team@1.1.0` 的工具版本範圍（含 golangci-lint）已在 #36 審視並訂定（2026-10-27）。只有 `team@1.0.0` 保留原本的**佔位值**：它已發佈，不再修改（SPEC §12 第 5 項）。pom 沒有指定 Dependency-Check plugin 版本時 devguard 使用的版本仍是佔位值。
 
 ## 指令
 

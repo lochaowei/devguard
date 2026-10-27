@@ -273,9 +273,9 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 
 本節的表格是 `team@1.0.0`。`team@1.1.0`（minor，§5.5）沿用 `team@1.0.0` 的所有項目，只有以下差異：
 
-- TypeScript 不再要求 `eslint-plugin-sonarjs`（移除 `tools.eslint-plugin-sonarjs`，見 §6.3、§12 第 8 項）。使用 `eslint+prettier` 時只檢查 ESLint 內建的 `complexity`，不檢查 `sonarjs/cognitive-complexity`；使用 Biome 時 `complexity.cognitive` 仍以 `noExcessiveCognitiveComplexity` 檢查。
-- 放寬版本範圍（#36）。語言最低版本取上游在 2026-10-27 仍支援的最舊版本；工具版本範圍的下限不低於上游仍在修補的最舊版本線，已經是這個下限的就不改。
-  - `java.minVersion`：17 → **8**（OpenJDK jdk8u 仍在維護，Temurin 8 至少到 2030 年 12 月）。`python.minVersion` 3.11（3.10 已於 2026-10-01 EOL）、`node.minVersion` 22（20 已於 2026-04-30 EOL）、`go.minVersion` 1.26（1.25 在 1.27.0 發佈時結束支援）都已是仍受支援的最舊版本，不變。
+- TypeScript 不再要求 `eslint-plugin-sonarjs`（移除 `tools.eslint-plugin-sonarjs`，見 §6.3、§12 第 8 項）。使用 `eslint+prettier` 時只檢查 ESLint 內建的 `complexity`，不檢查 `sonarjs/cognitive-complexity`；使用 Biome 時 `complexity.cognitive` 仍以 `noExcessiveCognitiveComplexity` 檢查。因此在 `team@1.1.0` 與 `legacy@1.0.0` 下，TypeScript 的 `complexity.cognitive` 只在使用 Biome 時強制；使用 ESLint 時只是參考值，不會產生錯誤。
+- 放寬版本範圍（#36，2026-10-27 審視）。工具版本範圍的下限不低於上游仍在修補的最舊版本線，已經是這個下限的就不改。
+  - 語言最低版本不變：`java.minVersion` 維持 17（新專案的標準，主流框架如 Spring Boot 3 的最低需求；需要 Java 8 的既有專案改用 `legacy@1.0.0`，§6.5）。`python.minVersion` 3.11（3.10 已於 2026-10-01 EOL）、`node.minVersion` 22（20 已於 2026-04-30 EOL）、`go.minVersion` 1.26（1.25 在 1.27.0 發佈時結束支援）都已是仍受支援的最舊版本。
   - Python：`tools.ruff` `>=0.17,<1`、`tools.pyright` `>=1.1.400,<2`。
   - TypeScript：`tools.vitest` `>=4.1,<6`（Vitest 4.1 仍會收到安全性修正）。
   - Java：`tools.spotless-maven-plugin` `>=2.44,<4`、`tools.spotless-gradle-plugin` `>=7,<9`、`tools.checkstyle` `>=10.21,<15`。
@@ -327,7 +327,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | `lint.rules` | typescript-eslint `strictTypeChecked` | flat config |
 | `format.printWidth` / `endOfLine` | 120 / `lf`（風格） | Prettier |
 | `typecheck.strict` | `strict`，加上 `noUncheckedIndexedAccess`、`noImplicitOverride`、`noFallthroughCasesInSwitch` | `tsconfig.json`，用 `tsc --noEmit` 檢查 |
-| `complexity.cyclomatic` / `cognitive` | 10 / 15 | ESLint `complexity` / `eslint-plugin-sonarjs` 的 `cognitive-complexity`（**授權為 LGPL-3.0-only，見 §12**；`team@1.1.0` 起不再要求，ESLint 只檢查 `complexity`）；使用 Biome 時改開 `noExcessiveCognitiveComplexity` |
+| `complexity.cyclomatic` / `cognitive` | 10 / 15 | ESLint `complexity` / `eslint-plugin-sonarjs` 的 `cognitive-complexity`（**授權為 LGPL-3.0-only，見 §12**；`team@1.1.0` 起不再要求，ESLint 只檢查 `complexity`）；使用 Biome 時改開 `noExcessiveCognitiveComplexity`。`team@1.1.0` 與 `legacy@1.0.0` 下，`cognitive` 只在使用 Biome 時強制，使用 ESLint 時只是參考值 |
 | `test.tool` | `vitest`；允許替代工具 `jest` | — |
 | `coverage.lines` | lines、branches、functions、statements 都是 80；覆蓋率必須涵蓋元件所有的原始碼，不只被測試 import 的檔案 | `coverage.thresholds` / `coverageThreshold.global`；並且必須設定 `coverage.include` / `collectCoverageFrom`，否則為錯誤 |
 | `deps.manager` | `npm`；允許替代工具 `pnpm`、`yarn` | — |
@@ -363,7 +363,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | `typecheck.options` | `[]`（TypeScript） | |
 | `complexity.cyclomatic` / `cognitive` | 20 / 25 | Python 只有 `cyclomatic` |
 | `deps.banned` | Python `pycrypto`；TypeScript `request`；Java `log4j:log4j`；Go 無 | 只保留有已知且不會修正的弱點的套件。JUnit 4（`junit:junit`）、`nose`、`moment`、`node-fetch`、`github.com/pkg/errors`、`github.com/golang/protobuf` 不再禁用 |
-| `java.minVersion` | 8 | 明確寫在 `legacy@1.0.0` 中、不繼承 `team@1.1.0`，讓 Java 8 的既有專案可以納管 |
+| `java.minVersion` | 8 | `team@1.1.0` 是 17；`legacy@1.0.0` 明確寫為 8，讓 Java 8 的既有專案可以納管 |
 
 升級到 `team@1.1.0` 時，預覽會列出這些項目收緊後專案新出現的錯誤。
 
@@ -622,7 +622,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 2. §7.2 推薦的 VS Code 擴充套件，都能在公司內部 marketplace 取得。
 3. 開發者能從 GitHub Release 下載 devguard 的 exe（§3.1），並取得預設標準指定版本的 golangci-lint binary。
 4. 在 Nexus 上建立 `mirrors.gosumdb` raw proxy（指向 `https://sum.golang.org`，關閉 Strict Content Type Validation）。
-5. 訂出 `team@1.0.0` 中各工具的確切版本範圍，以及 golangci-lint 的指定版本。
+5. `team@1.1.0` 的工具版本範圍（含 golangci-lint）已在 #36 審視並訂定（2026-10-27）。只有 `team@1.0.0` 保留原本的佔位範圍：它已發佈，不再修改（§5.5）。
 6. 開發者的機器上有 Git for Windows（git hook 的 sh 依賴它）。
 7. 確認公司內部 marketplace 的類型。Microsoft 的私有 marketplace 需要 GitHub Enterprise，透過 `ExtensionGalleryServiceUrl` policy 設定；依原始碼推斷，`code --install-extension` 不會讀這個 policy（尚未實機確認）。
 8. **法務確認**：`eslint-plugin-sonarjs` 的授權是 LGPL-3.0-only。`team@1.1.0` 已不再要求它（§6）：使用 ESLint 的 TypeScript 專案只檢查循環複雜度，認知複雜度不檢查，devguard 自己也宣告 `team@1.1.0`。仍宣告 `team@1.0.0` 的專案照舊要求這個 plugin。
