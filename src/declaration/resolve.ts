@@ -3,6 +3,7 @@ import type { Finding, Level } from "../report/finding.ts";
 import { BUNDLED_STANDARDS, findStandard } from "../standard/registry.ts";
 import { LANGUAGE_LABEL, LANGUAGES, type ItemDef, type Language, type Standard } from "../standard/types.ts";
 import { compareToDefault, type Status } from "./compare.ts";
+import { coversDirectory } from "./ignore.ts";
 import { displayDir, normalizeDir } from "./path.ts";
 import type { Declaration, RawOverride } from "./types.ts";
 import { isRecord } from "../shared/guards.ts";
@@ -40,6 +41,8 @@ export interface Resolution {
   standard?: Standard;
   components: ResolvedComponent[];
   global: Record<string, EffectiveItem>;
+  /** The declaration's `ignore:` entries: files they match are left out of every file-based check. */
+  ignore: readonly string[];
   findings: Finding[];
 }
 
@@ -211,6 +214,27 @@ function isLanguage(v: string): v is Language {
   return (LANGUAGES as readonly string[]).includes(v);
 }
 
+/**
+ * `ignore:` leaves a component's files out of the file-based checks but never its tests or vulnerability scan (#35).
+ * An entry covering the component's whole directory therefore skips all its file checks, which is worth saying.
+ */
+function hintIgnoredComponent(
+  r: Resolver,
+  ignore: readonly string[],
+  dir: string,
+  name: string,
+  line: number | undefined,
+): void {
+  const entry = ignore.find((pattern) => coversDirectory(pattern, dir));
+  if (entry === undefined) return;
+  r.add(
+    "hint",
+    "declaration/ignored-component",
+    `${name}：ignore 的「${entry}」涵蓋整個元件目錄，這個元件的檔案檢查都會略過；測試與弱點掃描仍會執行`,
+    { line, component: name },
+  );
+}
+
 function hintStyleDrift(r: Resolver, standard: Standard, components: ResolvedComponent[]): void {
   for (const language of LANGUAGES) {
     const same = components.filter((c) => c.language === language);
@@ -237,7 +261,7 @@ export function resolveDeclaration(
 ): Resolution {
   const r = new Resolver(decl.file, today);
   const standard = checkStandardVersion(r, decl, today, bundled);
-  if (!standard) return { components: [], global: {}, findings: r.findings };
+  if (!standard) return { components: [], global: {}, ignore: decl.ignore, findings: r.findings };
 
   const seen = new Set<string>();
   const components: ResolvedComponent[] = [];
@@ -263,8 +287,9 @@ export function resolveDeclaration(
       name,
     );
     components.push({ dir, language: c.language, name, effective });
+    hintIgnoredComponent(r, decl.ignore, dir, name, c.line);
   }
   hintStyleDrift(r, standard, components);
   const global = r.applyOverrides(standard.global, decl.globalOverrides, "整體");
-  return { standard, components, global, findings: r.findings };
+  return { standard, components, global, ignore: decl.ignore, findings: r.findings };
 }

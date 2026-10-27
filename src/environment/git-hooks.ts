@@ -10,6 +10,7 @@ import {
   type HookFramework,
 } from "../hooks/frameworks.ts";
 import { hookFilePath, INSTALLED_HOOKS, installedHook, type InstalledHook } from "../hooks/install.ts";
+import { PRE_PUSH_ENV, prePushRunsTests } from "../hooks/pre-push.ts";
 import type { Exec } from "../process/exec.ts";
 import type { Finding } from "../report/finding.ts";
 import type { EnvironmentCheck } from "./types.ts";
@@ -92,8 +93,34 @@ function preCommitInstalledProblem(hook: GitHookName, installed: InstalledHook):
   return problem("framework-not-installed", message, PRE_COMMIT_INSTALL);
 }
 
+/**
+ * A pre-push problem while this developer's pushes do not run the tests (`DEVGUARD_PRE_PUSH` is not `full`, SPEC
+ * §7.4): nothing is lost until they opt in, so it is only a hint. doctor reads the variable from its own shell, which
+ * can differ from what `git push` sees (another terminal, an IDE or a GUI client), so the hint says so.
+ */
+function asHint(finding: Finding): Finding {
+  const message =
+    `${finding.message}（doctor 所在的 shell 沒有設定 ${PRE_PUSH_ENV}=full，push 時不跑測試，所以只列為提示；` +
+    "從其他終端機、IDE 或 GUI 執行時，git push 看到的環境變數可能不同）";
+  return { ...finding, level: "hint", message };
+}
+
 /** The hook framework's devguard entry for a hook (`frameworkEntry`); undefined when no framework is used. */
 export type FrameworkEntryProbe = (cwd: string, hook: GitHookName) => Promise<FrameworkEntry | undefined>;
+
+/** §7.4 step 2 for one hook: through the framework when one is used, otherwise the hook file. */
+async function hookProblem(
+  cwd: string,
+  hook: GitHookName,
+  entryFor: FrameworkEntryProbe,
+  exec: Exec,
+): Promise<Finding | undefined> {
+  const entry = await entryFor(cwd, hook);
+  if (!entry) return hookFileProblem(hook, await installedHook(cwd, hook, exec));
+  const found = frameworkProblem(hook, entry);
+  if (found || entry.framework !== "pre-commit") return found;
+  return preCommitInstalledProblem(hook, await installedHook(cwd, hook, exec));
+}
 
 export interface GitHooksCheckOptions {
   /** Defaults to `frameworkEntry` (src/hooks/frameworks.ts); tests pass a fake. */
@@ -105,7 +132,7 @@ export function createGitHooksCheck(options: GitHooksCheckOptions = {}): Environ
   const entryFor = options.framework ?? frameworkEntry;
   return {
     id: "git-hooks",
-    async run({ cwd, exec }) {
+    async run({ cwd, exec, env }) {
       const repo = await exec({ file: "git", args: ["rev-parse", "--git-dir"], cwd });
       if (repo.code !== 0) {
         return [problem("not-a-git-repo", `${cwd} 不是 git repo，無法安裝 git hook`, `git init，再執行 ${INSTALL}`)];
@@ -114,12 +141,8 @@ export function createGitHooksCheck(options: GitHooksCheckOptions = {}): Environ
       if (silenced) return [silenced];
       const findings: Finding[] = [];
       for (const hook of INSTALLED_HOOKS) {
-        const entry = await entryFor(cwd, hook);
-        let found = entry ? frameworkProblem(hook, entry) : hookFileProblem(hook, await installedHook(cwd, hook, exec));
-        if (!found && entry?.framework === "pre-commit") {
-          found = preCommitInstalledProblem(hook, await installedHook(cwd, hook, exec));
-        }
-        if (found) findings.push(found);
+        const found = await hookProblem(cwd, hook, entryFor, exec);
+        if (found) findings.push(hook === "pre-push" && !prePushRunsTests(env) ? asHint(found) : found);
       }
       return findings;
     },

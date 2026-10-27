@@ -1,6 +1,29 @@
-# 各語言預設標準（`team@1.0.0`）與檢查對照表
+# 各語言預設標準（`team@1.0.0`、`team@1.1.0`、`legacy@1.0.0`）與檢查對照表
 
 本文整理內建預設標準 `team@1.0.0`（定義於 [`src/standard/team-1.0.0.ts`](../../src/standard/team-1.0.0.ts)）在四種語言中的預設值、設定檢查項目、程式碼檢查執行方式，以及 `--full` 測試與覆蓋率檢查邏輯。
+
+`team@1.1.0`（定義於 [`src/standard/team-1.1.0.ts`](../../src/standard/team-1.1.0.ts)）是 CLI 內建的最新版本，`devguard draft` 寫入、`doctor` 建議升級到的都是它。它沿用 `team@1.0.0` 的所有項目，只有以下差異（都是放寬，見 [SPEC §6](../../SPEC.md)）：
+
+- TypeScript 不再要求 `eslint-plugin-sonarjs`（見 [TypeScript](#3-typescript)）。因此 `team@1.1.0` 與 `legacy@1.0.0` 下，TypeScript 的 `complexity.cognitive` 只在使用 Biome 時強制；使用 ESLint 時只是參考值。
+- 語言最低版本不變：`java.minVersion` 維持 `"17"`（需要 Java 8 的既有專案改用 `legacy@1.0.0`）；Python、Node、Go 的最低版本已是上游仍支援的最舊版本。
+- 工具版本範圍（#36 於 2026-10-27 審視並訂定）：`tools.ruff` `>=0.17,<1`、`tools.pyright` `>=1.1.400,<2`、`tools.vitest` `>=4.1,<6`、`tools.spotless-maven-plugin` `>=2.44,<4`、`tools.spotless-gradle-plugin` `>=7,<9`、`tools.checkstyle` `>=10.21,<15`。下限不低於上游仍在修補的版本線。
+
+下文各語言的「工具版本範圍」列的是 `team@1.0.0` 的值，`team@1.1.0` 的差異標在括號中。
+
+### 既有專案的基線標準 `legacy@1.0.0`
+
+`legacy@1.0.0`（定義於 [`src/standard/legacy-1.0.0.ts`](../../src/standard/legacy-1.0.0.ts)）給既有專案先納管用，不必為下列項目寫一堆 `reason`／`until` 偏離；之後以 [`devguard standard upgrade`](Command-standard-upgrade.md) 升級到 `team@1.1.0`。它沿用 `team@1.1.0` 的所有項目，只放寬（見 [SPEC §6.5](../../SPEC.md)）：
+
+| 項目 | `legacy@1.0.0` |
+|---|---|
+| `coverage.lines` | `0`：`--full` 仍執行測試，但不判定覆蓋率，也不要求覆蓋率設定（Vitest / Jest 門檻與 `include`、Python `branch = true`）或覆蓋率報告 |
+| `typecheck.strict` | `false`（TypeScript、Python） |
+| `typecheck.options` | `[]`（TypeScript） |
+| `complexity.cyclomatic` / `cognitive` | `20` / `25` |
+| `deps.banned` | 只保留 Python `pycrypto`、TypeScript `request`、Java `log4j:log4j`；Go 為空。JUnit 4（`junit:junit`）等不再禁用 |
+| `java.minVersion` | `"8"`（`team@1.1.0` 是 `"17"`），讓 Java 8 的既有專案可以納管 |
+
+`devguard draft` 不會寫入 `legacy`，要使用時把草稿的 `standard` 改成 `legacy@1.0.0`。`doctor` 不會建議從 `legacy` 升級到 `team`（會收緊），也不會建議從 `team` 改用 `legacy`。
 
 ---
 
@@ -10,7 +33,7 @@
 |---|---|---|---|
 | `complexity.cyclomatic` | `10` | `max` | 循環複雜度上限 |
 | `complexity.cognitive` | `15` | `max` | 認知複雜度上限（Python 不適用） |
-| `coverage.lines` | `80` | `min` | 覆蓋率門檻（%） |
+| `coverage.lines` | `80` | `min` | 覆蓋率門檻（%）；0 以下表示不設門檻：仍執行測試，但不判定覆蓋率、不要求覆蓋率設定 |
 | `deps.lockfile` | `true` | `bool` | 必須提交對應語言的 lockfile（或等效鎖定設定） |
 | `deps.vulnScan` | `false` | `bool` | 弱點掃描（進階項目，預設關閉） |
 | `deps.ignoredVulns` | `[]` | `ignoredVulns` | 忽略的弱點清單（每項需附 `reason` 與 `until`） |
@@ -44,9 +67,9 @@
 - **工具執行器**：`uv run --no-sync <tool>`（鎖定版本讀取自 `uv.lock` 或 `poetry.lock`）。Poetry 專案（最近的 lockfile 是 `poetry.lock`）改為直接執行專案內 `.venv` 中的工具，需要 `poetry config virtualenvs.in-project true`；以下的 `uv run --no-sync` 對 Poetry 專案都換成 `.venv` 中的執行檔
 - **內部鏡像**：uv 專案在 `pyproject.toml` 設定 `[[tool.uv.index]]`（`name = "nexus"`、`default = true`）；Poetry 專案改為 `[[tool.poetry.source]]`（`name = "nexus"`、`url = <mirrors.pypi>`、`priority = "primary"`），帳密只透過 `POETRY_HTTP_BASIC_NEXUS_USERNAME` / `POETRY_HTTP_BASIC_NEXUS_PASSWORD` 提供。兩者都由 `devguard fix` 寫入，`standard upgrade --apply` 對 Poetry 專案執行 `poetry add --group dev`
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
-  - `tools.ruff`：`>=0.17,<0.18`
+  - `tools.ruff`：`>=0.17,<0.18`（`team@1.1.0`：`>=0.17,<1`）
   - `tools.mypy`：`>=1.18,<2`
-  - `tools.pyright`：`>=1.1.400,<1.2`
+  - `tools.pyright`：`>=1.1.400,<1.2`（`team@1.1.0`：`>=1.1.400,<2`）
   - `tools.pytest`：`>=8,<10`
   - `tools.pytest-cov`：`>=6,<8`
 - **程式碼檢查（`code` 層）**：
@@ -110,7 +133,7 @@
 | `format.printWidth` / `endOfLine` | `120` / `"lf"` | 風格項目（`.prettierrc` 或 `biome.json`） |
 | `typecheck.strict` | `true` | `tsconfig.json` 的 `compilerOptions.strict` |
 | `typecheck.options` | `["noUncheckedIndexedAccess", "noImplicitOverride", "noFallthroughCasesInSwitch"]` | `tsconfig.json` 額外嚴格選項 |
-| `complexity.cyclomatic` / `cognitive` | `10` / `15` | ESLint `complexity` / `sonarjs/cognitive-complexity`（或 Biome `noExcessiveCognitiveComplexity`） |
+| `complexity.cyclomatic` / `cognitive` | `10` / `15` | ESLint `complexity` / `sonarjs/cognitive-complexity`（或 Biome `noExcessiveCognitiveComplexity`）。`team@1.1.0` 起使用 ESLint 時只檢查 `complexity`，不檢查 `sonarjs/cognitive-complexity`，`cognitive` 只是參考值（`legacy@1.0.0` 相同）；Biome 照舊強制 |
 | `test.tool` | `"vitest"` | 允許替代：`jest` |
 | `coverage.lines` | `80` | `lines`、`branches`、`functions`、`statements` 四項皆須達 80%；必須設定 Vitest `coverage.include`（或 Jest `collectCoverageFrom`），沒有測試的檔案才會算進去 |
 | `deps.manager` | `"npm"` | 允許替代：`pnpm`、`yarn` |
@@ -122,9 +145,9 @@
 
 - **工具執行器**：`node_modules/.bin/<tool>`（Windows 下 `.cmd` 自動透過 `cmd.exe /d /s /c` 啟動；鎖定版本讀取自 `package-lock.json`、`pnpm-lock.yaml` 或 `yarn.lock`）。
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
-  - `tools.eslint`：`>=10,<11`、`tools.prettier`：`>=3,<4`、`tools.typescript`：`>=6,<7`、`tools.typescript-eslint`：`>=8,<9`、`tools.eslint-plugin-sonarjs`：`>=3,<4`
+  - `tools.eslint`：`>=10,<11`、`tools.prettier`：`>=3,<4`、`tools.typescript`：`>=6,<7`、`tools.typescript-eslint`：`>=8,<9`、`tools.eslint-plugin-sonarjs`：`>=3,<4`（`team@1.1.0` 已移除這一項）
   - `tools.biome`（`@biomejs/biome`）：`>=2,<3`
-  - `tools.vitest`：`>=5,<6`、`tools.jest`：`>=30,<31`
+  - `tools.vitest`：`>=5,<6`（`team@1.1.0`：`>=4.1,<6`）、`tools.jest`：`>=30,<31`
 - **程式碼檢查（`code` 層）**：
   - `lint`：`eslint --format json`（或 `biome lint --reporter=json`；`--staged` 時透過 `--stdin` 讀取 staged 內容）
   - `format`：`prettier --list-different`（或 `biome format --reporter=json`；`--staged` 時透過 `--stdin-filepath` 讀取 staged 內容）
@@ -145,7 +168,7 @@
 
 | 項目 | 預設值 | 允許替代 / 備註 |
 |---|---|---|
-| `java.minVersion` | `"17"` | Maven `maven.compiler.release` 或 Gradle Java toolchain |
+| `java.minVersion` | `"17"`（`legacy@1.0.0`：`"8"`） | Maven `maven.compiler.release` 或 Gradle Java toolchain |
 | `build.tool` | `"maven"` | 允許替代：`gradle`；必須提交 `./mvnw` 或 `./gradlew` wrapper |
 | `format.tool` | `"palantir-java-format"` | 透過 Spotless 執行 |
 | `lint.tool` / `lint.rules` | `"checkstyle+pmd"` / `["google_checks", "pmd-quickstart"]` | CLI 產生並檢查 `checkstyle.xml` 與 `pmd-ruleset.xml` |
@@ -160,8 +183,8 @@
 
 - **工具執行器**：元件目錄或上層目錄的 `./mvnw`（`mvnw.cmd`）或 `./gradlew`（`gradlew.bat`）。
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
-  - Maven plugins：`maven-checkstyle-plugin`（`>=3.6,<4`）、`maven-pmd-plugin`（`>=3.26,<4`）、`spotless-maven-plugin`（`>=2.44,<3`）、`jacoco-maven-plugin`（`>=0.8.12,<0.9`）、`maven-enforcer-plugin`（`>=3.5,<4`）
-  - Gradle plugin 與 `toolVersion`：`spotless-gradle-plugin` / `com.diffplug.spotless`（`>=7,<8`）、`checkstyle`（`>=10.21,<11`）、`pmd`（`>=7,<8`）、`jacoco`（`>=0.8.12,<0.9`）
+  - Maven plugins：`maven-checkstyle-plugin`（`>=3.6,<4`）、`maven-pmd-plugin`（`>=3.26,<4`）、`spotless-maven-plugin`（`>=2.44,<3`；`team@1.1.0`：`>=2.44,<4`）、`jacoco-maven-plugin`（`>=0.8.12,<0.9`）、`maven-enforcer-plugin`（`>=3.5,<4`）
+  - Gradle plugin 與 `toolVersion`：`spotless-gradle-plugin` / `com.diffplug.spotless`（`>=7,<8`；`team@1.1.0`：`>=7,<9`）、`checkstyle`（`>=10.21,<11`；`team@1.1.0`：`>=10.21,<15`）、`pmd`（`>=7,<8`）、`jacoco`（`>=0.8.12,<0.9`）
 - **程式碼檢查（`code` 層）**：
   - `format`：`mvnw -B -ntp spotless:check`（或 Gradle `spotlessCheck --console=plain -q`）
   - `lint`：`mvnw -B -ntp checkstyle:check pmd:check -Dcheckstyle.failOnViolation=false -Dpmd.failOnViolation=false`（或 Gradle `checkstyleMain checkstyleTest pmdMain pmdTest --continue --console=plain -q`），解析產生的 Checkstyle（`target/checkstyle-result.xml` 或 `build/reports/checkstyle/*.xml`）與 PMD（`target/pmd.xml` 或 `build/reports/pmd/*.xml`）XML 報告。

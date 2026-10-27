@@ -68,6 +68,31 @@ describe("parseDeclaration", () => {
     expect(declaration?.components.map((c) => c.path)).toEqual(["web/"]);
   });
 
+  it("reads a top-level ignore list of paths and globs", () => {
+    const { declaration, findings } = parseDeclaration(
+      "standard: team@1.0.0\ncomponents: []\nignore:\n  - examples/\n  - '**/*.gen.ts'\n",
+      "f",
+    );
+    expect(findings).toEqual([]);
+    expect(declaration?.ignore).toEqual(["examples/", "**/*.gen.ts"]);
+  });
+
+  it("defaults ignore to an empty list", () => {
+    expect(parseDeclaration("standard: team@1.0.0\ncomponents: []\n", "f").declaration?.ignore).toEqual([]);
+  });
+
+  it.each([
+    ["a string", "ignore: examples/\n", 3],
+    ["a mapping", "ignore: {examples: true}\n", 3],
+    ["a list with a non-string", "ignore:\n  - examples/\n  - 3\n", 5],
+    ["a list with an empty string", "ignore:\n  - ''\n", 4],
+  ])("reports declaration/invalid when ignore is %s", (_, yaml, line) => {
+    const { declaration, findings } = parseDeclaration(`standard: team@1.0.0\ncomponents: []\n${yaml}`, "f");
+    expect(rules(findings)).toEqual(["error:declaration/invalid"]);
+    expect(findings[0]?.line).toBe(line);
+    expect(declaration?.ignore).toEqual([]);
+  });
+
   it("requires components to be a list", () => {
     expect(rules(parseDeclaration("standard: team@1.0.0\n", "f").findings)).toEqual(["error:declaration/shape"]);
     expect(parseDeclaration("standard: team@1.0.0\ncomponents: {}\n", "f").findings[0]?.message).toBe(

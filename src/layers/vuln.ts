@@ -7,7 +7,7 @@ import { assignFiles } from "../repo/files.ts";
 import { ignoredInForce, judgeVulns } from "../vuln/judge.ts";
 import { VULN_SCANNERS } from "../vuln/registry.ts";
 import type { VulnTarget } from "../vuln/types.ts";
-import { scopedFiles, type CheckLayer, type LayerContext } from "./types.ts";
+import { filesInScope, type CheckLayer, type LayerContext } from "./types.ts";
 
 function toTarget(ctx: LayerContext, component: ResolvedComponent): VulnTarget {
   const global = Object.fromEntries(Object.entries(ctx.resolution?.global ?? {}).map(([k, i]) => [k, i.value]));
@@ -24,7 +24,7 @@ function toTarget(ctx: LayerContext, component: ResolvedComponent): VulnTarget {
 /** Components with `deps.vulnScan: true` that own at least one of the files in scope. */
 async function componentsToScan(ctx: LayerContext): Promise<ResolvedComponent[]> {
   const components = (ctx.resolution?.components ?? []).filter((c) => c.effective["deps.vulnScan"]?.value === true);
-  const owned = assignFiles(components, await scopedFiles(ctx));
+  const owned = assignFiles(components, await filesInScope(ctx));
   const dirs = new Set(owned.flatMap((o) => (o.owner.kind === "component" ? [o.owner.component] : [])));
   return components.filter((c) => dirs.has(c));
 }

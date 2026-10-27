@@ -1,0 +1,1362 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`derived standards keep their items > legacy@1.0.0 1`] = `
+{
+  "global": {
+    "claude.minVersion": {
+      "kind": "minVersion",
+      "label": "Claude Code 最低版本",
+      "value": "2.1.295",
+    },
+    "mirrors.auth": {
+      "allowed": [
+        "none",
+        "env",
+      ],
+      "kind": "choice",
+      "label": "鏡像帳密模式",
+      "value": "none",
+    },
+    "mirrors.go": {
+      "kind": "mirror",
+      "label": "Go 鏡像",
+      "value": "https://nexus.example.internal/repository/go-proxy/",
+    },
+    "mirrors.gosumdb": {
+      "kind": "mirror",
+      "label": "Go checksum 資料庫鏡像",
+      "value": "https://nexus.example.internal/repository/go-sumdb-proxy/",
+    },
+    "mirrors.govulndb": {
+      "kind": "mirror",
+      "label": "Go 弱點資料庫鏡像",
+      "value": "https://nexus.example.internal/repository/go-vulndb-proxy/",
+    },
+    "mirrors.maven": {
+      "kind": "mirror",
+      "label": "Maven 鏡像",
+      "value": "https://nexus.example.internal/repository/maven-public/",
+    },
+    "mirrors.npm": {
+      "kind": "mirror",
+      "label": "npm 鏡像",
+      "value": "https://nexus.example.internal/repository/npm-proxy/",
+    },
+    "mirrors.nvd": {
+      "kind": "mirror",
+      "label": "NVD 資料鏡像（Dependency-Check）",
+      "value": "https://nexus.example.internal/repository/nvd-mirror/",
+    },
+    "mirrors.osv": {
+      "kind": "mirror",
+      "label": "OSV 相容弱點查詢端點（pip-audit）",
+      "value": "https://osv.example.internal/v1/query",
+    },
+    "mirrors.pypi": {
+      "kind": "mirror",
+      "label": "PyPI 鏡像",
+      "value": "https://nexus.example.internal/repository/pypi-proxy/simple",
+    },
+    "mirrors.tools": {
+      "kind": "mirror",
+      "label": "工具 binary 來源",
+      "value": "https://nexus.example.internal/repository/raw-tools/",
+    },
+    "mirrors.vscode": {
+      "kind": "mirror",
+      "label": "VS Code 內部 marketplace",
+      "value": "https://vsmarketplace.example.internal",
+    },
+  },
+  "languages": {
+    "go": {
+      "complexity.cognitive": {
+        "kind": "max",
+        "label": "認知複雜度上限",
+        "value": 25,
+      },
+      "complexity.cyclomatic": {
+        "kind": "max",
+        "label": "循環複雜度上限",
+        "value": 20,
+      },
+      "coverage.lines": {
+        "kind": "min",
+        "label": "覆蓋率門檻 (%)",
+        "value": 0,
+      },
+      "deps.banned": {
+        "kind": "list",
+        "label": "禁用模組",
+        "value": [],
+      },
+      "deps.bannedApis": {
+        "kind": "list",
+        "label": "禁用套件 import",
+        "value": [
+          "io/ioutil",
+        ],
+      },
+      "deps.ignoredVulns": {
+        "kind": "ignoredVulns",
+        "label": "忽略的弱點",
+        "value": [],
+      },
+      "deps.lockfile": {
+        "kind": "bool",
+        "label": "必須有 lockfile",
+        "value": true,
+      },
+      "deps.vulnFailOn": {
+        "kind": "severity",
+        "label": "弱點掃描門檻",
+        "value": "any",
+      },
+      "deps.vulnScan": {
+        "kind": "bool",
+        "label": "弱點掃描（進階）",
+        "value": false,
+      },
+      "format.tools": {
+        "kind": "style",
+        "label": "格式化工具",
+        "value": [
+          "gofumpt",
+          "goimports",
+        ],
+      },
+      "go.minVersion": {
+        "kind": "minVersion",
+        "label": "Go 最低版本",
+        "value": "1.26",
+      },
+      "lint.rules": {
+        "kind": "list",
+        "label": "golangci-lint linters",
+        "value": [
+          "errcheck",
+          "govet",
+          "ineffassign",
+          "staticcheck",
+          "unused",
+          "gosec",
+          "revive",
+          "errorlint",
+          "bodyclose",
+          "misspell",
+          "cyclop",
+          "gocognit",
+          "gomodguard_v2",
+          "depguard",
+        ],
+      },
+      "lint.tool": {
+        "allowed": [
+          "golangci-lint",
+        ],
+        "kind": "choice",
+        "label": "Lint 工具",
+        "value": "golangci-lint",
+      },
+      "tools.gofumpt": {
+        "kind": "versionRange",
+        "label": "gofumpt 版本範圍",
+        "pinnedAs": [
+          "mvdan.cc/gofumpt",
+        ],
+        "value": ">=0.9,<1",
+      },
+      "tools.goimports": {
+        "kind": "versionRange",
+        "label": "goimports 版本範圍",
+        "pinnedAs": [
+          "golang.org/x/tools/cmd/goimports",
+        ],
+        "value": ">=0.38,<1",
+      },
+      "tools.golangci-lint": {
+        "kind": "versionRange",
+        "label": "golangci-lint 版本範圍",
+        "onPath": true,
+        "pinnedAs": [],
+        "value": ">=2.12,<3",
+      },
+      "tools.govulncheck": {
+        "kind": "versionRange",
+        "label": "govulncheck 版本範圍",
+        "pinnedAs": [
+          "golang.org/x/vuln/cmd/govulncheck",
+        ],
+        "value": ">=1.1,<2",
+      },
+    },
+    "java": {
+      "build.tool": {
+        "allowed": [
+          "maven",
+          "gradle",
+        ],
+        "kind": "choice",
+        "label": "建置工具",
+        "value": "maven",
+      },
+      "complexity.cognitive": {
+        "kind": "max",
+        "label": "認知複雜度上限",
+        "value": 25,
+      },
+      "complexity.cyclomatic": {
+        "kind": "max",
+        "label": "循環複雜度上限",
+        "value": 20,
+      },
+      "coverage.lines": {
+        "kind": "min",
+        "label": "覆蓋率門檻 (%)",
+        "value": 0,
+      },
+      "deps.banned": {
+        "kind": "list",
+        "label": "禁用套件",
+        "value": [
+          "log4j:log4j",
+        ],
+      },
+      "deps.bannedApis": {
+        "kind": "list",
+        "label": "禁用 API",
+        "value": [
+          "sun.*",
+        ],
+      },
+      "deps.ignoredVulns": {
+        "kind": "ignoredVulns",
+        "label": "忽略的弱點",
+        "value": [],
+      },
+      "deps.lockfile": {
+        "kind": "bool",
+        "label": "必須有 lockfile",
+        "value": true,
+      },
+      "deps.vulnFailOn": {
+        "kind": "severity",
+        "label": "弱點掃描門檻",
+        "value": "high",
+      },
+      "deps.vulnScan": {
+        "kind": "bool",
+        "label": "弱點掃描（進階）",
+        "value": false,
+      },
+      "format.tool": {
+        "kind": "style",
+        "label": "格式化工具",
+        "value": "palantir-java-format",
+      },
+      "java.minVersion": {
+        "kind": "minVersion",
+        "label": "Java 最低版本",
+        "value": "8",
+      },
+      "lint.rules": {
+        "kind": "list",
+        "label": "規則集",
+        "value": [
+          "google_checks",
+          "pmd-quickstart",
+        ],
+      },
+      "lint.tool": {
+        "allowed": [
+          "checkstyle+pmd",
+        ],
+        "kind": "choice",
+        "label": "靜態分析工具",
+        "value": "checkstyle+pmd",
+      },
+      "test.tool": {
+        "allowed": [
+          "junit5",
+        ],
+        "kind": "choice",
+        "label": "測試框架",
+        "value": "junit5",
+      },
+      "tools.checkstyle": {
+        "kind": "versionRange",
+        "label": "checkstyle 版本範圍",
+        "pinnedAs": [
+          "checkstyle",
+        ],
+        "value": ">=10.21,<15",
+      },
+      "tools.jacoco": {
+        "kind": "versionRange",
+        "label": "jacoco 版本範圍",
+        "pinnedAs": [
+          "jacoco",
+        ],
+        "value": ">=0.8.12,<0.9",
+      },
+      "tools.jacoco-maven-plugin": {
+        "kind": "versionRange",
+        "label": "jacoco-maven-plugin 版本範圍",
+        "pinnedAs": [
+          "jacoco-maven-plugin",
+        ],
+        "value": ">=0.8.12,<0.9",
+      },
+      "tools.maven-checkstyle-plugin": {
+        "kind": "versionRange",
+        "label": "maven-checkstyle-plugin 版本範圍",
+        "pinnedAs": [
+          "maven-checkstyle-plugin",
+        ],
+        "value": ">=3.6,<4",
+      },
+      "tools.maven-enforcer-plugin": {
+        "kind": "versionRange",
+        "label": "maven-enforcer-plugin 版本範圍",
+        "pinnedAs": [
+          "maven-enforcer-plugin",
+        ],
+        "value": ">=3.5,<4",
+      },
+      "tools.maven-pmd-plugin": {
+        "kind": "versionRange",
+        "label": "maven-pmd-plugin 版本範圍",
+        "pinnedAs": [
+          "maven-pmd-plugin",
+        ],
+        "value": ">=3.26,<4",
+      },
+      "tools.pmd": {
+        "kind": "versionRange",
+        "label": "pmd 版本範圍",
+        "pinnedAs": [
+          "pmd",
+        ],
+        "value": ">=7,<8",
+      },
+      "tools.spotless-gradle-plugin": {
+        "kind": "versionRange",
+        "label": "spotless-gradle-plugin 版本範圍",
+        "pinnedAs": [
+          "com.diffplug.spotless",
+        ],
+        "value": ">=7,<9",
+      },
+      "tools.spotless-maven-plugin": {
+        "kind": "versionRange",
+        "label": "spotless-maven-plugin 版本範圍",
+        "pinnedAs": [
+          "spotless-maven-plugin",
+        ],
+        "value": ">=2.44,<4",
+      },
+    },
+    "python": {
+      "complexity.cyclomatic": {
+        "kind": "max",
+        "label": "循環複雜度上限",
+        "value": 20,
+      },
+      "coverage.lines": {
+        "kind": "min",
+        "label": "覆蓋率門檻 (%)",
+        "value": 0,
+      },
+      "deps.banned": {
+        "kind": "list",
+        "label": "禁用套件",
+        "value": [
+          "pycrypto",
+        ],
+      },
+      "deps.bannedApis": {
+        "kind": "list",
+        "label": "禁用 API",
+        "value": [],
+      },
+      "deps.ignoredVulns": {
+        "kind": "ignoredVulns",
+        "label": "忽略的弱點",
+        "value": [],
+      },
+      "deps.lockfile": {
+        "kind": "bool",
+        "label": "必須有 lockfile",
+        "value": true,
+      },
+      "deps.manager": {
+        "allowed": [
+          "uv",
+          "poetry",
+        ],
+        "kind": "choice",
+        "label": "套件管理工具",
+        "value": "uv",
+      },
+      "deps.vulnFailOn": {
+        "kind": "severity",
+        "label": "弱點掃描門檻",
+        "value": "any",
+      },
+      "deps.vulnScan": {
+        "kind": "bool",
+        "label": "弱點掃描（進階）",
+        "value": false,
+      },
+      "format.lineLength": {
+        "kind": "style",
+        "label": "行寬",
+        "value": 120,
+      },
+      "lint.rules": {
+        "kind": "list",
+        "label": "Ruff 規則組",
+        "value": [
+          "E",
+          "W",
+          "F",
+          "I",
+          "B",
+          "UP",
+          "C90",
+          "SIM",
+          "N",
+          "S",
+          "TID",
+        ],
+      },
+      "lint.tool": {
+        "allowed": [
+          "ruff",
+        ],
+        "kind": "choice",
+        "label": "Lint / Format 工具",
+        "value": "ruff",
+      },
+      "python.minVersion": {
+        "kind": "minVersion",
+        "label": "Python 最低版本",
+        "value": "3.11",
+      },
+      "test.tool": {
+        "allowed": [
+          "pytest",
+        ],
+        "kind": "choice",
+        "label": "測試工具",
+        "value": "pytest",
+      },
+      "tools.mypy": {
+        "kind": "versionRange",
+        "label": "mypy 版本範圍",
+        "pinnedAs": [
+          "mypy",
+        ],
+        "value": ">=1.18,<2",
+      },
+      "tools.pyright": {
+        "kind": "versionRange",
+        "label": "pyright 版本範圍",
+        "pinnedAs": [
+          "pyright",
+        ],
+        "value": ">=1.1.400,<2",
+      },
+      "tools.pytest": {
+        "kind": "versionRange",
+        "label": "pytest 版本範圍",
+        "pinnedAs": [
+          "pytest",
+        ],
+        "value": ">=8,<10",
+      },
+      "tools.pytest-cov": {
+        "kind": "versionRange",
+        "label": "pytest-cov 版本範圍",
+        "pinnedAs": [
+          "pytest-cov",
+        ],
+        "value": ">=6,<8",
+      },
+      "tools.ruff": {
+        "kind": "versionRange",
+        "label": "ruff 版本範圍",
+        "pinnedAs": [
+          "ruff",
+        ],
+        "value": ">=0.17,<1",
+      },
+      "typecheck.strict": {
+        "kind": "bool",
+        "label": "型別檢查嚴格模式",
+        "value": false,
+      },
+      "typecheck.tool": {
+        "allowed": [
+          "mypy",
+          "pyright",
+        ],
+        "kind": "choice",
+        "label": "型別檢查工具",
+        "value": "mypy",
+      },
+    },
+    "typescript": {
+      "complexity.cognitive": {
+        "kind": "max",
+        "label": "認知複雜度上限",
+        "value": 25,
+      },
+      "complexity.cyclomatic": {
+        "kind": "max",
+        "label": "循環複雜度上限",
+        "value": 20,
+      },
+      "coverage.lines": {
+        "kind": "min",
+        "label": "覆蓋率門檻 (%)",
+        "value": 0,
+      },
+      "deps.banned": {
+        "kind": "list",
+        "label": "禁用套件",
+        "value": [
+          "request",
+        ],
+      },
+      "deps.bannedApis": {
+        "kind": "list",
+        "label": "禁用 API",
+        "value": [],
+      },
+      "deps.ignoredVulns": {
+        "kind": "ignoredVulns",
+        "label": "忽略的弱點",
+        "value": [],
+      },
+      "deps.lockfile": {
+        "kind": "bool",
+        "label": "必須有 lockfile",
+        "value": true,
+      },
+      "deps.manager": {
+        "allowed": [
+          "npm",
+          "pnpm",
+          "yarn",
+        ],
+        "kind": "choice",
+        "label": "套件管理工具",
+        "value": "npm",
+      },
+      "deps.vulnFailOn": {
+        "kind": "severity",
+        "label": "弱點掃描門檻",
+        "value": "high",
+      },
+      "deps.vulnScan": {
+        "kind": "bool",
+        "label": "弱點掃描（進階）",
+        "value": false,
+      },
+      "format.endOfLine": {
+        "kind": "style",
+        "label": "換行字元",
+        "value": "lf",
+      },
+      "format.printWidth": {
+        "kind": "style",
+        "label": "行寬",
+        "value": 120,
+      },
+      "lint.rules": {
+        "kind": "list",
+        "label": "ESLint 規則集",
+        "value": [
+          "typescript-eslint/strictTypeChecked",
+        ],
+      },
+      "lint.tool": {
+        "allowed": [
+          "eslint+prettier",
+          "biome",
+        ],
+        "kind": "choice",
+        "label": "Lint / Format 工具",
+        "value": "eslint+prettier",
+      },
+      "node.minVersion": {
+        "kind": "minVersion",
+        "label": "Node 最低版本",
+        "value": "22",
+      },
+      "test.tool": {
+        "allowed": [
+          "vitest",
+          "jest",
+        ],
+        "kind": "choice",
+        "label": "測試工具",
+        "value": "vitest",
+      },
+      "tools.biome": {
+        "kind": "versionRange",
+        "label": "biome 版本範圍",
+        "pinnedAs": [
+          "@biomejs/biome",
+        ],
+        "value": ">=2,<3",
+      },
+      "tools.eslint": {
+        "kind": "versionRange",
+        "label": "eslint 版本範圍",
+        "pinnedAs": [
+          "eslint",
+        ],
+        "value": ">=10,<11",
+      },
+      "tools.jest": {
+        "kind": "versionRange",
+        "label": "jest 版本範圍",
+        "pinnedAs": [
+          "jest",
+        ],
+        "value": ">=30,<31",
+      },
+      "tools.prettier": {
+        "kind": "versionRange",
+        "label": "prettier 版本範圍",
+        "pinnedAs": [
+          "prettier",
+        ],
+        "value": ">=3,<4",
+      },
+      "tools.typescript": {
+        "kind": "versionRange",
+        "label": "typescript 版本範圍",
+        "pinnedAs": [
+          "typescript",
+        ],
+        "value": ">=6,<7",
+      },
+      "tools.typescript-eslint": {
+        "kind": "versionRange",
+        "label": "typescript-eslint 版本範圍",
+        "pinnedAs": [
+          "typescript-eslint",
+        ],
+        "value": ">=8,<9",
+      },
+      "tools.vitest": {
+        "kind": "versionRange",
+        "label": "vitest 版本範圍",
+        "pinnedAs": [
+          "vitest",
+        ],
+        "value": ">=4.1,<6",
+      },
+      "typecheck.options": {
+        "kind": "list",
+        "label": "額外的 tsconfig 檢查",
+        "value": [],
+      },
+      "typecheck.strict": {
+        "kind": "bool",
+        "label": "tsconfig strict",
+        "value": false,
+      },
+    },
+  },
+}
+`;
+
+exports[`derived standards keep their items > team@1.1.0 1`] = `
+{
+  "global": {
+    "claude.minVersion": {
+      "kind": "minVersion",
+      "label": "Claude Code 最低版本",
+      "value": "2.1.295",
+    },
+    "mirrors.auth": {
+      "allowed": [
+        "none",
+        "env",
+      ],
+      "kind": "choice",
+      "label": "鏡像帳密模式",
+      "value": "none",
+    },
+    "mirrors.go": {
+      "kind": "mirror",
+      "label": "Go 鏡像",
+      "value": "https://nexus.example.internal/repository/go-proxy/",
+    },
+    "mirrors.gosumdb": {
+      "kind": "mirror",
+      "label": "Go checksum 資料庫鏡像",
+      "value": "https://nexus.example.internal/repository/go-sumdb-proxy/",
+    },
+    "mirrors.govulndb": {
+      "kind": "mirror",
+      "label": "Go 弱點資料庫鏡像",
+      "value": "https://nexus.example.internal/repository/go-vulndb-proxy/",
+    },
+    "mirrors.maven": {
+      "kind": "mirror",
+      "label": "Maven 鏡像",
+      "value": "https://nexus.example.internal/repository/maven-public/",
+    },
+    "mirrors.npm": {
+      "kind": "mirror",
+      "label": "npm 鏡像",
+      "value": "https://nexus.example.internal/repository/npm-proxy/",
+    },
+    "mirrors.nvd": {
+      "kind": "mirror",
+      "label": "NVD 資料鏡像（Dependency-Check）",
+      "value": "https://nexus.example.internal/repository/nvd-mirror/",
+    },
+    "mirrors.osv": {
+      "kind": "mirror",
+      "label": "OSV 相容弱點查詢端點（pip-audit）",
+      "value": "https://osv.example.internal/v1/query",
+    },
+    "mirrors.pypi": {
+      "kind": "mirror",
+      "label": "PyPI 鏡像",
+      "value": "https://nexus.example.internal/repository/pypi-proxy/simple",
+    },
+    "mirrors.tools": {
+      "kind": "mirror",
+      "label": "工具 binary 來源",
+      "value": "https://nexus.example.internal/repository/raw-tools/",
+    },
+    "mirrors.vscode": {
+      "kind": "mirror",
+      "label": "VS Code 內部 marketplace",
+      "value": "https://vsmarketplace.example.internal",
+    },
+  },
+  "languages": {
+    "go": {
+      "complexity.cognitive": {
+        "kind": "max",
+        "label": "認知複雜度上限",
+        "value": 15,
+      },
+      "complexity.cyclomatic": {
+        "kind": "max",
+        "label": "循環複雜度上限",
+        "value": 10,
+      },
+      "coverage.lines": {
+        "kind": "min",
+        "label": "覆蓋率門檻 (%)",
+        "value": 80,
+      },
+      "deps.banned": {
+        "kind": "list",
+        "label": "禁用模組",
+        "value": [
+          "github.com/pkg/errors",
+          "github.com/golang/protobuf",
+        ],
+      },
+      "deps.bannedApis": {
+        "kind": "list",
+        "label": "禁用套件 import",
+        "value": [
+          "io/ioutil",
+        ],
+      },
+      "deps.ignoredVulns": {
+        "kind": "ignoredVulns",
+        "label": "忽略的弱點",
+        "value": [],
+      },
+      "deps.lockfile": {
+        "kind": "bool",
+        "label": "必須有 lockfile",
+        "value": true,
+      },
+      "deps.vulnFailOn": {
+        "kind": "severity",
+        "label": "弱點掃描門檻",
+        "value": "any",
+      },
+      "deps.vulnScan": {
+        "kind": "bool",
+        "label": "弱點掃描（進階）",
+        "value": false,
+      },
+      "format.tools": {
+        "kind": "style",
+        "label": "格式化工具",
+        "value": [
+          "gofumpt",
+          "goimports",
+        ],
+      },
+      "go.minVersion": {
+        "kind": "minVersion",
+        "label": "Go 最低版本",
+        "value": "1.26",
+      },
+      "lint.rules": {
+        "kind": "list",
+        "label": "golangci-lint linters",
+        "value": [
+          "errcheck",
+          "govet",
+          "ineffassign",
+          "staticcheck",
+          "unused",
+          "gosec",
+          "revive",
+          "errorlint",
+          "bodyclose",
+          "misspell",
+          "cyclop",
+          "gocognit",
+          "gomodguard_v2",
+          "depguard",
+        ],
+      },
+      "lint.tool": {
+        "allowed": [
+          "golangci-lint",
+        ],
+        "kind": "choice",
+        "label": "Lint 工具",
+        "value": "golangci-lint",
+      },
+      "tools.gofumpt": {
+        "kind": "versionRange",
+        "label": "gofumpt 版本範圍",
+        "pinnedAs": [
+          "mvdan.cc/gofumpt",
+        ],
+        "value": ">=0.9,<1",
+      },
+      "tools.goimports": {
+        "kind": "versionRange",
+        "label": "goimports 版本範圍",
+        "pinnedAs": [
+          "golang.org/x/tools/cmd/goimports",
+        ],
+        "value": ">=0.38,<1",
+      },
+      "tools.golangci-lint": {
+        "kind": "versionRange",
+        "label": "golangci-lint 版本範圍",
+        "onPath": true,
+        "pinnedAs": [],
+        "value": ">=2.12,<3",
+      },
+      "tools.govulncheck": {
+        "kind": "versionRange",
+        "label": "govulncheck 版本範圍",
+        "pinnedAs": [
+          "golang.org/x/vuln/cmd/govulncheck",
+        ],
+        "value": ">=1.1,<2",
+      },
+    },
+    "java": {
+      "build.tool": {
+        "allowed": [
+          "maven",
+          "gradle",
+        ],
+        "kind": "choice",
+        "label": "建置工具",
+        "value": "maven",
+      },
+      "complexity.cognitive": {
+        "kind": "max",
+        "label": "認知複雜度上限",
+        "value": 15,
+      },
+      "complexity.cyclomatic": {
+        "kind": "max",
+        "label": "循環複雜度上限",
+        "value": 10,
+      },
+      "coverage.lines": {
+        "kind": "min",
+        "label": "覆蓋率門檻 (%)",
+        "value": 80,
+      },
+      "deps.banned": {
+        "kind": "list",
+        "label": "禁用套件",
+        "value": [
+          "log4j:log4j",
+          "junit:junit",
+        ],
+      },
+      "deps.bannedApis": {
+        "kind": "list",
+        "label": "禁用 API",
+        "value": [
+          "sun.*",
+        ],
+      },
+      "deps.ignoredVulns": {
+        "kind": "ignoredVulns",
+        "label": "忽略的弱點",
+        "value": [],
+      },
+      "deps.lockfile": {
+        "kind": "bool",
+        "label": "必須有 lockfile",
+        "value": true,
+      },
+      "deps.vulnFailOn": {
+        "kind": "severity",
+        "label": "弱點掃描門檻",
+        "value": "high",
+      },
+      "deps.vulnScan": {
+        "kind": "bool",
+        "label": "弱點掃描（進階）",
+        "value": false,
+      },
+      "format.tool": {
+        "kind": "style",
+        "label": "格式化工具",
+        "value": "palantir-java-format",
+      },
+      "java.minVersion": {
+        "kind": "minVersion",
+        "label": "Java 最低版本",
+        "value": "17",
+      },
+      "lint.rules": {
+        "kind": "list",
+        "label": "規則集",
+        "value": [
+          "google_checks",
+          "pmd-quickstart",
+        ],
+      },
+      "lint.tool": {
+        "allowed": [
+          "checkstyle+pmd",
+        ],
+        "kind": "choice",
+        "label": "靜態分析工具",
+        "value": "checkstyle+pmd",
+      },
+      "test.tool": {
+        "allowed": [
+          "junit5",
+        ],
+        "kind": "choice",
+        "label": "測試框架",
+        "value": "junit5",
+      },
+      "tools.checkstyle": {
+        "kind": "versionRange",
+        "label": "checkstyle 版本範圍",
+        "pinnedAs": [
+          "checkstyle",
+        ],
+        "value": ">=10.21,<15",
+      },
+      "tools.jacoco": {
+        "kind": "versionRange",
+        "label": "jacoco 版本範圍",
+        "pinnedAs": [
+          "jacoco",
+        ],
+        "value": ">=0.8.12,<0.9",
+      },
+      "tools.jacoco-maven-plugin": {
+        "kind": "versionRange",
+        "label": "jacoco-maven-plugin 版本範圍",
+        "pinnedAs": [
+          "jacoco-maven-plugin",
+        ],
+        "value": ">=0.8.12,<0.9",
+      },
+      "tools.maven-checkstyle-plugin": {
+        "kind": "versionRange",
+        "label": "maven-checkstyle-plugin 版本範圍",
+        "pinnedAs": [
+          "maven-checkstyle-plugin",
+        ],
+        "value": ">=3.6,<4",
+      },
+      "tools.maven-enforcer-plugin": {
+        "kind": "versionRange",
+        "label": "maven-enforcer-plugin 版本範圍",
+        "pinnedAs": [
+          "maven-enforcer-plugin",
+        ],
+        "value": ">=3.5,<4",
+      },
+      "tools.maven-pmd-plugin": {
+        "kind": "versionRange",
+        "label": "maven-pmd-plugin 版本範圍",
+        "pinnedAs": [
+          "maven-pmd-plugin",
+        ],
+        "value": ">=3.26,<4",
+      },
+      "tools.pmd": {
+        "kind": "versionRange",
+        "label": "pmd 版本範圍",
+        "pinnedAs": [
+          "pmd",
+        ],
+        "value": ">=7,<8",
+      },
+      "tools.spotless-gradle-plugin": {
+        "kind": "versionRange",
+        "label": "spotless-gradle-plugin 版本範圍",
+        "pinnedAs": [
+          "com.diffplug.spotless",
+        ],
+        "value": ">=7,<9",
+      },
+      "tools.spotless-maven-plugin": {
+        "kind": "versionRange",
+        "label": "spotless-maven-plugin 版本範圍",
+        "pinnedAs": [
+          "spotless-maven-plugin",
+        ],
+        "value": ">=2.44,<4",
+      },
+    },
+    "python": {
+      "complexity.cyclomatic": {
+        "kind": "max",
+        "label": "循環複雜度上限",
+        "value": 10,
+      },
+      "coverage.lines": {
+        "kind": "min",
+        "label": "覆蓋率門檻 (%)",
+        "value": 80,
+      },
+      "deps.banned": {
+        "kind": "list",
+        "label": "禁用套件",
+        "value": [
+          "pycrypto",
+          "nose",
+        ],
+      },
+      "deps.bannedApis": {
+        "kind": "list",
+        "label": "禁用 API",
+        "value": [],
+      },
+      "deps.ignoredVulns": {
+        "kind": "ignoredVulns",
+        "label": "忽略的弱點",
+        "value": [],
+      },
+      "deps.lockfile": {
+        "kind": "bool",
+        "label": "必須有 lockfile",
+        "value": true,
+      },
+      "deps.manager": {
+        "allowed": [
+          "uv",
+          "poetry",
+        ],
+        "kind": "choice",
+        "label": "套件管理工具",
+        "value": "uv",
+      },
+      "deps.vulnFailOn": {
+        "kind": "severity",
+        "label": "弱點掃描門檻",
+        "value": "any",
+      },
+      "deps.vulnScan": {
+        "kind": "bool",
+        "label": "弱點掃描（進階）",
+        "value": false,
+      },
+      "format.lineLength": {
+        "kind": "style",
+        "label": "行寬",
+        "value": 120,
+      },
+      "lint.rules": {
+        "kind": "list",
+        "label": "Ruff 規則組",
+        "value": [
+          "E",
+          "W",
+          "F",
+          "I",
+          "B",
+          "UP",
+          "C90",
+          "SIM",
+          "N",
+          "S",
+          "TID",
+        ],
+      },
+      "lint.tool": {
+        "allowed": [
+          "ruff",
+        ],
+        "kind": "choice",
+        "label": "Lint / Format 工具",
+        "value": "ruff",
+      },
+      "python.minVersion": {
+        "kind": "minVersion",
+        "label": "Python 最低版本",
+        "value": "3.11",
+      },
+      "test.tool": {
+        "allowed": [
+          "pytest",
+        ],
+        "kind": "choice",
+        "label": "測試工具",
+        "value": "pytest",
+      },
+      "tools.mypy": {
+        "kind": "versionRange",
+        "label": "mypy 版本範圍",
+        "pinnedAs": [
+          "mypy",
+        ],
+        "value": ">=1.18,<2",
+      },
+      "tools.pyright": {
+        "kind": "versionRange",
+        "label": "pyright 版本範圍",
+        "pinnedAs": [
+          "pyright",
+        ],
+        "value": ">=1.1.400,<2",
+      },
+      "tools.pytest": {
+        "kind": "versionRange",
+        "label": "pytest 版本範圍",
+        "pinnedAs": [
+          "pytest",
+        ],
+        "value": ">=8,<10",
+      },
+      "tools.pytest-cov": {
+        "kind": "versionRange",
+        "label": "pytest-cov 版本範圍",
+        "pinnedAs": [
+          "pytest-cov",
+        ],
+        "value": ">=6,<8",
+      },
+      "tools.ruff": {
+        "kind": "versionRange",
+        "label": "ruff 版本範圍",
+        "pinnedAs": [
+          "ruff",
+        ],
+        "value": ">=0.17,<1",
+      },
+      "typecheck.strict": {
+        "kind": "bool",
+        "label": "型別檢查嚴格模式",
+        "value": true,
+      },
+      "typecheck.tool": {
+        "allowed": [
+          "mypy",
+          "pyright",
+        ],
+        "kind": "choice",
+        "label": "型別檢查工具",
+        "value": "mypy",
+      },
+    },
+    "typescript": {
+      "complexity.cognitive": {
+        "kind": "max",
+        "label": "認知複雜度上限",
+        "value": 15,
+      },
+      "complexity.cyclomatic": {
+        "kind": "max",
+        "label": "循環複雜度上限",
+        "value": 10,
+      },
+      "coverage.lines": {
+        "kind": "min",
+        "label": "覆蓋率門檻 (%)",
+        "value": 80,
+      },
+      "deps.banned": {
+        "kind": "list",
+        "label": "禁用套件",
+        "value": [
+          "moment",
+          "request",
+          "node-fetch",
+        ],
+      },
+      "deps.bannedApis": {
+        "kind": "list",
+        "label": "禁用 API",
+        "value": [],
+      },
+      "deps.ignoredVulns": {
+        "kind": "ignoredVulns",
+        "label": "忽略的弱點",
+        "value": [],
+      },
+      "deps.lockfile": {
+        "kind": "bool",
+        "label": "必須有 lockfile",
+        "value": true,
+      },
+      "deps.manager": {
+        "allowed": [
+          "npm",
+          "pnpm",
+          "yarn",
+        ],
+        "kind": "choice",
+        "label": "套件管理工具",
+        "value": "npm",
+      },
+      "deps.vulnFailOn": {
+        "kind": "severity",
+        "label": "弱點掃描門檻",
+        "value": "high",
+      },
+      "deps.vulnScan": {
+        "kind": "bool",
+        "label": "弱點掃描（進階）",
+        "value": false,
+      },
+      "format.endOfLine": {
+        "kind": "style",
+        "label": "換行字元",
+        "value": "lf",
+      },
+      "format.printWidth": {
+        "kind": "style",
+        "label": "行寬",
+        "value": 120,
+      },
+      "lint.rules": {
+        "kind": "list",
+        "label": "ESLint 規則集",
+        "value": [
+          "typescript-eslint/strictTypeChecked",
+        ],
+      },
+      "lint.tool": {
+        "allowed": [
+          "eslint+prettier",
+          "biome",
+        ],
+        "kind": "choice",
+        "label": "Lint / Format 工具",
+        "value": "eslint+prettier",
+      },
+      "node.minVersion": {
+        "kind": "minVersion",
+        "label": "Node 最低版本",
+        "value": "22",
+      },
+      "test.tool": {
+        "allowed": [
+          "vitest",
+          "jest",
+        ],
+        "kind": "choice",
+        "label": "測試工具",
+        "value": "vitest",
+      },
+      "tools.biome": {
+        "kind": "versionRange",
+        "label": "biome 版本範圍",
+        "pinnedAs": [
+          "@biomejs/biome",
+        ],
+        "value": ">=2,<3",
+      },
+      "tools.eslint": {
+        "kind": "versionRange",
+        "label": "eslint 版本範圍",
+        "pinnedAs": [
+          "eslint",
+        ],
+        "value": ">=10,<11",
+      },
+      "tools.jest": {
+        "kind": "versionRange",
+        "label": "jest 版本範圍",
+        "pinnedAs": [
+          "jest",
+        ],
+        "value": ">=30,<31",
+      },
+      "tools.prettier": {
+        "kind": "versionRange",
+        "label": "prettier 版本範圍",
+        "pinnedAs": [
+          "prettier",
+        ],
+        "value": ">=3,<4",
+      },
+      "tools.typescript": {
+        "kind": "versionRange",
+        "label": "typescript 版本範圍",
+        "pinnedAs": [
+          "typescript",
+        ],
+        "value": ">=6,<7",
+      },
+      "tools.typescript-eslint": {
+        "kind": "versionRange",
+        "label": "typescript-eslint 版本範圍",
+        "pinnedAs": [
+          "typescript-eslint",
+        ],
+        "value": ">=8,<9",
+      },
+      "tools.vitest": {
+        "kind": "versionRange",
+        "label": "vitest 版本範圍",
+        "pinnedAs": [
+          "vitest",
+        ],
+        "value": ">=4.1,<6",
+      },
+      "typecheck.options": {
+        "kind": "list",
+        "label": "額外的 tsconfig 檢查",
+        "value": [
+          "noUncheckedIndexedAccess",
+          "noImplicitOverride",
+          "noFallthroughCasesInSwitch",
+        ],
+      },
+      "typecheck.strict": {
+        "kind": "bool",
+        "label": "tsconfig strict",
+        "value": true,
+      },
+    },
+  },
+}
+`;

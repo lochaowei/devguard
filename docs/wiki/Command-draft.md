@@ -9,10 +9,15 @@
 ## 用法
 
 ```text
-devguard draft [--cwd <dir>]
+devguard draft [--cwd <dir>] [--ignore <路徑或 glob>]…
 ```
 
-沒有其他旗標。`.devguard.yaml` 已經存在時**不會覆寫**，以 exit `2` 結束：
+| 旗標 | 作用 |
+|---|---|
+| `--cwd <dir>` | 專案根目錄，預設為目前目錄 |
+| `--ignore <路徑或 glob>` | 可重複指定。符合的檔案不用來推斷元件，清單原樣寫進草稿的 [`ignore`](Project-Declaration.md#排除路徑ignore)，之後的 `check` 也不檢查這些檔案 |
+
+`.devguard.yaml` 已經存在時**不會覆寫**，以 exit `2` 結束：
 
 ```text
 $ devguard draft
@@ -23,7 +28,7 @@ $ devguard draft
 
 ## 執行流程
 
-1. **列出 repo 的檔案**：`git ls-files --cached --others --exclude-standard`，也就是已追蹤加上未被忽略的未追蹤檔。
+1. **列出 repo 的檔案**：`git ls-files --cached --others --exclude-standard`，也就是已追蹤加上未被忽略的未追蹤檔，再去掉符合 `--ignore` 的檔案。
 2. **推斷元件**：每個四語言的程式檔，歸屬到往上找最近、含有該語言標記檔的目錄；找不到就歸屬 repo 根目錄。
 
    | 語言 | 標記檔 |
@@ -50,9 +55,9 @@ $ devguard draft
    - 與預設相同：省略。
    - 比預設嚴格，或只是風格不同（例如行寬）：直接寫成覆寫值。
    - 比預設寬鬆：寫成 `{value, reason}`，`reason` 是 `TODO: 由 <檔案> 推得，請填寫放寬理由`。
-5. **寫入** `.devguard.yaml`，檔頭附上說明註解。寫入時用「檔案不存在才建立」的模式，同時執行兩次也不會互相覆蓋。
+5. **寫入** `.devguard.yaml`，檔頭附上說明註解；有 `--ignore` 時在最後加上 `ignore` 清單。寫入時用「檔案不存在才建立」的模式，同時執行兩次也不會互相覆蓋。
 
-標準一律使用這個 CLI 內建的最新版本。
+標準一律使用這個 CLI 內建的最新 `team` 版本，不會寫入既有專案的基線標準 `legacy@1.0.0`；要用它時自行改寫 `standard`（見[各語言預設標準](Language-Standards.md)）。
 
 ---
 
@@ -78,7 +83,7 @@ $ devguard draft
 ```yaml
 # 由 devguard draft 依既有的工具設定產生的草稿（SPEC §4.3）。
 # 與預設標準相同的項目已省略；比預設寬鬆的項目附有 TODO 理由，填寫理由之前 devguard check 不會通過。
-standard: team@1.0.0
+standard: team@1.1.0
 components:
   - path: ./
     language: python
@@ -114,6 +119,7 @@ components:
 |---|---|
 | 多出不該有的元件（例如來自 `node_modules/`、`.venv/`） | 檔案清單只排除 git 忽略的檔案。先把依賴目錄加進 `.gitignore`，刪掉草稿重新產生 |
 | repo 根目錄出現一個意外的元件 | 有程式檔往上找不到標記檔，例如零散的腳本。可以保留、移到某個元件中，或從宣告中刪除（刪除後 `check` 會以 `uncovered-files` 提示） |
+| 範例、第三方原始碼或自動產生的檔案變成元件 | 刪掉草稿，以 `--ignore examples/ --ignore third_party/` 重新產生；或直接把這些路徑寫進宣告的 `ignore` |
 | 想重新產生 | 先刪除或改名 `.devguard.yaml` 再執行 |
 | Poetry 專案的 `check` 提示 `找不到 ruff：專案環境（.venv）中沒有安裝` | devguard 從專案內的 `.venv` 執行工具。照提示執行 `poetry config virtualenvs.in-project true && poetry install`，讓 Poetry 把虛擬環境建在專案裡 |
 

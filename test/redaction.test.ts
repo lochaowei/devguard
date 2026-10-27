@@ -9,6 +9,10 @@ import { runFix } from "../src/fix/run.ts";
 import { runInstall } from "../src/hooks/install.ts";
 import { redactSecrets } from "../src/report/redact.ts";
 import { TODAY } from "./helpers.ts";
+import { isolateGit } from "./git-isolation.ts";
+
+// Real git runs here: keep it off any repo or config outside this file's temp directories.
+isolateGit();
 
 const dirs: string[] = [];
 afterEach(() => {

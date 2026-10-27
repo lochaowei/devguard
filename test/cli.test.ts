@@ -7,6 +7,10 @@ import { localDate } from "../src/check.ts";
 import type { Interaction } from "../src/fix/interaction.ts";
 import { runCli } from "../src/main.ts";
 import type { ToolRequest, ToolRunner } from "../src/tools/runner.ts";
+import { isolateGit } from "./git-isolation.ts";
+
+// Real git runs here: keep it off any repo or config outside this file's temp directories.
+isolateGit();
 
 const CLI = join(import.meta.dirname, "..", "src", "cli.ts");
 const dirs: string[] = [];
@@ -310,6 +314,23 @@ describe("devguard draft", () => {
 
     writeFileSync(join(dir, ".devguard.yaml"), text.replace(/reason: .*TODO.*/, "reason: legacy tests"));
     expect((await run(["check", "--cwd", dir])).code).toBe(0);
+  });
+
+  it("--ignore leaves paths out of the draft's components, and check then gives no uncovered-files hint", async () => {
+    const dir = undeclared();
+    mkdirSync(join(dir, "examples"));
+    writeFileSync(join(dir, "examples", "demo.ts"), "");
+    mkdirSync(join(dir, "gen"));
+    writeFileSync(join(dir, "gen", "api.py"), "");
+    const r = await run(["draft", "--cwd", dir, "--ignore", "examples/", "--ignore", "gen/**"]);
+    expect(r.code).toBe(0);
+    const text = readFileSync(join(dir, ".devguard.yaml"), "utf8");
+    expect(text).toContain("ignore:\n  - examples/\n  - gen/**\n");
+    expect(text).not.toContain("path: ./");
+
+    writeFileSync(join(dir, ".devguard.yaml"), text.replace(/reason: .*TODO.*/, "reason: legacy tests"));
+    const check = await run(["check", "--cwd", dir, "--format", "json"]);
+    expect(check.out).not.toContain("declaration/uncovered-files");
   });
 
   it("does not overwrite an existing declaration", async () => {

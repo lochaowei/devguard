@@ -16,7 +16,7 @@
 |---|---|---|
 | 第一道：VS Code | 撰寫時 | 擴充套件即時顯示問題 |
 | 第二道：Claude Code | Claude 編輯檔案時 | 事前告知標準、事中檢查並回饋、提供診斷指令 |
-| 第三道：git hook | commit 與 push 時 | pre-commit 擋下不合格的變更；pre-push 跑完整測試 |
+| 第三道：git hook | commit 與 push 時 | pre-commit 擋下不合格的變更；pre-push 只在開發者以 `DEVGUARD_PRE_PUSH=full` 開啟時跑完整測試 |
 
 **核心原則**
 - 先檢查，再修正。修正一定先預覽，或由開發者明確下指令才執行。
@@ -103,7 +103,7 @@
 放在 repo 根目錄的單一 YAML 檔。
 
 ```yaml
-standard: team@1.0.0            # 繼承哪一版預設標準（必須寫確切版本）
+standard: team@1.1.0            # 繼承哪一版預設標準（必須寫確切版本）
 components:                     # 元件 = 目錄 + 語言
   - path: ./
     language: python
@@ -121,6 +121,10 @@ components:                     # 元件 = 目錄 + 語言
         until: 2027-03-31
 mirrors:
   auth: env                     # none（預設）| env，見 §10.3
+ignore:                         # 選填：不歸屬任何元件、不受檢查的路徑，見 §4.1
+  - examples/
+  - third_party/
+  - "**/*.pb.go"
 ```
 
 ### 4.1 元件與檔案歸屬
@@ -128,6 +132,11 @@ mirrors:
 - 一個元件 = 一個 `path` 加一個 `language`。同一個目錄有多種語言時，就寫成多個元件。
 - 每個檔案歸屬於**路徑前綴最長、而且語言和副檔名相符**的元件。
 - 沒有元件涵蓋的程式檔，**依副檔名推定語言**，套用該語言的預設標準（不含覆寫），並提示「建議在宣告中補上元件」。
+- 頂層 `ignore` 是字串清單，列出範例、第三方嵌入原始碼、自動產生檔等不受檢查的路徑。一般路徑符合該檔案或該目錄底下的所有檔案；glob（`*`、`?` 不跨越 `/`，`**` 跨越多層）符合的路徑或符合的目錄底下的所有檔案。路徑相對於 repo 根目錄。
+  - 符合的檔案不歸屬任何元件、不提示「建議補上元件」，也不交給 `check`、`fix --code` 與各 hook 以檔案為單位的檢查（程式碼檢查、未涵蓋檔案），即使在命令列上指定或已 staged。
+  - 測試與弱點掃描以元件為單位，不受 `ignore` 影響：每個宣告的元件照常執行，`check --full` 仍是完整的檢查。`ignore` 的某一項涵蓋整個元件目錄時：**提示**（`declaration/ignored-component`），說明這個元件的檔案檢查都會略過。
+  - `ignore` 管不到的範圍：以整個目錄為單位執行的工具（元件的 `eslint .`、`tsc`、`mypy` 等）與覆蓋率工具（Vitest / Jest 的 `coverage.include`、coverage.py、JaCoCo）依各自的設定決定範圍；要排除的檔案也要寫進該工具的設定。
+  - 不是非空字串的清單時：**錯誤**（`declaration/invalid`），整份清單不生效。
 - 四種語言以外的檔案不在檢查範圍內。例外：指定檔案時（含 `--staged` 與各 hook，見 §7.1），TypeScript 元件內的非原始碼檔案交給該元件的 linter 與 formatter，由工具決定是否處理。
 
 ### 4.2 覆寫規則
@@ -160,6 +169,7 @@ mirrors:
 CLI 依偵測到的工具設定檔產生**草稿**：
 - 與預設相同的項目省略。
 - 比預設寬鬆的項目帶上 `TODO` 理由，要填寫之後才算通過。
+- `draft --ignore <路徑或 glob>`（可重複）：符合的檔案不用來推斷元件，清單原樣寫進草稿的 `ignore`。
 
 可直接移植的參考實作（`Std` 模組中的 `resolve`、`lookup`、`draftFromDetected`、`checkToolConfigs`）：[prototypes/07-project-declaration.prototype.html](.scratch/coding-standards-guard/prototypes/07-project-declaration.prototype.html)
 
@@ -175,7 +185,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 |---|---|---|
 | `complexity.cyclomatic` | 10 | 上限 |
 | `complexity.cognitive` | 15（Python 不適用） | 上限 |
-| `coverage.lines` | 80 | 下限 |
+| `coverage.lines` | 80（0 以下表示不設覆蓋率門檻：`--full` 仍執行測試，但不判定覆蓋率，也不要求覆蓋率設定或報告） | 下限 |
 | `deps.lockfile` | `true`（各語言的落地方式不同） | 布林 |
 | `deps.vulnScan` | **`false`**（進階項目，見 §5.3） | 布林 |
 | `deps.ignoredVulns` | 空 | 新增項目算放寬 |
@@ -209,7 +219,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 公司環境不允許下載外部檔案，所以四種語言都**預設關閉**（`deps.vulnScan: false`）。
 - 專案自行開啟算收緊，不需要寫理由。
 - 開啟後才套用各語言的 `deps.vulnFailOn` 與 `deps.ignoredVulns`。
-- 執行時機：只在 pre-push、`check --full` 與 CI。
+- 執行時機：只在 `check --full` 與 CI，以及開啟完整測試的 pre-push（§7.4）。
 
 各工具在內網的資料來源（已查證）：
 
@@ -250,6 +260,8 @@ CLI 依偵測到的工具設定檔產生**草稿**：
   - 需要調整的工具版本
   - 需要執行的套件管理指令
 
+  目標版本：同一個標準的較新版本；`legacy` 另外可以升級到它指定的 `team` 版本（`legacy@1.0.0` → `team@1.1.0`）及該 `team` 的較新版本。沒有指定目標時，取同一個標準的最新版本，沒有的話取 `legacy` 指定的 `team` 版本。其他目標（例如從 `team` 升到 `legacy`，或從 `legacy@1.0.0` 升到 `team@1.0.0`）以 `2` 結束。
+- **基線標準 `legacy`**（§6.5）：給既有專案先納管用，最終要升級到 `team`。`legacy` → `team` 會收緊，不是 minor 更新，所以 doctor 不會建議；`devguard draft` 一律寫入 `team` 的最新版本，`team` 也不會升級到 `legacy`。
   加上 `--apply` 才實際修改宣告與設定檔，並透過內部鏡像執行套件管理指令。預覽不會詢問；有變更待套用時以 `1` 結束（§11）。Python 元件依最近的 lockfile 選擇指令（與 §5.2 執行工具的判斷相同）：uv 專案執行 `uv add --dev`（以 `UV_DEFAULT_INDEX` 指向 `mirrors.pypi`）；Poetry 專案執行 `poetry add --group dev <套件><範圍>`（PEP 508 形式，例如 `ruff>=0.18,<0.19`），鏡像來自 `[[tool.poetry.source]]`（§10.2），不改用 uv。預覽中 Python 指令含 `>`、`<`、`,` 或空白的引數加上雙引號，可以直接貼到 shell 執行。
 - **強制升級**：團隊可以把某個標準版本標為棄用並設定截止日。截止日之前只顯示提示，之後回報錯誤。
 
@@ -257,7 +269,19 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 
 ---
 
-## 6. 各語言的預設標準（`team@1.0.0` 草案）
+## 6. 各語言的預設標準（`team@1.0.0` 草案，及 `team@1.1.0`、`legacy@1.0.0`）
+
+本節的表格是 `team@1.0.0`。`team@1.1.0`（minor，§5.5）沿用 `team@1.0.0` 的所有項目，只有以下差異：
+
+- TypeScript 不再要求 `eslint-plugin-sonarjs`（移除 `tools.eslint-plugin-sonarjs`，見 §6.3、§12 第 8 項）。使用 `eslint+prettier` 時只檢查 ESLint 內建的 `complexity`，不檢查 `sonarjs/cognitive-complexity`；使用 Biome 時 `complexity.cognitive` 仍以 `noExcessiveCognitiveComplexity` 檢查。因此在 `team@1.1.0` 與 `legacy@1.0.0` 下，TypeScript 的 `complexity.cognitive` 只在使用 Biome 時強制；使用 ESLint 時只是參考值，不會產生錯誤。
+- 放寬版本範圍（#36，2026-10-27 審視）。工具版本範圍的下限不低於上游仍在修補的最舊版本線，已經是這個下限的就不改。
+  - 語言最低版本不變：`java.minVersion` 維持 17（新專案的標準，主流框架如 Spring Boot 3 的最低需求；需要 Java 8 的既有專案改用 `legacy@1.0.0`，§6.5）。`python.minVersion` 3.11（3.10 已於 2026-10-01 EOL）、`node.minVersion` 22（20 已於 2026-04-30 EOL）、`go.minVersion` 1.26（1.25 在 1.27.0 發佈時結束支援）都已是仍受支援的最舊版本。
+  - Python：`tools.ruff` `>=0.17,<1`、`tools.pyright` `>=1.1.400,<2`。
+  - TypeScript：`tools.vitest` `>=4.1,<6`（Vitest 4.1 仍會收到安全性修正）。
+  - Java：`tools.spotless-maven-plugin` `>=2.44,<4`、`tools.spotless-gradle-plugin` `>=7,<9`、`tools.checkstyle` `>=10.21,<15`。
+  - 其餘工具範圍不變：ESLint 9（2026-08-06 EOL）、TypeScript 5、Jest 29、Biome 1、pytest 7、pytest-cov 6 之前、mypy 1.18 之前的版本線上游都不再發佈修正；Go 工具的現行版本已在範圍內。
+
+`devguard draft` 寫入、`doctor` 建議升級到的都是 CLI 內建的最新 `team` 版本（目前是 `team@1.1.0`）。既有專案可以改宣告基線標準 `legacy@1.0.0`（§6.5）。
 
 ### 6.1 Python
 
@@ -303,7 +327,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | `lint.rules` | typescript-eslint `strictTypeChecked` | flat config |
 | `format.printWidth` / `endOfLine` | 120 / `lf`（風格） | Prettier |
 | `typecheck.strict` | `strict`，加上 `noUncheckedIndexedAccess`、`noImplicitOverride`、`noFallthroughCasesInSwitch` | `tsconfig.json`，用 `tsc --noEmit` 檢查 |
-| `complexity.cyclomatic` / `cognitive` | 10 / 15 | ESLint `complexity` / `eslint-plugin-sonarjs` 的 `cognitive-complexity`（**授權為 LGPL-3.0-only，需法務確認，見 §12**）；使用 Biome 時改開 `noExcessiveCognitiveComplexity` |
+| `complexity.cyclomatic` / `cognitive` | 10 / 15 | ESLint `complexity` / `eslint-plugin-sonarjs` 的 `cognitive-complexity`（**授權為 LGPL-3.0-only，見 §12**；`team@1.1.0` 起不再要求，ESLint 只檢查 `complexity`）；使用 Biome 時改開 `noExcessiveCognitiveComplexity`。`team@1.1.0` 與 `legacy@1.0.0` 下，`cognitive` 只在使用 Biome 時強制，使用 ESLint 時只是參考值 |
 | `test.tool` | `vitest`；允許替代工具 `jest` | — |
 | `coverage.lines` | lines、branches、functions、statements 都是 80；覆蓋率必須涵蓋元件所有的原始碼，不只被測試 import 的檔案 | `coverage.thresholds` / `coverageThreshold.global`；並且必須設定 `coverage.include` / `collectCoverageFrom`，否則為錯誤 |
 | `deps.manager` | `npm`；允許替代工具 `pnpm`、`yarn` | — |
@@ -328,6 +352,21 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 
 來源：[預設標準：Java](.scratch/coding-standards-guard/issues/11-default-standard-java.md)
 
+### 6.5 既有專案的基線標準（`legacy@1.0.0`）
+
+`legacy@1.0.0` 讓既有（brownfield）專案先以務實的基線納管，不必為 80% 覆蓋率、strict 型別檢查與禁用清單寫一大堆 `reason`／`until`，之後再以 `devguard standard upgrade` 升級到 `team@1.1.0`（§5.5）。它沿用 `team@1.1.0` 的所有項目，只放寬以下項目：
+
+| 項目 | `legacy@1.0.0` | 說明 |
+|---|---|---|
+| `coverage.lines` | 0 | `--full` 仍執行測試，測試失敗仍是錯誤；但不判定覆蓋率，也不要求覆蓋率設定（Vitest / Jest 門檻與 `include`、Python `branch = true`）或覆蓋率報告 |
+| `typecheck.strict` | false（TypeScript、Python） | |
+| `typecheck.options` | `[]`（TypeScript） | |
+| `complexity.cyclomatic` / `cognitive` | 20 / 25 | Python 只有 `cyclomatic` |
+| `deps.banned` | Python `pycrypto`；TypeScript `request`；Java `log4j:log4j`；Go 無 | 只保留有已知且不會修正的弱點的套件。JUnit 4（`junit:junit`）、`nose`、`moment`、`node-fetch`、`github.com/pkg/errors`、`github.com/golang/protobuf` 不再禁用 |
+| `java.minVersion` | 8 | `team@1.1.0` 是 17；`legacy@1.0.0` 明確寫為 8，讓 Java 8 的既有專案可以納管 |
+
+升級到 `team@1.1.0` 時，預覽會列出這些項目收緊後專案新出現的錯誤。
+
 ---
 
 ## 7. 三道防線
@@ -339,10 +378,10 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | lint、格式 | 擴充套件即時顯示 | 被編輯的檔案 | 這一輪改過的檔案 | staged 檔案 | — |
 | 型別檢查 | 擴充套件即時顯示 | — | 這一輪改過的檔案 | staged 檔案所屬的元件 | — |
 | 依賴規則（lockfile、禁用清單） | — | — | — | 只在依賴相關檔案被 staged 時 | — |
-| 測試與覆蓋率 | 可手動執行的 task | — | — | — | 完整執行 |
-| 進階：弱點掃描 | — | — | — | — | 開啟時執行 |
+| 測試與覆蓋率 | 可手動執行的 task | — | — | — | `DEVGUARD_PRE_PUSH=full` 時完整執行 |
+| 進階：弱點掃描 | — | — | — | — | `DEVGUARD_PRE_PUSH=full` 且開啟時執行 |
 
-`devguard check --full` 與 CI 執行全部檢查。
+`devguard check --full` 與 CI 執行全部檢查，不受 `DEVGUARD_PRE_PUSH` 影響。pre-push 預設不跑任何檢查、直接放行，讓日常的 WIP push 不會被完整測試與覆蓋率計算擋住；完整測試與覆蓋率由 CI 的 `check --full` 把關（§7.4）。
 
 指定檔案時（檔案參數、`--staged`、pre-commit、Claude 的兩個 hook、`fix --code`），TypeScript 元件內的非原始碼檔案（`.js`、`.mjs`、`.json`、`.md`、`.prettierrc`、`LICENSE` 等）也交給最深的 TypeScript 元件的 linter 與 formatter，由工具決定處理哪些：ESLint 用 `--no-warn-ignored`，Prettier 用 `--ignore-unknown`，Biome 用 `--files-ignore-unknown=true` 與 `--no-errors-on-unmatched`。工具設定的 ignore（`.prettierignore`、ESLint 的 `ignores`、Biome 的 `files`）照常生效；工具不處理的檔案不產生 finding，staged（stdin）時也一樣。因此回報的 lint 與格式問題，與整個元件的檢查對同一組檔案回報的相同。其他語言的原始碼仍歸各自的元件。型別檢查不變：只有元件內有原始碼檔案時才跑。
 
@@ -386,7 +425,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 **環境檢查**
 - 用 `code --list-extensions --show-versions` 偵測擴充套件（透過 `cmd.exe` 執行）。這個指令只能判斷「是否已安裝」：被停用的擴充套件也會列出，而且只涵蓋預設 profile。CLI 沒有可靠的方式判斷是否已啟用（狀態存在 VS Code 內部的 `state.vscdb`，不是公開 API）。
-- 缺少推薦的擴充套件時回報**錯誤**，提示「請從公司內部 marketplace 安裝 `<id>`」並附上連結；訊息另外註明「若已安裝但被停用，請在 VS Code 中啟用」。
+- 缺少推薦的擴充套件時給**提示**（不是錯誤），提示「請從公司內部 marketplace 安裝 `<id>`」並附上連結；訊息另外註明「若已安裝但被停用，請在 VS Code 中啟用」。找不到 `code` 指令或指令失敗時也只給提示。使用其他編輯器（IntelliJ IDEA、Cursor、Neovim 等）的開發者因此不會讓 `doctor` 失敗。
 - 裝了不推薦的擴充套件時給**提示**。
 
 **提交規則**：`settings.json`、`extensions.json`、`tasks.json` 必須提交。如果 `.gitignore` 忽略了 `.vscode/`，CLI 提示改成 `.vscode/*` 並加上例外規則。
@@ -405,7 +444,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 - **回饋給 Claude 的方式**
   - exit 0 加上 JSON：`decision: "block"` 與 `reason`。
   - `reason` 最多列 20 項，其餘寫「還有 N 項」，總長度少於 4,000 字元。
-  - 當 `stop_hook_active` 為 true 且檢查仍失敗時，放行，並用 `systemMessage` 告知開發者，避免 Claude 陷入修正迴圈。
+  - 當 `stop_hook_active` 為 true 且檢查仍失敗時，放行，並用 `systemMessage` 告知開發者，避免 Claude 陷入修正迴圈。`Stop` 檢查所有尚未 commit 的檔案，包含開發者在這一輪之前留下的修改；這類檔案最多讓 Claude 多修正一輪就會放行。
 - **`.claude/rules/standards-<元件>.md`**
   - frontmatter 的 `paths` 對應元件的目錄與副檔名，只在 Claude 讀寫相關檔案時載入。
   - 內容是精簡的工具、門檻、禁用清單、目前的偏離與理由，每份少於 200 行。
@@ -437,10 +476,14 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
   - 型別檢查（mypy、pyright、tsc）、golangci-lint 與 Java 工具（Spotless、Checkstyle、PMD）沒有 stdin 模式，而且本來就會讀磁碟上的其他檔案，所以仍然檢查工作目錄的版本。
   - 印出的警告要說明哪些檢查用的是工作目錄版本。
 - **hook 只做檢查、不做修正**：失敗時印出 `devguard fix --code <files>`。
+- **專案工具不繼承 git 的 repo 定位變數**：git 執行 hook 前會匯出 `GIT_DIR`、`GIT_WORK_TREE`、`GIT_INDEX_FILE` 等變數（`githooks(5)`），在 worktree 中 `GIT_DIR` 是絕對路徑。CLI 代為執行的專案工具（測試、linter、formatter、型別檢查、套件管理指令）的環境中移除 `GIT_DIR`、`GIT_WORK_TREE`、`GIT_INDEX_FILE`、`GIT_OBJECT_DIRECTORY`、`GIT_ALTERNATE_OBJECT_DIRECTORIES`、`GIT_COMMON_DIR`、`GIT_PREFIX`，其餘變數照常傳遞；否則專案測試在暫存目錄中執行的 `git init`、`git commit` 會寫進外層的 repo。CLI 自己執行的 git 指令保留這些變數，例如 pre-commit 用 `git show :<path>` 讀 staged 版本時仍使用 git 提供的 index。
+- **pre-push 的完整測試由開發者開啟**：`install` 照常安裝 pre-push hook，但 hook 只在環境變數 `DEVGUARD_PRE_PUSH` 為 `full` 時，才執行 `check --full` 中的測試、覆蓋率與弱點掃描；未設定或其他值時直接放行，什麼都不印。開關放在開發者的環境而不是專案宣告，所以不改變 §4 的格式，切換時也不需要重新執行 `install`。
 - **「已安裝」的環境檢查**
   1. 讀取 `core.hooksPath` 及其設定來源。
   2. 若使用既有框架，確認其設定中有呼叫 CLI 的項目；使用 pre-commit 框架時，另外確認 `pre-commit install --hook-type pre-commit --hook-type pre-push` 已執行（hooks 目錄中有 pre-commit 產生的 hook）。沒有使用框架時，確認 hook 檔存在、有 CLI 標記，且 checksum 正確。
   3. `core.hooksPath` 指向 `/dev/null` 或不存在的目錄時，回報錯誤。
+
+  步驟 2 中 pre-push 的問題（hook 不存在或被修改、框架設定缺項目、尚未以 `--hook-type pre-push` 執行 `pre-commit install`），在沒有設定 `DEVGUARD_PRE_PUSH=full` 時只列為**提示**，因為這時 pre-push 本來就不跑任何檢查；設定之後才算錯誤。
 - **促使開發者安裝**：VS Code 的 folderOpen task 與 Claude Code 的 SessionStart 都會執行 doctor。doctor 只回報問題並附上 `devguard install` 指令，不會自動安裝。
 
 來源：[pre-commit 框架比較研究](.scratch/coding-standards-guard/research/02-precommit-framework-options.md)、[CLI 實作語言與分發方式決策](.scratch/coding-standards-guard/issues/05-cli-runtime-decision.md)
@@ -581,10 +624,10 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 2. §7.2 推薦的 VS Code 擴充套件，都能在公司內部 marketplace 取得。
 3. 開發者能從 GitHub Release 下載 devguard 的 exe（§3.1），並取得預設標準指定版本的 golangci-lint binary。
 4. 在 Nexus 上建立 `mirrors.gosumdb` raw proxy（指向 `https://sum.golang.org`，關閉 Strict Content Type Validation）。
-5. 訂出 `team@1.0.0` 中各工具的確切版本範圍，以及 golangci-lint 的指定版本。
+5. `team@1.1.0` 的工具版本範圍（含 golangci-lint）已在 #36 審視並訂定（2026-10-27）。只有 `team@1.0.0` 保留原本的佔位範圍：它已發佈，不再修改（§5.5）。
 6. 開發者的機器上有 Git for Windows（git hook 的 sh 依賴它）。
 7. 確認公司內部 marketplace 的類型。Microsoft 的私有 marketplace 需要 GitHub Enterprise，透過 `ExtensionGalleryServiceUrl` policy 設定；依原始碼推斷，`code --install-extension` 不會讀這個 policy（尚未實機確認）。
-8. **法務確認**：`eslint-plugin-sonarjs` 的授權是 LGPL-3.0-only。如果不允許使用，TypeScript 的認知複雜度要改用其他方式檢查。確認之前，devguard 自己的原始碼也沒有加入這個 plugin，認知複雜度暫不檢查（`devguard check` 對自己會一直顯示這一項提示）。
+8. **法務確認**：`eslint-plugin-sonarjs` 的授權是 LGPL-3.0-only。`team@1.1.0` 已不再要求它（§6）：使用 ESLint 的 TypeScript 專案只檢查循環複雜度，認知複雜度不檢查，devguard 自己也宣告 `team@1.1.0`。仍宣告 `team@1.0.0` 的專案照舊要求這個 plugin。
 9. 只在打算開啟進階弱點掃描時才需要：
    - 一台能連到 NVD API 的機器，每天更新 Nexus raw hosted repo 中的 NVD 鏡像（給 Dependency-Check 使用）
    - `mirrors.govulndb` raw proxy

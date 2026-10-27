@@ -47,6 +47,7 @@ export const USAGE = `用法：devguard <指令> [選項]
   --code                fix：修正程式碼而不是設定
   --yes                 fix / install：不詢問，直接套用
   --apply               standard upgrade：實際套用升級
+  --ignore <路徑或 glob>  draft：不從這些檔案推斷元件，並寫入宣告的 ignore（可重複指定）
   --version             顯示版本
 `;
 
@@ -106,6 +107,7 @@ const OPTIONS = {
   yes: { type: "boolean", default: false },
   code: { type: "boolean", default: false },
   apply: { type: "boolean", default: false },
+  ignore: { type: "string", multiple: true },
   help: { type: "boolean", short: "h", default: false },
 } as const;
 
@@ -245,7 +247,7 @@ function standard(run: Run): Promise<number> {
 
 async function draft(run: Run): Promise<number> {
   try {
-    const { path, components } = await writeDraft({ cwd: run.cwd, today: run.today });
+    const { path, components } = await writeDraft({ cwd: run.cwd, today: run.today, ignore: run.flags.ignore });
     run.env.stdout(
       `已產生宣告草稿 ${path}（${String(components.length)} 個元件）\n` +
         "請確認元件並填寫所有 TODO 理由，再執行 devguard check\n",

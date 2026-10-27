@@ -127,6 +127,11 @@ export class SettingsJudge {
     return eff && eff.status !== "invalid" ? eff.value : undefined;
   }
 
+  /** Whether the component's standard has the item at all (a version may drop one, such as a tool). */
+  inStandard(key: string): boolean {
+    return key in this.defs;
+  }
+
   /** Normalized directory of this component (`""` or ending in `"/"`). */
   get dir(): string {
     return this.component.dir;

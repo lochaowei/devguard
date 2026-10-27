@@ -1,4 +1,5 @@
 import type { CodeCategory } from "../code/types.ts";
+import { withoutIgnored } from "../declaration/ignore.ts";
 import type { Resolution } from "../declaration/resolve.ts";
 import type { Finding } from "../report/finding.ts";
 import type { ToolRunner } from "../tools/runner.ts";
@@ -28,9 +29,18 @@ export interface LayerContext {
   stagedText?: (repoPath: string) => Promise<string | undefined>;
 }
 
-/** The files a layer should look at: those given on the command line, otherwise every file in the repo. */
-export function scopedFiles(ctx: LayerContext): Promise<readonly string[]> {
-  return ctx.scope.files ? Promise.resolve(ctx.scope.files) : ctx.files();
+/**
+ * The files in scope before `ignore:` applies: those given on the command line, otherwise every file in the repo.
+ * The component-wide layers (tests, vulnerability scans) pick components from these, so `ignore:` never removes a
+ * declared component's tests or scan (#35).
+ */
+export async function filesInScope(ctx: LayerContext): Promise<readonly string[]> {
+  return ctx.scope.files ?? (await ctx.files());
+}
+
+/** The files a file-based layer should look at: `filesInScope` without those the declaration's `ignore:` excludes. */
+export async function scopedFiles(ctx: LayerContext): Promise<readonly string[]> {
+  return withoutIgnored(ctx.resolution?.ignore ?? [], await filesInScope(ctx));
 }
 
 export interface LayerResult {

@@ -6,6 +6,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { HOOK_HANDLERS, type HookContext } from "../src/hooks/registry.ts";
 import { ToolMissingError, type ToolRequest, type ToolRunner } from "../src/tools/runner.ts";
 import { TODAY } from "./helpers.ts";
+import { isolateGit } from "./git-isolation.ts";
+
+// Real git runs here: keep it off any repo or config outside this file's temp directories.
+isolateGit();
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -254,7 +258,21 @@ describe("devguard hook claude-stop (SPEC §7.3)", () => {
     expect(json?.systemMessage).toContain("api/app.py");
   });
 
-  it("does not type-check a TypeScript component when just its non-source files changed", async () => {
+  it("sends Claude back at most once for a file left uncommitted before the session, so it cannot loop (#40)", async () => {
+    const { dir, write } = repo();
+    // The developer's own unfinished edit: Claude never touches it, and fixing it is not Claude's job.
+    write("api/other.py", "import os\n");
+    const first = await runHook("claude-stop", dir, stop(dir, false));
+    expect(first.json?.decision).toBe("block");
+    expect(first.json?.reason).toContain("api/other.py");
+    // Claude Code sets stop_hook_active on the next Stop; the same unfixed file then lets Claude go.
+    const second = await runHook("claude-stop", dir, stop(dir, true));
+    expect(second.code).toBe(0);
+    expect(second.json?.decision).toBeUndefined();
+    expect(second.json?.systemMessage).toContain("api/other.py");
+  });
+
+  it("only format-checks a TypeScript component when just its non-source files changed", async () => {
     const { dir, write } = repo();
     write(".devguard.yaml", `${DECL}  - path: ./web\n    language: typescript\n`);
     write("web/README.md", "# web\n");

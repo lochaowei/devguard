@@ -1,12 +1,12 @@
 import { ENVIRONMENT_CHECKS, type EnvironmentCheck } from "../environment/registry.ts";
-import { nodeExec, type Exec } from "../process/exec.ts";
+import { nodeExec, type EnvVars, type Exec } from "../process/exec.ts";
 import type { Finding } from "../report/finding.ts";
 import type { CheckLayer } from "./types.ts";
 
 export interface EnvironmentLayerOptions {
   checks?: readonly EnvironmentCheck[];
   exec?: Exec;
-  env?: Readonly<Record<string, string | undefined>>;
+  env?: EnvVars;
 }
 
 /** The environment layer: only `doctor` runs it, never `check` (SPEC §3.2). */

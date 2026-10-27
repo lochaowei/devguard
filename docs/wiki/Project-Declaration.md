@@ -27,6 +27,10 @@ components:                     # 元件清單（目錄 + 語言）
         until: 2027-03-31
 mirrors:
   auth: env                     # none（預設）| env
+ignore:                         # 選填：排除的目錄、檔案或 glob
+  - examples/
+  - third_party/
+  - "**/*.pb.go"
 ```
 
 ---
@@ -38,6 +42,32 @@ mirrors:
 3. **未涵蓋檔案（Uncovered Files）**：若 repo 中存在上述四種語言的程式檔，但沒有任何相符語言的元件涵蓋該路徑：
    - 依副檔名推定語言，直接套用該語言的**預設標準**（不含任何元件覆寫）。
    - `check` 會發出 `declaration/uncovered-files` **提示（hint）**，建議在 `.devguard.yaml` 的 `components` 中補上對應元件。
+   - 範例、第三方嵌入的原始碼、自動產生的檔案等不該套用標準的檔案，改寫進 `ignore`（見下節）。
+
+---
+
+## 排除路徑（`ignore`）
+
+頂層的 `ignore` 是字串清單，列出不屬於任何元件、也不受檢查的路徑：
+
+| 寫法 | 符合 |
+|---|---|
+| 一般路徑，如 `examples`、`examples/`、`scripts/gen.ts` | 該檔案，或該目錄底下的所有檔案（`examples` 不會符合 `examples-extra/`） |
+| glob，如 `**/*.pb.go`、`tools/*/fixture.py` | 符合的路徑，或符合的目錄底下的所有檔案。`*`、`?` 不跨越 `/`，`**` 可跨越多層目錄 |
+
+路徑一律相對於 repo 根目錄，用 `/` 分隔，開頭的 `./` 會被忽略。
+
+被排除的檔案：
+
+- 不會觸發 `declaration/uncovered-files` 提示。
+- 不會交給 `check`、`fix --code` 與各 hook 以檔案為單位的檢查（程式碼檢查），即使在命令列上指定或已 staged 也一樣。
+
+`ignore` 不影響的範圍：
+
+- 測試與弱點掃描以元件為單位：每個宣告的元件照常執行，`check --full` 仍是完整的檢查。`ignore` 的某一項涵蓋整個元件目錄時，`check` 發出 `declaration/ignored-component` **提示**，說明這個元件的檔案檢查都會略過。
+- 以整個目錄為單位執行的工具（元件的 `eslint .`、`tsc`、`mypy` 等）與覆蓋率工具（Vitest / Jest 的 `coverage.include`、coverage.py、JaCoCo）依各自的設定決定範圍；元件目錄內要排除的檔案，也要在該工具的設定中排除。
+
+`ignore` 不是非空字串的清單時（例如寫成單一字串、對應表，或含有數字、空字串），回報 `declaration/invalid` **錯誤**，整份清單不生效。
 
 ---
 
@@ -83,7 +113,7 @@ mirrors:
 若既有專案尚未建立 `.devguard.yaml`，可執行：
 
 ```bash
-devguard draft [--cwd <dir>]
+devguard draft [--cwd <dir>] [--ignore <路徑或 glob>]…
 ```
 
 ### 運作流程
@@ -93,6 +123,7 @@ devguard draft [--cwd <dir>]
    - **Go**：`go.mod`
    - **TypeScript**：`package.json`、`tsconfig.json`
    - **Java**：`pom.xml`、`build.gradle`、`build.gradle.kts`、`settings.gradle`、`settings.gradle.kts`（Java 多模組建置會合併歸屬於最外層的建置檔目錄）
+   - 符合 `--ignore` 的檔案不參與偵測，清單原樣寫進草稿的 `ignore`。
 2. **推導覆寫（`overrides`）**：對每個偵測到的元件執行設定檢查層，讀取既有工具設定檔中的實際值（`observed`）：
    - 與預設標準相同的值：省略不寫。
    - 比預設嚴格、允許的替代工具、風格項目：直接寫入值。

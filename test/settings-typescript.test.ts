@@ -354,3 +354,33 @@ describe("TypeScript settings check: Prettier", () => {
     expect(summary(await check(dir))).toEqual(["hint:settings/unconfirmed:prettier.config.js"]);
   });
 });
+
+describe("TypeScript settings check: team@1.1.0 does not require eslint-plugin-sonarjs (#39)", () => {
+  const DECL_1_1 = "standard: team@1.1.0\ncomponents:\n  - path: ./\n    language: typescript\n";
+  const builtinOnly = eslint(`complexity: ["error", 10]`);
+
+  it("passes an ESLint config with only the built-in complexity rule", async () => {
+    expect(await check(project({ ".devguard.yaml": DECL_1_1, "eslint.config.js": builtinOnly }))).toEqual([]);
+  });
+
+  it("still checks the built-in complexity limit", async () => {
+    const looser = eslint(`complexity: ["error", 20]`);
+    expect(summary(await check(project({ ".devguard.yaml": DECL_1_1, "eslint.config.js": looser })))).toEqual([
+      "error:settings/looser:eslint.config.js",
+    ]);
+  });
+
+  it("still checks cognitive complexity through Biome", async () => {
+    const decl = DECL_1_1 + "    overrides:\n      lint.tool: biome\n";
+    const off = `{ "formatter": { "lineWidth": 120 } }`;
+    const fs = await check(project({ ".devguard.yaml": decl, "biome.json": off }));
+    expect(summary(fs)).toEqual(["error:settings/looser:biome.json"]);
+    expect(fs[0]?.message).toMatch(/noExcessiveCognitiveComplexity/);
+  });
+
+  it("leaves team@1.0.0 as it was: the sonarjs rule is still expected", async () => {
+    expect(summary(await check(project({ "eslint.config.js": builtinOnly })))).toEqual([
+      "hint:settings/unconfirmed:eslint.config.js",
+    ]);
+  });
+});

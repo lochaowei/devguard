@@ -55,12 +55,13 @@ command -v devguard >/dev/null 2>&1 || { echo 'devguard：找不到 CLI（devgua
 - 由 Git for Windows 的 `sh` 執行，只有一行 POSIX sh。
 - 第三行的 `sha256` 是檔案其餘內容的 checksum。[`doctor`](Command-doctor.md) 用它判斷 hook 有沒有被改過，`fix` 用它決定要不要重新產生。
 - PATH 上找不到 `devguard` 時會**擋下** commit / push 並印出安裝方式，不會默默放行。
+- `pre-push` hook 一律安裝，但預設不跑任何檢查：完整測試、覆蓋率與弱點掃描只在開發者設定 `DEVGUARD_PRE_PUSH=full` 時執行，否則交給 CI 的 `check --full`。切換時不需要重新執行 `install`。見 [`hook git-pre-push`](Command-hook.md#git-pre-push)。
 
 ### 產生的 Claude Code 設定
 
 | 檔案 | 內容 |
 |---|---|
-| `.claude/settings.json` | 註冊三個 hook：`SessionStart` → `claude-session-start`、`PostToolUse`（matcher `Edit\|Write`）→ `claude-post-edit`、`Stop` → `claude-stop`。前兩個設定 `onFailure: "block"` |
+| `.claude/settings.json` | 註冊三個 hook：`SessionStart` → `claude-session-start`、`PostToolUse`（matcher `Edit\|Write`）→ `claude-post-edit`、`Stop` → `claude-stop`。前兩個設定 `onFailure: "block"`；`Stop` 不設定（`onFailure` 對 `Stop` 無效），舊版產生的 `Stop` 若帶有 `onFailure`，`install` 會移除 |
 | `.claude/rules/standards-<元件>-<語言>.md` | 以 frontmatter `paths` 綁定元件的檔案；列出元件的標準項目與目前的偏離 |
 | `.claude/skills/standards-doctor/SKILL.md` | `/standards-doctor` skill：嵌入 `devguard doctor --format claude --exit-zero` 的結果，開發者同意後才執行 `fix --yes` |
 

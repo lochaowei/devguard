@@ -45,12 +45,37 @@ describe("draftDeclaration: components", () => {
       "web/src/app.ts": "",
       "README.md": "",
     });
-    expect(d.standard).toBe("team@1.0.0");
+    expect(d.standard).toBe("team@1.1.0");
     expect(d.components.map((c) => [c.path, c.language])).toEqual([
       ["./", "python"],
       ["backend/", "go"],
       ["web/", "typescript"],
     ]);
+  });
+});
+
+describe("draftDeclaration: ignore", () => {
+  const files = {
+    "pyproject.toml": "[project]\nname = 'app'\n",
+    "app/main.py": "",
+    "examples/demo/package.json": "{}",
+    "examples/demo/index.ts": "",
+    "third_party/lib/x.go": "",
+  };
+
+  it("infers no components from ignored files and writes the ignore list into the draft", async () => {
+    const cwd = project(files);
+    const ignore = ["examples/", "third_party/**"];
+    const { text } = await draftDeclaration({ cwd, today: TODAY, files: Object.keys(files), ignore });
+    const d = parse(text) as DraftYaml & { ignore?: string[] };
+    expect(d.components.map((c) => [c.path, c.language])).toEqual([["./", "python"]]);
+    expect(d.ignore).toEqual(["examples/", "third_party/**"]);
+  });
+
+  it("leaves ignore out of the draft when none is given", async () => {
+    const d = (await draft(files)) as DraftYaml & { ignore?: string[] };
+    expect(d.ignore).toBeUndefined();
+    expect(d.components).toHaveLength(3);
   });
 });
 
@@ -143,12 +168,12 @@ describe("draftDeclaration: other languages", () => {
   });
 
   it("reads the Java version from pom.xml and treats nested modules as one component", async () => {
-    const pom = "<project><properties><maven.compiler.release>11</maven.compiler.release></properties></project>";
+    const pom = "<project><properties><maven.compiler.release>7</maven.compiler.release></properties></project>";
     const d = await draft({ "pom.xml": pom, "core/pom.xml": "<project/>", "core/src/main/java/App.java": "" });
     expect(d.components).toHaveLength(1);
     expect(d.components[0]?.path).toBe("./");
     expect(d.components[0]?.overrides?.["java.minVersion"]).toEqual({
-      value: "11",
+      value: "7",
       reason: expect.stringMatching(/^TODO/) as unknown,
     });
   });

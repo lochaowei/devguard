@@ -6,6 +6,7 @@ import { compareVersion } from "../standard/registry.ts";
 import { judgeConfigValue, setAt } from "./judge.ts";
 import type { ItemDef } from "../standard/types.ts";
 import { isRecord } from "../shared/guards.ts";
+import { coverageGateOff } from "../testing/coverage.ts";
 
 type Table = Record<string, unknown>;
 
@@ -337,6 +338,7 @@ function checkTypecheck(r: Report, doc: Table, found: ToolSection | undefined): 
 }
 
 function checkCoverage(r: Report, doc: Table): void {
+  if (coverageGateOff(r.want("coverage.lines"))) return;
   if (at(doc, "tool", "coverage", "run")?.branch === true) return;
   r.fixable(
     "coverage-branch",

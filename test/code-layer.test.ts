@@ -172,6 +172,47 @@ describe("code checks in devguard check", () => {
     expect(summary(calls)).toContain(":ruff check --output-format json --no-fix --force-exclude lib/z.py");
   });
 
+  it("leaves files matching ignore out of the uncovered-files hint and the code checks", async () => {
+    const { tools, calls } = passingTools();
+    const cwd = project(
+      WEB + "ignore:\n  - examples\n  - third_party/\n  - scripts/gen.ts\n  - '**/*.pb.go'\n  - 'tools/*/fixture.py'\n",
+    );
+    const r = await check({
+      cwd,
+      tools,
+      files: [
+        "web/a.ts",
+        "examples/demo.ts",
+        "third_party/lib/x.py",
+        "scripts/gen.ts",
+        "scripts/keep.ts",
+        "examplesextra/y.ts",
+        "api/v1/api.pb.go",
+        "tools/a/fixture.py",
+        "tools/a/b/fixture.py",
+      ],
+    });
+    expect(summary(calls)).toContain(":eslint --format json --no-warn-ignored scripts/keep.ts examplesextra/y.ts");
+    expect(summary(calls).join("\n")).not.toMatch(/examples\/|third_party|gen\.ts|api\.pb\.go|tools\/a\/fixture/);
+    expect(summary(calls)).toContain(":ruff check --output-format json --no-fix --force-exclude tools/a/b/fixture.py");
+    const ts = r.findings.find((f) => f.message.includes("TypeScript"));
+    expect(ts?.message).toContain("2 個 TypeScript 檔案");
+    expect(ts?.file).toBe("scripts/keep.ts");
+  });
+
+  it("leaves ignored files out even when they are named on the command line", async () => {
+    const { tools, calls } = passingTools();
+    const cwd = project(WEB + "ignore: [examples/]\n");
+    const r = await check({
+      cwd,
+      tools,
+      files: [],
+      scope: { files: ["examples/demo.ts", "web/a.ts"], full: false },
+    });
+    expect(summary(calls).join("\n")).not.toContain("examples/");
+    expect(rules(r.findings)).toEqual([]);
+  });
+
   it("runs Ruff and mypy on a Python component, honouring file arguments and --only", async () => {
     const declaration = API;
     const listFiles = () => Promise.resolve(["api/app.py", "api/util.py"]);

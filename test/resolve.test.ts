@@ -128,3 +128,29 @@ describe("resolveDeclaration — other rules", () => {
     expect(r.standard).toBeUndefined();
   });
 });
+
+describe("resolveDeclaration — ignore and declared components (#35)", () => {
+  const decl = (ignore: string) =>
+    `${head}  - path: ./\n    language: go\n  - path: web/\n    language: typescript\n` +
+    `  - path: web/api/\n    language: python\nignore: ${ignore}\n`;
+  const hints = (ignore: string) =>
+    resolveText(decl(ignore))
+      .findings.filter((f) => f.rule === "declaration/ignored-component")
+      .map((f) => [f.level, f.component, f.line]);
+
+  it("hints that a component's file checks are skipped when an ignore entry covers its whole directory", () => {
+    expect(hints("[web/]")).toEqual([
+      ["hint", "web/ (TypeScript)", 5],
+      ["hint", "web/api/ (Python)", 7],
+    ]);
+    expect(hints("['web/api/**']")).toEqual([["hint", "web/api/ (Python)", 7]]);
+    expect(hints("['**']")).toHaveLength(3);
+    const [finding] = resolveText(decl("[web/api]")).findings;
+    expect(finding?.message).toContain("web/api");
+    expect(finding?.message).toContain("測試與弱點掃描仍會執行");
+  });
+
+  it("does not hint for entries that cover only part of a component", () => {
+    expect(hints("['web/*.gen.ts', web/api/fixtures/, '**/*.pb.go', webapp/]")).toEqual([]);
+  });
+});

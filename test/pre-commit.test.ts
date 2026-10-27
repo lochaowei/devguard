@@ -6,6 +6,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runPreCommit } from "../src/hooks/pre-commit.ts";
 import { ToolMissingError, type ToolRequest, type ToolRunner } from "../src/tools/runner.ts";
 import { TODAY } from "./helpers.ts";
+import { isolateGit } from "./git-isolation.ts";
+
+// Real git runs here: keep it off any repo or config outside this file's temp directories.
+isolateGit();
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -65,6 +69,40 @@ describe("runPreCommit (SPEC §7.4)", () => {
     expect(code).toBe(1);
     expect(out).toContain("找不到 ruff");
     expect(out).toContain("uv sync");
+  });
+
+  it("skips staged files the declaration ignores", async () => {
+    const { dir, git, write } = repo();
+    write(
+      ".devguard.yaml",
+      "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: python\nignore: [gen.py]\n",
+    );
+    git("add", ".devguard.yaml");
+    git("commit", "-q", "--no-verify", "-m", "ignore");
+    write("gen.py", "import os\n");
+    git("add", "gen.py");
+    const { tools, calls } = fakeTools();
+    expect((await preCommit(dir, tools)).code).toBe(0);
+    expect(calls).toEqual([]);
+  });
+
+  it("leaves ignored files out of the partially-staged warning (#35)", async () => {
+    const { dir, git, write } = repo();
+    write(
+      ".devguard.yaml",
+      "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: python\nignore: [gen.py]\n",
+    );
+    write("gen.py", "a = 1\n");
+    git("add", ".");
+    git("commit", "-q", "--no-verify", "-m", "ignore");
+    for (const name of ["gen.py", "app.py"]) {
+      write(name, "b = 2\n");
+      git("add", name);
+      write(name, "c = 3\n");
+    }
+    const { out } = await preCommit(dir, fakeTools().tools);
+    expect(out).toContain("注意：app.py 有未 staged 的修改");
+    expect(out).not.toContain("gen.py");
   });
 
   it("passes when nothing is staged, without running any tool", async () => {

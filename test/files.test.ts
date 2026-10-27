@@ -6,6 +6,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { assignFiles, listRepoFiles, listTrackedFiles } from "../src/repo/files.ts";
 import type { Exec } from "../src/process/exec.ts";
 import { resolveText } from "./helpers.ts";
+import { isolateGit } from "./git-isolation.ts";
+
+// Real git runs here: keep it off any repo or config outside this file's temp directories.
+isolateGit();
 
 const dirs: string[] = [];
 afterEach(() => {

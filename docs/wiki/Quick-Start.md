@@ -83,14 +83,14 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 - 在專案環境（`.venv`）安裝並鎖定標準要求的開發工具（寫入 `pyproject.toml` 與 `uv.lock`）：
   ```bash
   uv init --lib
-  uv add --dev "ruff>=0.17,<0.18" "mypy>=1.18,<2" "pytest>=8,<10" "pytest-cov>=6,<8"
+  uv add --dev "ruff>=0.17,<1" "mypy>=1.18,<2" "pytest>=8,<10" "pytest-cov>=6,<8"
   # 若型別檢查改用 pyright：
-  # uv add --dev "pyright>=1.1.400,<1.2"
+  # uv add --dev "pyright>=1.1.400,<2"
   ```
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.0.0
+standard: team@1.1.0
 components:
   - path: ./
     language: python
@@ -165,7 +165,7 @@ Poetry 專案（最近的 lockfile 是 `poetry.lock`）改為寫入 `[[tool.poet
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.0.0
+standard: team@1.1.0
 components:
   - path: ./
     language: go
@@ -235,13 +235,13 @@ formatters:
   npm init -y
   npm pkg set type=module "engines.node=>=22"
   npm i -D "typescript@>=6 <7" "eslint@>=10 <11" "typescript-eslint@>=8 <9" \
-    "eslint-plugin-sonarjs@>=3 <4" "prettier@>=3 <4" "vitest@>=5 <6" "@vitest/coverage-v8@>=5 <6"
+    "prettier@>=3 <4" "vitest@>=5 <6" "@vitest/coverage-v8@>=5 <6"
   ```
   > 若改用 **Biome**：`npm i -D "@biomejs/biome@>=2 <3"`；若改用 **Jest**：`npm i -D "jest@>=30 <31"`。
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.0.0
+standard: team@1.1.0
 components:
   - path: ./
     language: typescript
@@ -262,24 +262,22 @@ components:
    ```js
    // eslint.config.js
    import { defineConfig } from "eslint/config";
-   import sonarjs from "eslint-plugin-sonarjs";
    import tseslint from "typescript-eslint";
 
    export default defineConfig(
      { ignores: ["coverage/", "dist/", "node_modules/"] },
      tseslint.configs.strictTypeChecked,
      {
-       plugins: { sonarjs },
        languageOptions: {
          parserOptions: { projectService: { allowDefaultProject: ["eslint.config.js"] } },
        },
        rules: {
          complexity: ["error", 10],
-         "sonarjs/cognitive-complexity": ["error", 15],
        },
      },
    );
    ```
+   > `team@1.1.0` 起不再要求 `eslint-plugin-sonarjs`（授權為 LGPL-3.0-only），ESLint 只檢查內建的 `complexity`。仍宣告 `team@1.0.0` 的專案要另外安裝 `eslint-plugin-sonarjs@>=3 <4` 並加上 `"sonarjs/cognitive-complexity": ["error", 15]`，或執行 [`devguard standard upgrade`](Command-standard-upgrade.md) 升級。
    ```ts
    // vitest.config.ts
    import { defineConfig } from "vitest/config";
@@ -309,7 +307,7 @@ components:
 ### 3.4 Java
 
 #### 前置需求與建置 Wrapper
-- JDK `>= 17`（新專案建議 21+）
+- 執行建置與檢查工具的 JDK `>= 17`（新專案建議 21+）。`team@1.1.0` 起，編譯目標（`maven.compiler.release`）最低可為 8
 - 建置工具：預設 **Maven**，可在 `.devguard.yaml` 改用 **Gradle**
 - **必須提交建置 Wrapper**：`devguard` 一律透過專案目錄（或上層多模組根目錄）的 `./mvnw`（`mvnw.cmd`）或 `./gradlew`（`gradlew.bat`）呼叫建置工具：
   ```bash
@@ -321,7 +319,7 @@ components:
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.0.0
+standard: team@1.1.0
 components:
   - path: ./
     language: java
@@ -421,7 +419,7 @@ components:
 若同一個 repo 同時包含多個服務（例如 `backend/` 為 Go、`worker/` 為 Python、`web/` 為 TypeScript），只需在 repo 根目錄放一份 `.devguard.yaml`：
 
 ```yaml
-standard: team@1.0.0
+standard: team@1.1.0
 components:
   - path: backend/
     language: go

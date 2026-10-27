@@ -74,7 +74,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
    ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.0.0
+   standard: team@1.1.0
    components:
      - path: ./
        language: python
@@ -118,7 +118,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
      ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.0.0
+   standard: team@1.1.0
    components:
      - path: ./
        language: go
@@ -147,13 +147,13 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
    ```bash
    npm pkg set type=module "engines.node=>=22"
    npm i -D "typescript@>=6 <7" "eslint@>=10 <11" "typescript-eslint@>=8 <9" \
-     "eslint-plugin-sonarjs@>=3 <4" "prettier@>=3 <4" "vitest@>=5 <6" "@vitest/coverage-v8@>=5 <6"
+     "prettier@>=3 <4" "vitest@>=4.1 <6" "@vitest/coverage-v8@>=4.1 <6"
    # 若改用 Biome：npm i -D "@biomejs/biome@>=2 <3"
    # 若改用 Jest：npm i -D "jest@>=30 <31"
    ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.0.0
+   standard: team@1.1.0
    components:
      - path: ./
        language: typescript
@@ -175,24 +175,22 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
      ```js
      // eslint.config.js
      import { defineConfig } from "eslint/config";
-     import sonarjs from "eslint-plugin-sonarjs";
      import tseslint from "typescript-eslint";
 
      export default defineConfig(
        { ignores: ["coverage/", "dist/", "node_modules/"] },
        tseslint.configs.strictTypeChecked,
        {
-         plugins: { sonarjs },
          languageOptions: {
            parserOptions: { projectService: { allowDefaultProject: ["eslint.config.js"] } },
          },
          rules: {
            complexity: ["error", 10],
-           "sonarjs/cognitive-complexity": ["error", 15],
          },
        },
      );
      ```
+     `team@1.1.0` 起不再要求 `eslint-plugin-sonarjs`（授權為 LGPL-3.0-only），使用 ESLint 時只檢查內建的 `complexity`；仍宣告 `team@1.0.0` 的專案要另外安裝 `eslint-plugin-sonarjs@>=3 <4` 並開啟 `"sonarjs/cognitive-complexity": ["error", 15]`，或執行 `devguard standard upgrade` 升級。
      ```ts
      // vitest.config.ts
      import { defineConfig } from "vitest/config";
@@ -227,7 +225,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
      ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.0.0
+   standard: team@1.1.0
    components:
      - path: ./
        language: java
@@ -275,7 +273,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 放在 repo 根目錄。最精簡的寫法：
 
 ```yaml
-standard: team@1.0.0
+standard: team@1.1.0
 components:
   - path: ./
     language: typescript
@@ -284,7 +282,7 @@ components:
 monorepo 與覆寫的寫法：
 
 ```yaml
-standard: team@1.0.0            # 必須寫確切版本
+standard: team@1.1.0            # 必須寫確切版本
 components:                     # 元件 = 目錄 + 語言
   - path: backend/
     language: go
@@ -309,7 +307,9 @@ mirrors:
 - 理由仍是 `TODO`、覆寫不存在的項目、值的型別錯誤、重複宣告同一個元件，都是**錯誤**。
 - 每個檔案歸屬於路徑最長且語言相符的元件；沒有元件涵蓋時，依副檔名推定語言並套用預設標準（並發出 `declaration/uncovered-files` 提示）。
 
-可以覆寫的項目與預設值，見 [src/standard/team-1.0.0.ts](src/standard/team-1.0.0.ts)、SPEC §5–§6 或 [Language-Standards.md](docs/wiki/Language-Standards.md)。
+可以覆寫的項目與預設值，見 [src/standard/team-1.0.0.ts](src/standard/team-1.0.0.ts)（`team@1.1.0` 與它的差異見 [src/standard/team-1.1.0.ts](src/standard/team-1.1.0.ts)）、SPEC §5–§6 或 [Language-Standards.md](docs/wiki/Language-Standards.md)。
+
+既有專案可以先宣告基線標準 `legacy@1.0.0`（[src/standard/legacy-1.0.0.ts](src/standard/legacy-1.0.0.ts)，SPEC §6.5）：不判定覆蓋率、不要求 strict 型別檢查、放寬複雜度、只禁用有已知弱點的套件，並接受 Java 8；之後以 `devguard standard upgrade` 升級到 `team@1.1.0`。
 
 ### 鏡像（`mirrors.*`）
 
@@ -334,7 +334,7 @@ mirrors:
 
 `check` 會讀出各元件用依賴管理鎖定的工具版本（`uv.lock` / `poetry.lock`、`package-lock.json`、`go.mod` 的 `tool`、`pom.xml` / `build.gradle(.kts)` 中的 plugin 版本），超出標準的版本範圍（`tools.<工具>` 項目）就回報錯誤。golangci-lint 例外：從 PATH 呼叫 `golangci-lint --version` 核對。專案用 pre-commit 框架時，其他工具 hook 的 `rev` 與鎖定版本不同會給提示（SPEC §8）。
 
-> **待團隊訂定**：`team@1.0.0` 中各工具的版本範圍、golangci-lint 與 Dependency-Check plugin 的指定版本目前都是**佔位值**（SPEC §12 第 5 項），發佈前必須換成團隊訂定的值。
+> `team@1.1.0` 的工具版本範圍（含 golangci-lint）已在 #36 審視並訂定（2026-10-27）。只有 `team@1.0.0` 保留原本的**佔位值**：它已發佈，不再修改（SPEC §12 第 5 項）。pom 沒有指定 Dependency-Check plugin 版本時 devguard 使用的版本仍是佔位值。
 
 ## 指令
 
@@ -356,7 +356,7 @@ devguard --version | --help
 |---|---|
 | `check` | 依序執行專案宣告、未涵蓋檔案、四語言設定、依賴規則、工具版本、`.gitattributes`、鏡像、VS Code、Claude Code 與程式碼檢查（lint、格式、型別），不含環境檢查。給 CI 與 git hook 使用。指定檔案時，程式碼檢查只針對這些檔案 |
 | `check --staged` | 只檢查 staged 的檔案，與 pre-commit hook 相同：formatter 與單檔 linter 讀 staged 版本（stdin），依賴相關檔案 staged 時才跑依賴規則 |
-| `check --full` | 再加上各元件的完整測試、行 / 分支覆蓋率門檻與（開啟時的）弱點掃描，與 pre-push hook 相同；不能與檔案參數同時使用 |
+| `check --full` | 再加上各元件的完整測試、行 / 分支覆蓋率門檻與（開啟時的）弱點掃描，與設定 `DEVGUARD_PRE_PUSH=full` 時的 pre-push hook 相同；不能與檔案參數同時使用 |
 | `doctor` | `check` 加上環境檢查：工具是否安裝、git hook 是否安裝（含既有 hook 框架與 `pre-commit install`）、VS Code 擴充套件、Claude Code 版本、Go 鏡像、帳密變數是否存在、npm audit 端點、標準是否有更新。只回報並附上修正指令，不自動安裝 |
 | `fix` | 修正**設定**（互動式終端機先預覽 diff、確認後套用）：工具設定檔、`.vscode/`、`.claude/`、被修改過的 devguard git hook、`.gitattributes`、`lombok.config`。CLI 產生的檔案整份重新產生；共用的結構化檔只改 CLI 管理的 key；建置檔與程式碼形式的設定只印出片段（SPEC §9.2） |
 | `fix --code` | 修正**程式碼**：格式化與可自動修正的 lint（Ruff、ESLint、Prettier、Biome、golangci-lint、Spotless），修正後回報剩餘問題 |
@@ -449,7 +449,7 @@ web/ (TypeScript)
   - 只檢查 staged 檔案；若檔案為「部分 staged（partially staged）」，CLI **不做 `git stash`**，而是透過 `git show :<path>` 取出 staged 內容由 stdin 送交單檔工具（`ruff`、`eslint`、`prettier`、`biome`、`golangci-lint fmt --stdin`）檢查，避免工作區未暫存修改造成誤判；無 stdin 模式的工具（`mypy`、`pyright`、`tsc`、`golangci-lint run`、Java wrapper）則檢查工作區版本並印出提示。
   - 當依賴相關檔案（如 `pyproject.toml`、`uv.lock`、`package.json`、`go.mod`、`pom.xml` 等）被 staged 時，一併執行依賴規則檢查（lockfile 與禁用套件）。
   - hook 只檢查不自動改檔；失敗時會印出可直接複製執行的 `devguard fix --code <files>` 指令。
-- **`pre-push`（等同 `devguard check --full`）**：完整執行所有檢查層、單元測試、行/分支覆蓋率門檻與（開啟時的）弱點掃描。
+- **`pre-push`**：預設不跑任何檢查、直接放行，日常 WIP push 不會被完整測試擋住；完整測試與覆蓋率交給 CI 的 `devguard check --full`。開發者設定環境變數 `DEVGUARD_PRE_PUSH=full` 後，才在 push 前執行 `check --full` 中的單元測試、行/分支覆蓋率門檻與（開啟時的）弱點掃描。
 
 ### 內部鏡像與帳密變數（`mirrors.auth: env`）
 
@@ -470,7 +470,7 @@ web/ (TypeScript)
   devguard standard upgrade           # 預覽升級至最新內建標準的設定差異、既有覆寫變化與需執行的套件指令
   devguard standard upgrade --apply   # 實際更新 .devguard.yaml、修補設定檔，並透過內部鏡像執行套件管理指令
   ```
-- **開啟弱點掃描（`deps.vulnScan: true`）**：在元件 `overrides` 將 `deps.vulnScan` 設為 `true` 後，`devguard check --full` 與 `pre-push` 會執行對應語言的弱點掃描（Python：`uv export` + `pip-audit`；Go：`govulncheck`；TypeScript：`npm audit`；Java：OWASP `dependency-check`）。若需暫時忽略特定弱點，可在 `deps.ignoredVulns` 填入 `{ id, reason, until }`。
+- **開啟弱點掃描（`deps.vulnScan: true`）**：在元件 `overrides` 將 `deps.vulnScan` 設為 `true` 後，`devguard check --full` 與開啟完整測試（`DEVGUARD_PRE_PUSH=full`）的 `pre-push` 會執行對應語言的弱點掃描（Python：`uv export` + `pip-audit`；Go：`govulncheck`；TypeScript：`npm audit`；Java：OWASP `dependency-check`）。若需暫時忽略特定弱點，可在 `deps.ignoredVulns` 填入 `{ id, reason, until }`。
 
 ## 開發
 
@@ -486,7 +486,7 @@ web/ (TypeScript)
 | `npm run smoke:exe [-- <exe>]` | 從 PATH 移除 Node 後，對 exe 執行 `--version` 與 `check`（範例專案） |
 | `npm run t2:probe` / `build:t2-probe` | SPEC §13 T2：子程序行為探測，先在 Node 下跑基準，再打包成 `dist/t2-probe-windows-<arch>.exe` 執行比對 |
 
-devguard 本身也遵守 SPEC §6.3 的 TypeScript 預設標準，並以 [.devguard.yaml](.devguard.yaml) 宣告自己。**例外：認知複雜度（上限 15）目前沒有檢查**。標準用 `eslint-plugin-sonarjs` 的 `cognitive-complexity`，但它的授權是 LGPL-3.0-only，還在等法務確認（SPEC §12 第 8 項），所以 devguard 自己還沒有加入；`devguard check` 對自己會一直顯示這一項提示。
+devguard 本身也遵守 SPEC §6.3 的 TypeScript 預設標準，並以 [.devguard.yaml](.devguard.yaml) 宣告自己（`team@1.1.0`）。`team@1.1.0` 不要求 `eslint-plugin-sonarjs`（LGPL-3.0-only，SPEC §12 第 8 項），所以 ESLint 只檢查循環複雜度，認知複雜度不檢查。
 
 測試大多在同一個程序內執行 CLI（`runCli`，[src/main.ts](src/main.ts)），以假的 `ToolRunner` 代替 ESLint、Ruff 等工具；只有少數測試真的啟動 `node src/cli.ts` 與真實工具。
 

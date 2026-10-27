@@ -5,7 +5,7 @@ paths:
 
 <!-- 由 CLI 產生（devguard），請勿手動修改；執行 devguard fix 重新產生 -->
 
-# ./ (TypeScript) 的標準（team@1.0.0）
+# ./ (TypeScript) 的標準（team@1.1.0）
 
 修改這個元件的檔案時遵守以下標準。完成修改後執行 `devguard check` 確認；格式與可自動修正的 lint 用 `devguard fix --code <檔案>` 修正。
 
@@ -33,9 +33,8 @@ paths:
 - prettier 版本範圍（tools.prettier）：>=3,<4
 - typescript 版本範圍（tools.typescript）：>=6,<7
 - typescript-eslint 版本範圍（tools.typescript-eslint）：>=8,<9
-- eslint-plugin-sonarjs 版本範圍（tools.eslint-plugin-sonarjs）：>=3,<4
 - biome 版本範圍（tools.biome）：>=2,<3
-- vitest 版本範圍（tools.vitest）：>=5,<6
+- vitest 版本範圍（tools.vitest）：>=4.1,<6
 - jest 版本範圍（tools.jest）：>=30,<31
 
 ## 目前的偏離

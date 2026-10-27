@@ -12,6 +12,7 @@ import type { KeyPath, Repair } from "../../fix/repair.ts";
 import { setAt, type SettingsJudge } from "../judge.ts";
 import { readIfExists } from "../../shared/fs.ts";
 import { isRecord } from "../../shared/guards.ts";
+import { coverageGateOff } from "../../testing/coverage.ts";
 
 const METRICS = ["lines", "branches", "functions", "statements"] as const;
 
@@ -120,8 +121,12 @@ async function checkJest(root: string, judge: SettingsJudge): Promise<void> {
   judge.missingFile(judge.path("jest.config.js"), " Jest 設定檔（覆蓋率門檻設在 coverageThreshold.global）");
 }
 
-/** The four coverage thresholds against the declared `coverage.lines`, for Vitest or Jest. */
+/**
+ * The four coverage thresholds against the declared `coverage.lines`, for Vitest or Jest. With the coverage gate off
+ * (`coverageGateOff`) no config file, thresholds or file list is needed.
+ */
 export async function checkCoverage(root: string, judge: SettingsJudge): Promise<void> {
+  if (coverageGateOff(judge.declared("coverage.lines"))) return;
   const tool = judge.declared("test.tool");
   if (tool === "vitest") await checkVitest(root, judge);
   else if (tool === "jest") await checkJest(root, judge);

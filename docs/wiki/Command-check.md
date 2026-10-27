@@ -2,7 +2,7 @@
 
 檢查專案宣告（`.devguard.yaml`）、各工具設定檔與程式碼是否符合預設標準。只回報，不修改任何檔案。
 
-日常開發、CI 與 VS Code 的 `standards: check` task 都用它；pre-commit hook 跑的就是 `check --staged`，pre-push hook 跑的是 `check --full` 中的測試與覆蓋率部分。
+日常開發、CI 與 VS Code 的 `standards: check` task 都用它；pre-commit hook 跑的就是 `check --staged`，pre-push hook 在開發者設定 `DEVGUARD_PRE_PUSH=full` 時跑 `check --full` 中的測試與覆蓋率部分（預設不跑）。`check --full` 本身不受這個環境變數影響，一律完整執行測試、覆蓋率與弱點掃描，供 CI 與發佈前的本地檢查使用。
 
 本頁的範例都以[示範專案](CLI-Reference.md#示範專案)實際執行取得。
 
@@ -64,6 +64,7 @@ devguard check [檔案…] [--staged] [--only lint|format|typecheck] [--full]
 - **指定檔案**：設定檢查（1–12）照常跑整個專案；`code` 層只檢查這些檔案。`tsc`、`mypy`、`pyright` 這類無法只檢查單一檔案的工具，仍會檢查檔案所屬的整個元件。
 - **指定的檔案不是原始碼**：TypeScript 元件內的檔案（`.js`、`.mjs`、`.json`、`.md`、`.prettierrc`、`LICENSE` 等）都交給元件的 linter 與 formatter，由工具決定是否處理（ESLint `--no-warn-ignored`、Prettier `--ignore-unknown`、Biome `--files-ignore-unknown=true`），回報的問題與全專案檢查一致。工具不處理的檔案不產生 finding。只有這類檔案時，不跑型別檢查。
 - **`--staged`**：只跑 `declaration`、`code` 兩層；有依賴檔（`package.json`、lockfile 等）被 staged 時再加上 `deps`。細節見 [hook 頁的 git-pre-commit](Command-hook.md#git-pre-commit)。
+- **宣告的 `ignore`**：符合的檔案從檔案清單中排除，不會觸發 `uncovered-files` 提示，也不會交給 `code`、`tests`、`vuln` 層，即使在命令列上指定或已 staged 也一樣（格式見[專案宣告](Project-Declaration.md#排除路徑ignore)）。以整個目錄為單位執行的工具（元件的 `eslint .`、`prettier .`、`tsc`、`mypy` 等）仍依各自的設定決定範圍；元件目錄內要排除的檔案，也要在該工具的設定中排除。
 - **沒有 `.devguard.yaml`**：報告 `declaration/missing` 錯誤，程式碼檢查仍以推定的預設標準執行。
 - **`.vscode/` 完全不存在**：`check` 不會報告；要產生它請執行 [`fix`](Command-fix.md) 或 [`install`](Command-install.md)。已經有部分檔案時，缺少的才算錯誤。
 
@@ -154,7 +155,7 @@ $ devguard check --strict > /dev/null; echo $?
 
 ### `--full`：測試與覆蓋率
 
-測試與覆蓋率的問題長這樣（取自 [pre-push hook](Command-hook.md#git-pre-push)，它跑的就是 `--full` 的這兩層）：
+測試與覆蓋率的問題長這樣（取自開啟完整測試的 [pre-push hook](Command-hook.md#git-pre-push)，它跑的就是 `--full` 的這兩層）：
 
 ```text
 標準：team@1.0.0

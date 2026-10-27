@@ -5,7 +5,8 @@ import { pathWithoutNode, runSmoke } from "../scripts/smoke-exe.ts";
 
 const CLI = [process.execPath, join(import.meta.dirname, "..", "src", "cli.ts")];
 
-describe("runSmoke", () => {
+// runSmoke starts the real CLI several times; under a loaded machine that takes longer than Vitest's default 5 s.
+describe("runSmoke", { timeout: 30_000 }, () => {
   it("passes --version and check on a sample project for a working devguard", () => {
     const results = runSmoke(CLI, "0.1.0");
     expect(results.map((r) => [r.name, r.ok])).toEqual([
