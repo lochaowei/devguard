@@ -3,6 +3,14 @@ import type { ToolResult } from "../tools/runner.ts";
 import type { TestTarget } from "./types.ts";
 import { readIfExists } from "../shared/fs.ts";
 
+/**
+ * Whether a `coverage.lines` threshold turns the coverage gate off (SPEC §5.1): at 0 or below (legacy@1.0.0, #37)
+ * the tests still run, but no total fails, so no coverage report, threshold config or file list is required.
+ */
+export function coverageGateOff(threshold: unknown): boolean {
+  return typeof threshold === "number" && threshold <= 0;
+}
+
 /** The coverage measures the standard can hold to a threshold (SPEC §6). */
 export type CoverageMetric = "lines" | "branches" | "functions" | "statements";
 

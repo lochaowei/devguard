@@ -33,7 +33,7 @@
 |---|---|---|---|
 | `complexity.cyclomatic` | `10` | `max` | 循環複雜度上限 |
 | `complexity.cognitive` | `15` | `max` | 認知複雜度上限（Python 不適用） |
-| `coverage.lines` | `80` | `min` | 覆蓋率門檻（%） |
+| `coverage.lines` | `80` | `min` | 覆蓋率門檻（%）；0 以下表示不設門檻：仍執行測試，但不判定覆蓋率、不要求覆蓋率設定 |
 | `deps.lockfile` | `true` | `bool` | 必須提交對應語言的 lockfile（或等效鎖定設定） |
 | `deps.vulnScan` | `false` | `bool` | 弱點掃描（進階項目，預設關閉） |
 | `deps.ignoredVulns` | `[]` | `ignoredVulns` | 忽略的弱點清單（每項需附 `reason` 與 `until`） |

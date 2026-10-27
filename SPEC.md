@@ -185,7 +185,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 |---|---|---|
 | `complexity.cyclomatic` | 10 | 上限 |
 | `complexity.cognitive` | 15（Python 不適用） | 上限 |
-| `coverage.lines` | 80 | 下限 |
+| `coverage.lines` | 80（0 以下表示不設覆蓋率門檻：`--full` 仍執行測試，但不判定覆蓋率，也不要求覆蓋率設定或報告） | 下限 |
 | `deps.lockfile` | `true`（各語言的落地方式不同） | 布林 |
 | `deps.vulnScan` | **`false`**（進階項目，見 §5.3） | 布林 |
 | `deps.ignoredVulns` | 空 | 新增項目算放寬 |
