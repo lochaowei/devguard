@@ -1,7 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { runCheck } from "../src/check.ts";
 import { runDoctor } from "../src/doctor.ts";
 import { draftDeclaration } from "../src/draft.ts";
@@ -12,41 +9,11 @@ import { javaSettingsLayer } from "../src/layers/settings-java.ts";
 import { pythonSettingsLayer } from "../src/layers/settings-python.ts";
 import { findStandard } from "../src/standard/registry.ts";
 import { typescriptSettingsLayer } from "../src/layers/settings-typescript.ts";
-import { runStandardUpgrade } from "../src/standard/upgrade-run.ts";
-import type { ToolRunner } from "../src/tools/runner.ts";
 import { rules, TODAY } from "./helpers.ts";
+import { noTools, read, repo, upgrade } from "./standard-helpers.ts";
 import { checkTests, fakeTools, ok, project } from "./tests-helpers.ts";
 
 // legacy@1.0.0 as this CLI bundles it (#37): no bundled-standard injection, so these go through the real registry.
-
-const dirs: string[] = [];
-afterEach(() => {
-  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
-});
-
-function repo(files: Record<string, string>): string {
-  const dir = mkdtempSync(join(tmpdir(), "devguard-legacy100-"));
-  dirs.push(dir);
-  for (const [name, text] of Object.entries(files)) {
-    mkdirSync(dirname(join(dir, name)), { recursive: true });
-    writeFileSync(join(dir, name), text);
-  }
-  return dir;
-}
-
-const noTools: ToolRunner = {
-  run: () => Promise.reject(new Error("no tools in this test")),
-  manage: () => Promise.reject(new Error("no package commands expected")),
-};
-
-const read = (dir: string, name: string) => readFileSync(join(dir, name), "utf8");
-
-async function upgrade(dir: string, options: { apply?: boolean; target?: string } = {}) {
-  let out = "";
-  const write = (t: string) => (out += t);
-  const code = await runStandardUpgrade({ cwd: dir, today: TODAY, apply: false, ...options, tools: noTools, write });
-  return { code, out };
-}
 
 const component = (standard: string, language: string) =>
   `standard: ${standard}\ncomponents:\n  - {path: ./, language: ${language}}\n`;
