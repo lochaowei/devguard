@@ -1,10 +1,11 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Interaction } from "../src/fix/interaction.ts";
 import { runInstall } from "../src/hooks/install.ts";
+import { isolateGit } from "./git-isolation.ts";
 import { TODAY } from "./helpers.ts";
 
 /**
@@ -12,28 +13,11 @@ import { TODAY } from "./helpers.ts";
  * in a worktree) and friends to the hook; a project tool that inherits them commits into the outer repo.
  *
  * Every repo here, and the remote, is a temporary one this file creates. Should this file itself run under a git
- * hook, the variables would point every git call below at whatever repo ran the hook, so they are cleared for this
- * worker first. HOME and the global config also point into the temporary directory and the system config is skipped,
- * so no git call here can write to a config outside it.
+ * hook, the variables would point every git call below at whatever repo ran the hook, so `isolateGit` clears them for
+ * this worker first and points HOME and the git config into a temporary directory.
  */
-const GIT_REPO_ENV = [
-  "GIT_DIR",
-  "GIT_WORK_TREE",
-  "GIT_INDEX_FILE",
-  "GIT_OBJECT_DIRECTORY",
-  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-  "GIT_COMMON_DIR",
-  "GIT_PREFIX",
-];
-for (const name of GIT_REPO_ENV) Reflect.deleteProperty(process.env, name);
+isolateGit();
 const base = mkdtempSync(join(tmpdir(), "devguard-worktree-"));
-const home = join(base, "home");
-mkdirSync(home);
-Object.assign(process.env, {
-  HOME: home,
-  GIT_CONFIG_GLOBAL: join(home, ".gitconfig"),
-  GIT_CONFIG_NOSYSTEM: "1",
-});
 
 const CLI = join(import.meta.dirname, "..", "src", "cli.ts").replace(/\\/g, "/");
 const main = join(base, "main");

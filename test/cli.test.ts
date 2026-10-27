@@ -7,6 +7,10 @@ import { localDate } from "../src/check.ts";
 import type { Interaction } from "../src/fix/interaction.ts";
 import { runCli } from "../src/main.ts";
 import type { ToolRequest, ToolRunner } from "../src/tools/runner.ts";
+import { isolateGit } from "./git-isolation.ts";
+
+// Real git runs here: keep it off any repo or config outside this file's temp directories.
+isolateGit();
 
 const CLI = join(import.meta.dirname, "..", "src", "cli.ts");
 const dirs: string[] = [];

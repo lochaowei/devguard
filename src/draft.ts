@@ -238,7 +238,7 @@ export async function writeDraft(options: WriteDraftOptions): Promise<Draft & { 
   const path = join(cwd, DECLARATION_FILE);
   if (existsSync(path)) throw new DeclarationExistsError();
   const files = await (options.listFiles ?? listRepoFiles)(cwd);
-  const draft = await draftDeclaration({ cwd, today, files, ignore: options.ignore ?? [] });
+  const draft = await draftDeclaration({ cwd, today, files, ignore: options.ignore });
   try {
     await writeFile(path, draft.text, { flag: "wx" });
   } catch (e) {

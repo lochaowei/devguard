@@ -109,6 +109,13 @@ describe("vulnerability scan", () => {
     expect(vulns[0]?.component).toBe("svc/ (Go)");
   });
 
+  it("scans a component even when ignore matches its files (#35)", async () => {
+    const decl = declare("svc/", "go", "{deps.vulnScan: true}") + "ignore: ['svc/**']\n";
+    const p = scan(decl, () => ok(GOVULNCHECK), ["svc/main.go"]);
+    expect(await vulnRules(p)).toContain("error:vuln/found");
+    expect(p.calls.map((c) => `${c.dir}:${c.tool}`)).toEqual(["svc/:govulncheck"]);
+  });
+
   it("skips vulnerabilities in deps.ignoredVulns, by id or alias, while reason and until hold", async () => {
     const ignore = (until: string) =>
       `{deps.vulnScan: true, deps.ignoredVulns: [{id: CVE-2024-24786, reason: 只在測試工具使用, until: ${until}}]}`;

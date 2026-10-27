@@ -11,6 +11,10 @@ import { nodeExec, type Exec } from "../src/process/exec.ts";
 import type { Finding } from "../src/report/finding.ts";
 import { ToolMissingError, type ToolRunner } from "../src/tools/runner.ts";
 import { rules, TODAY } from "./helpers.ts";
+import { isolateGit } from "./git-isolation.ts";
+
+// Real git runs here: keep it off any repo or config outside this file's temp directories.
+isolateGit();
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -89,6 +93,7 @@ describe("git hooks installed (SPEC §7.4)", () => {
     const findings = environment((await runDoctor({ cwd: dir, today: TODAY, env: {} })).findings);
     expect(rules(findings)).toEqual(["hint:environment/hook-missing"]);
     expect(findings[0]?.message).toContain("DEVGUARD_PRE_PUSH=full");
+    expect(findings[0]?.message).toContain("git push 看到的環境變數可能不同");
     expect(findings[0]?.fix).toContain("devguard install");
   });
 

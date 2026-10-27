@@ -7,6 +7,10 @@ import { runDoctor } from "../src/doctor.ts";
 import { claudeCodeCheck } from "../src/environment/claude-code.ts";
 import { nodeExec, type Exec } from "../src/process/exec.ts";
 import { rules, TODAY } from "./helpers.ts";
+import { isolateGit } from "./git-isolation.ts";
+
+// Real git runs here: keep it off any repo or config outside this file's temp directories.
+isolateGit();
 
 const dirs: string[] = [];
 afterEach(() => {

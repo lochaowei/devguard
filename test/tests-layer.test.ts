@@ -76,6 +76,12 @@ describe("tests and coverage in devguard check", () => {
     expect(calls).toEqual([]);
   });
 
+  it("runs a component's tests even when ignore matches its files (#35)", async () => {
+    const { tools, calls } = vitest(ALL_80);
+    await check(WEB + "ignore: [web/]\n", tools);
+    expect(calls.map((c) => `${c.dir}:${c.tool}`)).toEqual(["web/:vitest"]);
+  });
+
   it("runs each component's tests with --full and judges coverage against the standard", async () => {
     const { tools, calls } = vitest({ ...ALL_80, lines: 70 });
     const r = await check(WEB, tools);

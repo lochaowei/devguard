@@ -6,6 +6,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Interaction } from "../src/fix/interaction.ts";
 import { runInstall } from "../src/hooks/install.ts";
 import { TODAY } from "./helpers.ts";
+import { isolateGit } from "./git-isolation.ts";
+
+// Real git runs here: keep it off any repo or config outside this file's temp directories.
+isolateGit();
 
 /**
  * A real repo with the hook installed; `git commit` runs it through Git for Windows' sh. The hook starts the CLI as

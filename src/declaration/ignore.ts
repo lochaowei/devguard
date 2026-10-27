@@ -32,6 +32,17 @@ function matcher(pattern: string): (path: string) => boolean {
   return (path) => re.test(path);
 }
 
+/**
+ * Whether the `ignore:` entry excludes every file under `dir` (normalized, "" for the repo root): it names the
+ * directory or one above it, or ends in `/**` or `/*` after such a directory.
+ */
+export function coversDirectory(pattern: string, dir: string): boolean {
+  const whole = normalizePath(pattern)
+    .replace(/\/+$/, "")
+    .replace(/\/\*\*?$/, "");
+  return matcher(whole)(dir.replace(/\/$/, ""));
+}
+
 /** The files not excluded by the declaration's `ignore:` entries. */
 export function withoutIgnored(patterns: readonly string[], files: readonly string[]): readonly string[] {
   if (patterns.length === 0) return files;

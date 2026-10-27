@@ -30,12 +30,17 @@ export interface LayerContext {
 }
 
 /**
- * The files a layer should look at: those given on the command line, otherwise every file in the repo; either way
- * without those the declaration's `ignore:` excludes.
+ * The files in scope before `ignore:` applies: those given on the command line, otherwise every file in the repo.
+ * The component-wide layers (tests, vulnerability scans) pick components from these, so `ignore:` never removes a
+ * declared component's tests or scan (#35).
  */
+export async function filesInScope(ctx: LayerContext): Promise<readonly string[]> {
+  return ctx.scope.files ?? (await ctx.files());
+}
+
+/** The files a file-based layer should look at: `filesInScope` without those the declaration's `ignore:` excludes. */
 export async function scopedFiles(ctx: LayerContext): Promise<readonly string[]> {
-  const files = ctx.scope.files ?? (await ctx.files());
-  return withoutIgnored(ctx.resolution?.ignore ?? [], files);
+  return withoutIgnored(ctx.resolution?.ignore ?? [], await filesInScope(ctx));
 }
 
 export interface LayerResult {

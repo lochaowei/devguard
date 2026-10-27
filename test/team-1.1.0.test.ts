@@ -1,52 +1,19 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { runCheck } from "../src/check.ts";
 import { runDoctor } from "../src/doctor.ts";
 import { createStandardUpgradeCheck } from "../src/environment/standard-upgrade.ts";
 import { declarationLayer } from "../src/layers/declaration.ts";
 import { javaSettingsLayer } from "../src/layers/settings-java.ts";
 import { toolVersionsLayer } from "../src/layers/tool-versions.ts";
-import { runStandardUpgrade } from "../src/standard/upgrade-run.ts";
-import type { ToolRunner } from "../src/tools/runner.ts";
 import { rules, TODAY } from "./helpers.ts";
+import { noTools, read, repo, upgrade } from "./standard-helpers.ts";
 
 // team@1.1.0 as this CLI bundles it (#39): no bundled-standard injection, so these go through the real registry.
-
-const dirs: string[] = [];
-afterEach(() => {
-  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
-});
-
-function repo(files: Record<string, string>): string {
-  const dir = mkdtempSync(join(tmpdir(), "devguard-team110-"));
-  dirs.push(dir);
-  for (const [name, text] of Object.entries(files)) {
-    mkdirSync(dirname(join(dir, name)), { recursive: true });
-    writeFileSync(join(dir, name), text);
-  }
-  return dir;
-}
-
-const read = (dir: string, name: string) => readFileSync(join(dir, name), "utf8");
 
 /** A TypeScript project on team@1.0.0 that widened the sonarjs range with a reason. */
 const TS_ON_1_0_0 =
   "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: typescript\n    overrides:\n" +
   '      tools.eslint-plugin-sonarjs:\n        value: ">=3,<5"\n        reason: "peer dependency"\n';
-
-const noTools: ToolRunner = {
-  run: () => Promise.reject(new Error("no tools in this test")),
-  manage: () => Promise.reject(new Error("no package commands expected")),
-};
-
-async function upgrade(dir: string, apply = false) {
-  let out = "";
-  const write = (t: string) => (out += t);
-  const code = await runStandardUpgrade({ cwd: dir, today: TODAY, apply, tools: noTools, write });
-  return { code, out };
-}
 
 describe("team@1.1.0 is the newest bundled standard (#39)", () => {
   it("doctor suggests upgrading team@1.0.0 to team@1.1.0", async () => {
@@ -69,7 +36,7 @@ describe("team@1.1.0 is the newest bundled standard (#39)", () => {
 
   it("standard upgrade --apply moves the declaration to team@1.1.0 and drops the sonarjs override", async () => {
     const dir = repo({ ".devguard.yaml": TS_ON_1_0_0 });
-    expect((await upgrade(dir, true)).code).toBe(0);
+    expect((await upgrade(dir, { apply: true })).code).toBe(0);
     const decl = read(dir, ".devguard.yaml");
     expect(decl).toContain("standard: team@1.1.0");
     expect(decl).not.toContain("eslint-plugin-sonarjs");
@@ -162,7 +129,7 @@ describe("team@1.1.0 admits the current Java tool releases (#36)", () => {
   });
 });
 
-describe("team@1.1.0 lowers java.minVersion to Java 8, which OpenJDK still maintains (#36)", () => {
+describe("team@1.1.0 keeps java.minVersion 17; Java 8 projects use legacy@1.0.0 (#36)", () => {
   const releaseFindings = async (standard: string, release: string) => {
     const { findings } = await runCheck(
       {
@@ -178,14 +145,14 @@ describe("team@1.1.0 lowers java.minVersion to Java 8, which OpenJDK still maint
     return findings.filter((f) => f.message.includes("maven.compiler.release")).map((f) => `${f.level}:${f.rule}`);
   };
 
-  it("accepts a project compiled for Java 8 (written 1.8 or 8), which team@1.0.0 rejects", async () => {
-    expect(await releaseFindings("team@1.0.0", "1.8")).toEqual(["error:settings/looser"]);
-    expect(await releaseFindings("team@1.1.0", "1.8")).toEqual([]);
-    expect(await releaseFindings("team@1.1.0", "8")).toEqual([]);
+  it("rejects a project compiled for Java 8 and accepts Java 17", async () => {
+    expect(await releaseFindings("team@1.1.0", "1.8")).toEqual(["error:settings/looser"]);
+    expect(await releaseFindings("team@1.1.0", "8")).toEqual(["error:settings/looser"]);
+    expect(await releaseFindings("team@1.1.0", "17")).toEqual([]);
   });
 
-  it("still rejects Java 7, which no OpenJDK update project maintains", async () => {
-    expect(await releaseFindings("team@1.1.0", "1.7")).toEqual(["error:settings/looser"]);
+  it("legacy@1.0.0 accepts the same Java 8 project", async () => {
+    expect(await releaseFindings("legacy@1.0.0", "1.8")).toEqual([]);
   });
 });
 
@@ -196,21 +163,22 @@ describe("standard upgrade to team@1.1.0 shows the widened items (#36)", () => {
     '      java.minVersion:\n        value: "8"\n        reason: "legacy customers"\n' +
     '      tools.checkstyle:\n        value: ">=10.21,<15"\n        reason: "Checkstyle 14"\n';
 
-  it("previews the new ranges and the overrides they make pointless", async () => {
+  it("previews the new ranges and the overrides they make pointless, but not java.minVersion", async () => {
     const dir = repo({ ".devguard.yaml": JAVA_ON_1_0_0 });
     const { out } = await upgrade(dir);
-    expect(out).toContain('Java｜Java 最低版本："17" → "8"');
+    expect(out).not.toContain("Java 最低版本");
+    expect(out).not.toContain("java.minVersion（與新預設相同）");
     expect(out).toContain('Java｜checkstyle 版本範圍：">=10.21,<11" → ">=10.21,<15"');
     expect(out).toContain('Java｜spotless-maven-plugin 版本範圍：">=2.44,<3" → ">=2.44,<4"');
-    expect(out).toContain("java.minVersion（與新預設相同）");
     expect(out).toContain("tools.checkstyle（與新預設相同）");
   });
 
-  it("--apply drops those overrides", async () => {
+  it("--apply drops the Checkstyle override and keeps the java.minVersion deviation", async () => {
     const dir = repo({ ".devguard.yaml": JAVA_ON_1_0_0 });
-    expect((await upgrade(dir, true)).code).toBe(0);
+    expect((await upgrade(dir, { apply: true })).code).toBe(0);
     expect(read(dir, ".devguard.yaml")).toBe(
-      "standard: team@1.1.0\ncomponents:\n  - path: ./\n    language: java\n    overrides: {}\n",
+      "standard: team@1.1.0\ncomponents:\n  - path: ./\n    language: java\n    overrides:\n" +
+        '      java.minVersion:\n        value: "8"\n        reason: "legacy customers"\n',
     );
   });
 });

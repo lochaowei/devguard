@@ -1,6 +1,9 @@
 import { spawn } from "node:child_process";
 import { viaCmd } from "./cmd-shim.ts";
 
+/** A process environment as devguard reads it (`process.env`, or the one a test passes). */
+export type EnvVars = Readonly<Record<string, string | undefined>>;
+
 /** A program to start: absolute path or a name looked up on PATH. */
 export interface Command {
   file: string;

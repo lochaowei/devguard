@@ -247,7 +247,7 @@ function standard(run: Run): Promise<number> {
 
 async function draft(run: Run): Promise<number> {
   try {
-    const { path, components } = await writeDraft({ cwd: run.cwd, today: run.today, ignore: run.flags.ignore ?? [] });
+    const { path, components } = await writeDraft({ cwd: run.cwd, today: run.today, ignore: run.flags.ignore });
     run.env.stdout(
       `已產生宣告草稿 ${path}（${String(components.length)} 個元件）\n` +
         "請確認元件並填寫所有 TODO 理由，再執行 devguard check\n",

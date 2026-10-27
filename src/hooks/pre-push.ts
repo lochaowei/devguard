@@ -1,4 +1,5 @@
 import { checkTestsAndCoverage } from "../check.ts";
+import type { EnvVars } from "../process/exec.ts";
 import { exitCodeFor, renderText } from "../report/render.ts";
 import type { HookContext } from "./pre-commit.ts";
 
@@ -6,7 +7,7 @@ import type { HookContext } from "./pre-commit.ts";
 export const PRE_PUSH_ENV = "DEVGUARD_PRE_PUSH";
 
 /** Whether the pre-push hook runs the full tests: only when `DEVGUARD_PRE_PUSH=full`; any other value leaves it off. */
-export function prePushRunsTests(env: Readonly<Record<string, string | undefined>>): boolean {
+export function prePushRunsTests(env: EnvVars): boolean {
   return env[PRE_PUSH_ENV] === "full";
 }
 

@@ -12,6 +12,7 @@ import type { KeyPath, Repair } from "../../fix/repair.ts";
 import { setAt, type SettingsJudge } from "../judge.ts";
 import { readIfExists } from "../../shared/fs.ts";
 import { isRecord } from "../../shared/guards.ts";
+import { coverageGateOff } from "../../testing/coverage.ts";
 
 const METRICS = ["lines", "branches", "functions", "statements"] as const;
 
@@ -121,12 +122,11 @@ async function checkJest(root: string, judge: SettingsJudge): Promise<void> {
 }
 
 /**
- * The four coverage thresholds against the declared `coverage.lines`, for Vitest or Jest. A threshold of 0
- * (legacy@1.0.0, #37) fails no total, so it needs no config file, thresholds or file list.
+ * The four coverage thresholds against the declared `coverage.lines`, for Vitest or Jest. With the coverage gate off
+ * (`coverageGateOff`) no config file, thresholds or file list is needed.
  */
 export async function checkCoverage(root: string, judge: SettingsJudge): Promise<void> {
-  const threshold = judge.declared("coverage.lines");
-  if (typeof threshold === "number" && threshold <= 0) return;
+  if (coverageGateOff(judge.declared("coverage.lines"))) return;
   const tool = judge.declared("test.tool");
   if (tool === "vitest") await checkVitest(root, judge);
   else if (tool === "jest") await checkJest(root, judge);
