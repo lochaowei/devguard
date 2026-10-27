@@ -60,8 +60,12 @@ ignore:                         # 選填：排除的目錄、檔案或 glob
 被排除的檔案：
 
 - 不會觸發 `declaration/uncovered-files` 提示。
-- 不會交給 `check`、`fix --code` 與各 hook 的程式碼、測試與弱點掃描檢查，即使在命令列上指定或已 staged 也一樣。
-- 以整個目錄為單位執行的工具（元件的 `eslint .`、`tsc`、`mypy` 等）仍依各自的設定決定範圍；元件目錄內要排除的檔案，也要在該工具的設定中排除。
+- 不會交給 `check`、`fix --code` 與各 hook 以檔案為單位的檢查（程式碼檢查），即使在命令列上指定或已 staged 也一樣。
+
+`ignore` 不影響的範圍：
+
+- 測試與弱點掃描以元件為單位：每個宣告的元件照常執行，`check --full` 仍是完整的檢查。`ignore` 的某一項涵蓋整個元件目錄時，`check` 發出 `declaration/ignored-component` **提示**，說明這個元件的檔案檢查都會略過。
+- 以整個目錄為單位執行的工具（元件的 `eslint .`、`tsc`、`mypy` 等）與覆蓋率工具（Vitest / Jest 的 `coverage.include`、coverage.py、JaCoCo）依各自的設定決定範圍；元件目錄內要排除的檔案，也要在該工具的設定中排除。
 
 `ignore` 不是非空字串的清單時（例如寫成單一字串、對應表，或含有數字、空字串），回報 `declaration/invalid` **錯誤**，整份清單不生效。
 
