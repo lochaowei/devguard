@@ -196,8 +196,8 @@ describe("typescript checker: Biome", () => {
     });
     const findings = await check(biome, tools);
     expect(calls.map((c) => [c.tool, ...(c.args ?? [])])).toEqual([
-      ["biome", "lint", "--reporter=github", "."],
-      ["biome", "format", "--reporter=github", "."],
+      ["biome", "lint", "--reporter=github", "--files-ignore-unknown=true", "--no-errors-on-unmatched", "."],
+      ["biome", "format", "--reporter=github", "--files-ignore-unknown=true", "--no-errors-on-unmatched", "."],
     ]);
     expect(findings).toEqual([
       expect.objectContaining({
@@ -231,10 +231,10 @@ describe("typescript checker: Biome", () => {
     };
     const findings = await typescriptChecker.check({ ...biome, files: ["src/a.ts", "src/b.ts"] }, ctx);
     expect(calls.map((c) => [...(c.args ?? []), c.stdin === undefined ? "disk" : "stdin"])).toEqual([
-      ["lint", "--reporter=github", "src/b.ts", "disk"],
-      ["lint", "--reporter=github", "--stdin-file-path=src/a.ts", "stdin"],
-      ["format", "--reporter=github", "src/b.ts", "disk"],
-      ["format", "--stdin-file-path=src/a.ts", "stdin"],
+      ["lint", "--reporter=github", "--files-ignore-unknown=true", "--no-errors-on-unmatched", "src/b.ts", "disk"],
+      ["lint", "--reporter=github", "--stdin-file-path=src/a.ts", "--files-ignore-unknown=true", "stdin"],
+      ["format", "--reporter=github", "--files-ignore-unknown=true", "--no-errors-on-unmatched", "src/b.ts", "disk"],
+      ["format", "--stdin-file-path=src/a.ts", "--files-ignore-unknown=true", "stdin"],
     ]);
     expect(findings.map((f) => [f.rule, f.file, f.line])).toEqual([
       ["biome/lint/suspicious/noDebugger", "web/src/a.ts", 1],
@@ -260,7 +260,7 @@ describe("typescript checker: Prettier", () => {
         req.args?.includes("--list-different") ? { code: 1, stdout: "src\\a.ts\n" } : { code: 0, stdout: formatted },
     });
     const findings = await check(target({ categories: only("format") }), tools, { "web/src/a.ts": unformatted });
-    expect(calls.map((c) => c.args)).toEqual([["--list-different", "."], ["src/a.ts"]]);
+    expect(calls.map((c) => c.args)).toEqual([["--list-different", "--ignore-unknown", "."], ["src/a.ts"]]);
     expect(findings).toEqual([
       {
         level: "error",
@@ -287,7 +287,7 @@ describe("typescript checker: Prettier", () => {
   it("checks only the given files", async () => {
     const { tools, calls } = fakeTools({});
     expect(await check(target({ categories: only("format"), files: ["a.ts"] }), tools)).toEqual([]);
-    expect(calls.map((c) => c.args)).toEqual([["--list-different", "a.ts"]]);
+    expect(calls.map((c) => c.args)).toEqual([["--list-different", "--ignore-unknown", "a.ts"]]);
   });
 
   it("reports a Prettier error as a failed run", async () => {

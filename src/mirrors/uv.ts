@@ -1,4 +1,3 @@
-import { parse as parseToml } from "@decimalturn/toml-patch";
 import type { Repair } from "../fix/repair.ts";
 import {
   internal,
@@ -10,6 +9,7 @@ import {
   type MirrorProblem,
   type MirrorSettings,
 } from "./common.ts";
+import { readToml, stringOf, type Toml } from "./toml.ts";
 import { isRecord } from "../shared/guards.ts";
 
 /** The index devguard manages in `[[tool.uv.index]]` (SPEC §10.2); uv reads its credentials from UV_INDEX_NEXUS_*. */
@@ -19,24 +19,15 @@ export const UV_AUTH_VARIABLES = ["UV_INDEX_NEXUS_USERNAME", "UV_INDEX_NEXUS_PAS
 
 const AUTH_DETAIL = `帳密改由環境變數 ${UV_AUTH_VARIABLES.join(" / ")} 提供`;
 
-type Toml = Record<string, unknown>;
 const strings = (v: unknown): string[] =>
   (Array.isArray(v) ? v : [v]).filter((s): s is string => typeof s === "string");
-
-function readToml(text: string | undefined): Toml | undefined {
-  try {
-    return text === undefined ? {} : (parseToml(text) as Toml);
-  } catch {
-    return undefined;
-  }
-}
 
 /** Indexes and index settings other than the `nexus` index: each must stay on the mirror's host. */
 function otherSources(file: string, uv: Toml, indexes: Toml[], mirror: string): MirrorProblem[] {
   const problems: MirrorProblem[] = [];
   for (const [i, index] of indexes.entries()) {
-    const url = typeof index.url === "string" ? index.url : "";
-    const label = `[[tool.uv.index]] ${typeof index.name === "string" ? index.name : String(i + 1)}`;
+    const url = stringOf(index.url);
+    const label = `[[tool.uv.index]] ${stringOf(index.name) || String(i + 1)}`;
     if (USERINFO.test(url)) {
       const message = `${file} 的 ${label} 網址內含帳密；帳密不得進 repo`;
       problems.push({ rule: "plaintext-credentials", message, detail: `${AUTH_DETAIL}，並更換已外洩的帳密` });
@@ -73,7 +64,7 @@ function nexusProblems(file: string, nexus: Toml, at: number, mirrors: MirrorSet
     { op: "set", file, path: ["tool", "uv", "index", at, key], value },
   ];
   const problems: MirrorProblem[] = [];
-  const url = typeof nexus.url === "string" ? nexus.url : "";
+  const url = stringOf(nexus.url);
   if (!sameUrl(url, mirrors.pypi)) {
     problems.push({
       rule: "external",

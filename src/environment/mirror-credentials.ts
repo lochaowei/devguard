@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { ResolvedComponent } from "../declaration/resolve.ts";
 import { GRADLE_AUTH_VARIABLES, isGradle, MAVEN_AUTH_VARIABLES } from "../mirrors/java.ts";
 import { NPM_AUTH_VARIABLE, npmrcVariables } from "../mirrors/npm.ts";
-import { UV_AUTH_VARIABLES } from "../mirrors/uv.ts";
+import { PYTHON_MANAGERS, readPythonManager } from "../tools/python-manager.ts";
 import type { Finding } from "../report/finding.ts";
 import type { EnvironmentCheck, EnvironmentContext } from "./types.ts";
 import { readIfExists } from "../shared/fs.ts";
@@ -56,8 +56,10 @@ function missingVariables(names: readonly string[], why: string): Finding {
 async function variablesFor(ctx: EnvironmentContext, component: ResolvedComponent): Promise<[string[], string]> {
   const read = (file: string) => readIfExists(join(ctx.cwd, file));
   switch (component.language) {
-    case "python":
-      return [[...UV_AUTH_VARIABLES], "uv 登入 nexus index"];
+    case "python": {
+      const { auth } = PYTHON_MANAGERS[await readPythonManager(component.dir, read)];
+      return [[...auth.variables], auth.purpose];
+    }
     case "typescript": {
       const referenced = npmrcVariables((await read(`${component.dir}.npmrc`)) ?? "");
       return [referenced.length > 0 ? referenced : [NPM_AUTH_VARIABLE], `${component.dir}.npmrc 引用`];

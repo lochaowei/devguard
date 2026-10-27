@@ -33,7 +33,7 @@ devguard hook git-pre-commit|git-pre-push|claude-session-start|claude-post-edit|
 ### 執行流程
 
 1. 以 `git diff --cached --name-status` 列出 staged 的變更。沒有 staged 任何東西就直接通過。
-2. 執行 `declaration` 與 `code` 兩層，只檢查 staged 的檔案（刪除的不算）。有依賴檔（`package.json`、lockfile、`go.mod`、`pom.xml` 等）被 staged 時加上 `deps` 層。TypeScript 元件內 formatter 會處理的非原始碼檔案（`package.json`、`.md`、`.yaml` 等）也會做格式檢查。
+2. 執行 `declaration` 與 `code` 兩層，只檢查 staged 的檔案（刪除的不算）。有依賴檔（`package.json`、lockfile、`go.mod`、`pom.xml` 等）被 staged 時加上 `deps` 層。TypeScript 元件內的非原始碼檔案（`.mjs`、`package.json`、`.prettierrc` 等）也交給 ESLint 與 Prettier（或 Biome），由工具決定是否處理；`LICENSE` 這類工具不處理的檔案不產生 finding。
 3. 檢查的是 **staged 版本**：formatter 與單檔 linter（`ruff`、`eslint`、`prettier`、`biome`、`golangci-lint fmt`）用 `git show :<path>` 讀取 staged 內容，從 stdin 檢查。過程中不做 `git stash`。
 4. 沒有 stdin 模式的工具（`tsc`、`mypy`、`pyright`、`golangci-lint run`、Java 的 wrapper）只能檢查工作目錄。檔案有未 staged 的修改時，會印出提示說明哪些工具看的是工作目錄版本。
 5. 有任何發現就印出報告。有錯誤時最後再加一行 `修正程式碼：devguard fix --code <檔案…>`，並以 exit `1` 擋下 commit。
@@ -122,7 +122,7 @@ devguard：3 個錯誤、1 個偏離、0 個提示
 
 1. 從 stdin 讀取 Claude Code 的 hook 輸入，取出 `tool_input.file_path`。
 2. 路徑不在專案目錄內時直接通過。
-3. 只對這個檔案跑 lint 與 format（不跑 typecheck，避免每次編輯都檢查整個專案）。TypeScript 元件內 formatter 會處理的非原始碼檔案（`.json`、`.md` 等）只做格式檢查。只回報程式碼問題，宣告本身的問題留給 `doctor`。
+3. 只對這個檔案跑 lint 與 format（不跑 typecheck，避免每次編輯都檢查整個專案）。TypeScript 元件內的非原始碼檔案同樣交給 linter 與 formatter，由工具決定是否處理：編輯 `.js` 會跑 lint 與格式檢查，編輯 `.md` 只會得到格式問題。只回報程式碼問題，宣告本身的問題留給 `doctor`。
 4. 有錯誤時在 stdout 印出 `{"decision":"block","reason":"…"}`，Claude Code 會把 `reason` 交給 Claude 繼續修正。
 5. 一律 exit `0`。
 
@@ -140,7 +140,7 @@ $ echo '{"tool_name":"Write","tool_input":{"file_path":"C:\\work\\demo\\src\\sub
 ### 執行流程
 
 1. 用 `git status` 找出工作目錄中所有變更與新增的檔案（刪除的不算）。透過 Bash 改的檔案也會被找到。
-2. 對這些檔案跑 lint、format、typecheck。TypeScript 元件內 formatter 會處理的非原始碼檔案只做格式檢查；元件只有這類檔案變更時不跑 typecheck。
+2. 對這些檔案跑 lint、format、typecheck。TypeScript 元件內的非原始碼檔案交給 linter 與 formatter，由工具決定是否處理；元件只有這類檔案變更時不跑 typecheck。
 3. 沒有錯誤就通過。
 4. 有錯誤時，依 hook 輸入的 `stop_hook_active` 決定：
    - **`false`**（第一次）：印出 `{"decision":"block","reason":"…"}`，讓 Claude 繼續修正。

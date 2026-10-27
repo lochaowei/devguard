@@ -6,7 +6,7 @@
  *   node scripts/smoke-exe.ts dist/devguard-windows-arm64.exe
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,12 +17,13 @@ export interface SmokeResult {
   detail: string;
 }
 
-/** A TypeScript project whose tool configs and lockfile meet team@1.0.0. */
+/** A project with a TypeScript component in web/ whose tool configs and lockfile meet team@1.0.0. */
 const SAMPLE: Readonly<Record<string, string>> = {
-  ".devguard.yaml": "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: typescript\n",
+  ".devguard.yaml": "standard: team@1.0.0\ncomponents:\n  - path: ./web/\n    language: typescript\n",
   ".gitattributes": "* text=auto eol=lf\n",
   ".npmrc": "registry=https://nexus.example.internal/repository/npm-proxy/\n",
-  "tsconfig.json": JSON.stringify({
+  "web/.npmrc": "registry=https://nexus.example.internal/repository/npm-proxy/\n",
+  "web/tsconfig.json": JSON.stringify({
     compilerOptions: {
       strict: true,
       noUncheckedIndexedAccess: true,
@@ -30,13 +31,13 @@ const SAMPLE: Readonly<Record<string, string>> = {
       noFallthroughCasesInSwitch: true,
     },
   }),
-  ".prettierrc": '{ "printWidth": 120, "endOfLine": "lf" }',
-  "eslint.config.js":
+  "web/.prettierrc": '{ "printWidth": 120, "endOfLine": "lf" }',
+  "web/eslint.config.js":
     'export default [tseslint.configs.strictTypeChecked, { rules: { complexity: ["error", 10], "sonarjs/cognitive-complexity": ["error", 15] } }];\n',
-  "vitest.config.ts":
+  "web/vitest.config.ts":
     'export default { test: { coverage: { include: ["src/**"], thresholds: { lines: 80, branches: 80, functions: 80, statements: 80 } } } };\n',
   // Satisfies the deps layer; the temp dir is not a git repo, so existing counts as committed.
-  "package-lock.json": "{}",
+  "web/package-lock.json": "{}",
 };
 
 function run(command: readonly string[], args: string[], env: NodeJS.ProcessEnv) {
@@ -51,10 +52,11 @@ export function runSmoke(command: readonly string[], expectedVersion: string, en
   const dir = mkdtempSync(join(tmpdir(), "devguard-smoke-"));
   const empty = mkdtempSync(join(tmpdir(), "devguard-smoke-empty-"));
   try {
+    mkdirSync(join(dir, "web"));
     for (const [name, text] of Object.entries(SAMPLE)) writeFileSync(join(dir, name), text);
     const version = run(command, ["--version"], env);
-    // Scoped to .npmrc: every setup layer still runs, but no file the code checks handle is in scope, so they
-    // (ESLint, Prettier, tsc — which need Node, deliberately absent from PATH here) have nothing to run.
+    // Scoped to the root .npmrc, outside the component: every setup layer still runs, but the code checks (ESLint,
+    // Prettier, tsc — which need Node, deliberately absent from PATH here) have no file in scope to run on.
     const sample = run(command, ["check", "--cwd", dir, join(dir, ".npmrc")], env);
     const missing = run(command, ["check", "--cwd", empty], env);
     return [

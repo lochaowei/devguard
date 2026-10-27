@@ -128,7 +128,7 @@ mirrors:
 - 一個元件 = 一個 `path` 加一個 `language`。同一個目錄有多種語言時，就寫成多個元件。
 - 每個檔案歸屬於**路徑前綴最長、而且語言和副檔名相符**的元件。
 - 沒有元件涵蓋的程式檔，**依副檔名推定語言**，套用該語言的預設標準（不含覆寫），並提示「建議在宣告中補上元件」。
-- 四種語言以外的檔案不在檢查範圍內。例外：指定檔案時（含 `--staged` 與各 hook，見 §7.1），TypeScript 元件內 formatter（Prettier 或 Biome）會處理的非原始碼檔案只做格式檢查。
+- 四種語言以外的檔案不在檢查範圍內。例外：指定檔案時（含 `--staged` 與各 hook，見 §7.1），TypeScript 元件內的非原始碼檔案交給該元件的 linter 與 formatter，由工具決定是否處理。
 
 ### 4.2 覆寫規則
 
@@ -250,7 +250,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
   - 需要調整的工具版本
   - 需要執行的套件管理指令
 
-  加上 `--apply` 才實際修改宣告與設定檔，並透過內部鏡像執行套件管理指令。預覽不會詢問；有變更待套用時以 `1` 結束（§11）。
+  加上 `--apply` 才實際修改宣告與設定檔，並透過內部鏡像執行套件管理指令。預覽不會詢問；有變更待套用時以 `1` 結束（§11）。Python 元件依最近的 lockfile 選擇指令（與 §5.2 執行工具的判斷相同）：uv 專案執行 `uv add --dev`（以 `UV_DEFAULT_INDEX` 指向 `mirrors.pypi`）；Poetry 專案執行 `poetry add --group dev <套件><範圍>`（PEP 508 形式，例如 `ruff>=0.18,<0.19`），鏡像來自 `[[tool.poetry.source]]`（§10.2），不改用 uv。預覽中 Python 指令含 `>`、`<`、`,` 或空白的引數加上雙引號，可以直接貼到 shell 執行。
 - **強制升級**：團隊可以把某個標準版本標為棄用並設定截止日。截止日之前只顯示提示，之後回報錯誤。
 
 來源：[預設標準的版本發佈與專案升級方式](.scratch/coding-standards-guard/issues/12-standards-versioning.md)
@@ -272,7 +272,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | `typecheck.strict` | `true` | mypy `strict` / pyright `strict` |
 | `test.tool` | pytest + pytest-cov | — |
 | `coverage.lines` | 行覆蓋率與分支覆蓋率**各自**都要達到 80%（`branch = true`），與 TS、Java 一致 | CLI 執行 `coverage json`，從 `totals` 分別計算行與分支的覆蓋率並自行判定。不使用 `fail_under`，因為它在 branch 模式下檢查的是行加分支的合併總數。 |
-| `deps.manager` | `uv`；允許替代工具 `poetry` | — |
+| `deps.manager` | `uv`；允許替代工具 `poetry` | 決定 `deps.lockfile` 要求哪個 lockfile。執行工具（§5.2）、鏡像設定（§10.2）、鏡像帳密（§10.3）與 `standard upgrade`（§5.5）不讀這個項目，只看最近的 Python lockfile：`poetry.lock` 時用 Poetry，否則用 uv |
 | `deps.lockfile` | `uv.lock`（或 `poetry.lock`）必須提交；只有不帶 hash 的 `requirements.txt` 不算 lockfile | CLI 檢查 |
 | 進階：`deps.vulnFailOn` | 任何等級 | 先執行 `uv export --frozen --no-emit-project --format requirements.txt -o <tmp>`，再執行 `pip-audit -r <tmp> --disable-pip`（匯出結果預設帶 hash）；`ignoredVulns` 轉成 `--ignore-vuln`；資料來源見 §5.3 |
 
@@ -344,7 +344,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 
 `devguard check --full` 與 CI 執行全部檢查。
 
-指定檔案時（檔案參數、`--staged`、pre-commit、Claude 的兩個 hook），formatter 會處理的非原始碼檔案（Prettier 的 `.json`、`.md`、`.yaml`、`.css`…，Biome 的 `.json`、`.css`…）也交給所屬的 TypeScript 元件做格式檢查，範圍與整個元件的檢查一致；只有這類檔案時不跑 lint 與型別檢查。
+指定檔案時（檔案參數、`--staged`、pre-commit、Claude 的兩個 hook、`fix --code`），TypeScript 元件內的非原始碼檔案（`.js`、`.mjs`、`.json`、`.md`、`.prettierrc`、`LICENSE` 等）也交給最深的 TypeScript 元件的 linter 與 formatter，由工具決定處理哪些：ESLint 用 `--no-warn-ignored`，Prettier 用 `--ignore-unknown`，Biome 用 `--files-ignore-unknown=true` 與 `--no-errors-on-unmatched`。工具設定的 ignore（`.prettierignore`、ESLint 的 `ignores`、Biome 的 `files`）照常生效；工具不處理的檔案不產生 finding，staged（stdin）時也一樣。因此回報的 lint 與格式問題，與整個元件的檢查對同一組檔案回報的相同。其他語言的原始碼仍歸各自的元件。型別檢查不變：只有元件內有原始碼檔案時才跑。
 
 ### 7.2 第一道：VS Code
 
@@ -513,6 +513,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 | 工具 | 位置 | 層級 |
 |---|---|---|
 | uv | `pyproject.toml` 的 `[[tool.uv.index]]`（`name = "nexus"`、`default = true`；需要登入時再加 `authenticate = "always"`） | 專案，提交 |
+| Poetry（最近的 Python lockfile 是 `poetry.lock`） | `pyproject.toml` 的 `[[tool.poetry.source]]`（`name = "nexus"`、`url = <mirrors.pypi>`、`priority = "primary"`）；檢查並取代 uv 的 `[[tool.uv.index]]` | 專案，提交 |
 | npm / pnpm / yarn | 專案的 `.npmrc`（`registry=`） | 專案，提交 |
 | Maven | `.mvn/maven.config`（`--settings .mvn/settings.xml`）+ `.mvn/settings.xml`（mirror） | 專案，提交 |
 | Gradle | `settings.gradle` 的 `dependencyResolutionManagement.repositories` | 專案；CLI 只印出片段 |
@@ -534,6 +535,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
   |---|---|
   | npm（**例外**） | `.npmrc` 寫 `//nexus.example.internal/repository/npm-proxy/:_auth=${NEXUS_NPM_AUTH}`，值是 `username:password` 的 base64；或改用 `:_authToken=${NEXUS_NPM_TOKEN}`。帳密相關的 key 必須帶 registry 前綴；npm 不接受明文的 `_password`，所以無法直接使用 `NEXUS_USERNAME` / `NEXUS_PASSWORD`。 |
   | uv | `UV_INDEX_NEXUS_USERNAME` / `UV_INDEX_NEXUS_PASSWORD`（名稱取自 index 的 `name`，轉成大寫，非英數字元換成 `_`） |
+  | Poetry | `POETRY_HTTP_BASIC_NEXUS_USERNAME` / `POETRY_HTTP_BASIC_NEXUS_PASSWORD`（名稱取自 source 的 `name`，轉成大寫） |
   | Maven | `.mvn/settings.xml` 的 `<server>` 寫 `${env.NEXUS_USERNAME}`；`<server>` 的 id 必須和 mirror 的 id 相同 |
   | Gradle | repository 的 `name` 設為 `nexus`，並加上 `credentials(PasswordCredentials)`，即可讀取 `ORG_GRADLE_PROJECT_nexusUsername` / `ORG_GRADLE_PROJECT_nexusPassword`（或 `~/.gradle/gradle.properties`） |
   | Go | `NETRC` 環境變數所指的檔案；沒有設定時用 `%USERPROFILE%\_netrc`。只寫主機名稱，僅適用 HTTPS |
