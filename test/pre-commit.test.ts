@@ -82,6 +82,25 @@ describe("runPreCommit (SPEC §7.4)", () => {
     expect(calls).toEqual([]);
   });
 
+  it("leaves ignored files out of the partially-staged warning (#35)", async () => {
+    const { dir, git, write } = repo();
+    write(
+      ".devguard.yaml",
+      "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: python\nignore: [gen.py]\n",
+    );
+    write("gen.py", "a = 1\n");
+    git("add", ".");
+    git("commit", "-q", "--no-verify", "-m", "ignore");
+    for (const name of ["gen.py", "app.py"]) {
+      write(name, "b = 2\n");
+      git("add", name);
+      write(name, "c = 3\n");
+    }
+    const { out } = await preCommit(dir, fakeTools().tools);
+    expect(out).toContain("注意：app.py 有未 staged 的修改");
+    expect(out).not.toContain("gen.py");
+  });
+
   it("passes when nothing is staged, without running any tool", async () => {
     const { dir } = repo();
     const { tools, calls } = fakeTools();

@@ -37,7 +37,7 @@ git 執行 hook 時會匯出 `GIT_DIR`、`GIT_INDEX_FILE` 等 repo 定位變數�
 1. 以 `git diff --cached --name-status` 列出 staged 的變更。沒有 staged 任何東西就直接通過。
 2. 執行 `declaration` 與 `code` 兩層，只檢查 staged 的檔案（刪除的不算）。有依賴檔（`package.json`、lockfile、`go.mod`、`pom.xml` 等）被 staged 時加上 `deps` 層。TypeScript 元件內 formatter 會處理的非原始碼檔案（`package.json`、`.md`、`.yaml` 等）也會做格式檢查。
 3. 檢查的是 **staged 版本**：formatter 與單檔 linter（`ruff`、`eslint`、`prettier`、`biome`、`golangci-lint fmt`）用 `git show :<path>` 讀取 staged 內容，從 stdin 檢查。過程中不做 `git stash`。
-4. 沒有 stdin 模式的工具（`tsc`、`mypy`、`pyright`、`golangci-lint run`、Java 的 wrapper）只能檢查工作目錄。檔案有未 staged 的修改時，會印出提示說明哪些工具看的是工作目錄版本。
+4. 沒有 stdin 模式的工具（`tsc`、`mypy`、`pyright`、`golangci-lint run`、Java 的 wrapper）只能檢查工作目錄。檔案有未 staged 的修改時，會印出提示說明哪些工具看的是工作目錄版本；宣告的 `ignore` 排除的檔案不會列入提示。
 5. 有任何發現就印出報告。有錯誤時最後再加一行 `修正程式碼：devguard fix --code <檔案…>`，並以 exit `1` 擋下 commit。
 
 只檢查、不修正。偏離不會擋下 commit。`devguard check --staged` 執行的是同一套檢查，只是報告印到 stdout。

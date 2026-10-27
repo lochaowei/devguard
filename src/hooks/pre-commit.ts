@@ -1,6 +1,7 @@
 import { runCheck, type CheckOptions, type CheckResult } from "../check.ts";
 import { CODE_CHECKERS } from "../code/registry.ts";
 import { CODE_CATEGORIES } from "../code/types.ts";
+import { withoutIgnored } from "../declaration/ignore.ts";
 import type { ResolvedComponent } from "../declaration/resolve.ts";
 import { isDependencyFile } from "../deps/manifests.ts";
 import { codeLayer } from "../layers/code.ts";
@@ -103,7 +104,8 @@ export async function checkStaged(
     layers,
   );
   const unstaged = new Set(nulList(await git(ctx, ["diff", "--name-only", "-z"])));
-  const partial = files.filter((f) => unstaged.has(f));
+  // Ignored files get no file checks, so no tool reads their working-tree version either.
+  const partial = withoutIgnored(result.resolution?.ignore ?? [], files).filter((f) => unstaged.has(f));
   const tools = workingTreeTools(result.resolution?.components ?? [], partial);
   if (tools.length === 0) return { result };
   const warning =
