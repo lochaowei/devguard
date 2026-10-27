@@ -76,7 +76,7 @@ $ devguard check --staged
 3. 通過時什麼都不印。
 4. 有錯誤時印出報告，以 exit `1` 擋下 push。
 
-開關是開發者自己的環境變數，不寫在 `.devguard.yaml`，切換時也不需要重新執行 `install`。想讓每次 push 都先跑完整測試，可以設成使用者環境變數：
+開關是開發者自己的環境變數，不寫在 `.devguard.yaml`，切換時也不需要重新執行 `install`。hook 讀的是執行 `git push` 的那個行程的環境變數：IDE 或 GUI 客戶端看到的可能和終端機不同，[`doctor`](Command-doctor.md#pre-push-的問題什麼時候算錯誤) 也只看得到它自己所在 shell 的設定。想讓每次 push 都先跑完整測試，可以設成使用者環境變數：
 
 ```text
 # PowerShell（永久，新開的終端機生效）

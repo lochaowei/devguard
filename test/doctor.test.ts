@@ -89,6 +89,7 @@ describe("git hooks installed (SPEC §7.4)", () => {
     const findings = environment((await runDoctor({ cwd: dir, today: TODAY, env: {} })).findings);
     expect(rules(findings)).toEqual(["hint:environment/hook-missing"]);
     expect(findings[0]?.message).toContain("DEVGUARD_PRE_PUSH=full");
+    expect(findings[0]?.message).toContain("git push 看到的環境變數可能不同");
     expect(findings[0]?.fix).toContain("devguard install");
   });
 

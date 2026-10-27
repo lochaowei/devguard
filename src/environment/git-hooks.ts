@@ -95,10 +95,13 @@ function preCommitInstalledProblem(hook: GitHookName, installed: InstalledHook):
 
 /**
  * A pre-push problem while this developer's pushes do not run the tests (`DEVGUARD_PRE_PUSH` is not `full`, SPEC
- * §7.4): nothing is lost until they opt in, so it is only a hint.
+ * §7.4): nothing is lost until they opt in, so it is only a hint. doctor reads the variable from its own shell, which
+ * can differ from what `git push` sees (another terminal, an IDE or a GUI client), so the hint says so.
  */
 function asHint(finding: Finding): Finding {
-  const message = `${finding.message}（沒有設定 ${PRE_PUSH_ENV}=full，push 時不跑測試，所以只列為提示）`;
+  const message =
+    `${finding.message}（doctor 所在的 shell 沒有設定 ${PRE_PUSH_ENV}=full，push 時不跑測試，所以只列為提示；` +
+    "從其他終端機、IDE 或 GUI 執行時，git push 看到的環境變數可能不同）";
   return { ...finding, level: "hint", message };
 }
 

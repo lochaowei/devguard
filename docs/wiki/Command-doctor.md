@@ -91,7 +91,9 @@ $ DEVGUARD_PRE_PUSH=full devguard doctor --quiet
 
 ### pre-push 的問題什麼時候算錯誤
 
-pre-push hook 預設不跑任何檢查（見 [`hook git-pre-push`](Command-hook.md#git-pre-push)），所以沒有設定 `DEVGUARD_PRE_PUSH=full` 時，pre-push 的 `hook-missing`、`hook-modified`、`hook-foreign`、`framework-entry-missing`、`framework-not-installed` 只列為**提示**，訊息結尾註明「沒有設定 DEVGUARD_PRE_PUSH=full，push 時不跑測試，所以只列為提示」。提示不影響 exit code，`--quiet` 也不會印出。設定之後，這些就和 pre-commit 的問題一樣是錯誤。`core.hooksPath` 的問題會讓所有 hook 失效，一律是錯誤。
+pre-push hook 預設不跑任何檢查（見 [`hook git-pre-push`](Command-hook.md#git-pre-push)），所以沒有設定 `DEVGUARD_PRE_PUSH=full` 時，pre-push 的 `hook-missing`、`hook-modified`、`hook-foreign`、`framework-entry-missing`、`framework-not-installed` 只列為**提示**，訊息結尾註明「doctor 所在的 shell 沒有設定 DEVGUARD_PRE_PUSH=full，push 時不跑測試，所以只列為提示」。提示不影響 exit code，`--quiet` 也不會印出。設定之後，這些就和 pre-commit 的問題一樣是錯誤。
+
+`doctor` 讀的是它自己所在 shell 的環境變數，和 `git push` 看到的不一定相同：在另一個終端機、IDE 或 GUI 客戶端 push 時，那邊可能有或沒有設定 `DEVGUARD_PRE_PUSH`。例如只在 Git Bash 用 `DEVGUARD_PRE_PUSH=full git push` 臨時開啟時，`doctor` 仍會把 pre-push 的問題列為提示。`core.hooksPath` 的問題會讓所有 hook 失效，一律是錯誤。
 
 ---
 
