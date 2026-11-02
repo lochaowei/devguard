@@ -31,9 +31,11 @@ devguard install [--yes] [--cwd <dir>]
 
       | 框架 | 加入的內容 |
       |---|---|
-      | pre-commit | `repos` 中加一個 `repo: local`，hook id 為 `devguard`（pre-commit 階段）與 `devguard-pre-push`，`language: unsupported`、`always_run: true` |
+      | pre-commit | `repos` 中加一個 `repo: local`，hook id 為 `devguard`（pre-commit 階段）與 `devguard-pre-push`，`language: unsupported`、`always_run: true`；並把頂層的 `minimum_pre_commit_version` 設為至少 `"4.4.0"`（沒有就加上，較低就調高，較高就保留） |
       | lefthook | `pre-commit.jobs` / `pre-push.jobs` 各加一個 `name: devguard`（原本用 `commands` 寫法的則加在 `commands.devguard`） |
       | husky | 在 `.husky/pre-commit`、`.husky/pre-push` 結尾加一行呼叫 devguard 的指令 |
+
+      用 pre-commit 框架需要 **pre-commit 4.4.0 以上**：`language: unsupported` 是 4.4.0 才加入的值（`system` 的新名稱）。設定了 `minimum_pre_commit_version` 後，版本太舊時 pre-commit 會直接說明需要的版本。
 
    3. **沒有框架**：寫入 git 實際讀取的 hook 檔（`git rev-parse --git-path hooks/<名稱>`，通常是 `.git/hooks/`；有設定 `core.hooksPath` 時就是那個目錄）。
       - 檔案不存在，或是 devguard 產生的：寫入或更新。
@@ -124,6 +126,7 @@ $ devguard install --yes
 | `core.hooksPath = … ：pre-commit 在 core.hooksPath 有設定時拒絕安裝 hook` | 照訊息移除 `core.hooksPath`，再執行 `pre-commit install` 與 `pre-commit install --hook-type pre-push` |
 | `core.hooksPath 未設定，husky 的 hook 沒有安裝；請執行 npx husky` | husky 的 hook 要靠 `core.hooksPath` 生效。執行 `npx husky` |
 | 用 pre-commit 框架，`doctor` 仍說 hook 沒有安裝 | 框架設定中有項目還不夠，要執行 `pre-commit install`（以及 `--hook-type pre-push`）把 hook 寫進 hooks 目錄 |
+| commit 時 pre-commit 說需要較新的版本（`minimum_pre_commit_version`），或說不認得 `unsupported` | 本機的 pre-commit 低於 4.4.0。升級 pre-commit（例如 `pip install -U pre-commit`）；後者表示設定還沒有 `minimum_pre_commit_version`，再執行一次 `devguard install` |
 | commit 時出現 `devguard：找不到 CLI（devguard），已擋下這次 git commit` | `devguard.exe` 不在 PATH 上。照訊息安裝；緊急時可用 `git commit --no-verify` 暫時略過 |
 
 ---
