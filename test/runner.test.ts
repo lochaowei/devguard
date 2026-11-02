@@ -213,6 +213,12 @@ describe("tool runner: a Python tool missing from the dev dependencies (#68)", (
     expect((await missing(runner.run(req(based)))).install).toBe("cd api && uv sync");
   });
 
+  it("still asks for uv sync when uv's legacy [tool.uv] dev-dependencies lists it", async () => {
+    const toml = '[project]\nname = "api"\n\n[tool.uv]\ndev-dependencies = ["basedpyright>=1.40"]\n';
+    const { runner } = fakeRunner({ [PYPROJECT]: toml });
+    expect((await missing(runner.run(req(based)))).install).toBe("cd api && uv sync");
+  });
+
   it("still asks for poetry install when a Poetry group lists it, under any spelling of its name", async () => {
     const toml = '[tool.poetry.group.dev.dependencies]\nBasedPyright = ">=1.40"\n';
     const { runner } = fakeRunner({ [PYPROJECT]: toml, "C:\\repo\\api\\poetry.lock": "" });

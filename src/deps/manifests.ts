@@ -37,6 +37,7 @@ function pyprojectNames(doc: Record<string, unknown>): string[] {
   const optional = isRecord(project["optional-dependencies"]) ? project["optional-dependencies"] : {};
   const groups = isRecord(doc["dependency-groups"]) ? doc["dependency-groups"] : {};
   const tool = isRecord(doc.tool) ? doc.tool : {};
+  const uv = isRecord(tool.uv) ? tool.uv : {};
   const poetry = isRecord(tool.poetry) ? tool.poetry : {};
   const poetryGroups = isRecord(poetry.group) ? Object.values(poetry.group) : [];
   return [
@@ -44,6 +45,8 @@ function pyprojectNames(doc: Record<string, unknown>): string[] {
     ...Object.values(optional).flatMap(requirementList),
     // Inline tables such as {include-group = "..."} are not dependencies.
     ...Object.values(groups).flatMap(requirementList),
+    // uv's legacy spelling of the dev group, still read by uv.
+    ...requirementList(uv["dev-dependencies"]),
     ...poetryTable(poetry.dependencies),
     ...poetryTable(poetry["dev-dependencies"]),
     ...poetryGroups.flatMap((g) => (isRecord(g) ? poetryTable(g.dependencies) : [])),
@@ -51,8 +54,9 @@ function pyprojectNames(doc: Record<string, unknown>): string[] {
 }
 
 /**
- * Direct dependencies in pyproject.toml: `[project] dependencies`, optional dependencies, dependency groups and
- * Poetry dependency tables, read with the TOML parser `fix` uses. Each is located at the next line naming it.
+ * Direct dependencies in pyproject.toml: `[project] dependencies`, optional dependencies, dependency groups, uv's
+ * legacy `[tool.uv] dev-dependencies` and Poetry dependency tables, read with the TOML parser `fix` uses. Each is
+ * located at the next line naming it.
  */
 export function pyprojectDependencies(text: string, file: string): Dependency[] {
   const doc = parseConfigText("pyproject.toml", text);
