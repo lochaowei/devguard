@@ -66,10 +66,8 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 >     pypi:
 >       value: https://pypi.org/simple
 >       reason: "公司網路外開發，沒有內部 Nexus 可用"
->     npm:
->       value: https://registry.npmjs.org/
->       reason: "公司網路外開發，沒有內部 Nexus 可用"
 >   ```
+>   npm 不需要覆寫：devguard 不檢查專案 `.npmrc` 的 `registry=`，套件來源由使用者層級的 npm 設定決定。
 
 ---
 
@@ -256,7 +254,7 @@ components:
 1. 執行 `devguard install` 會**自動建立或修補（`managed`）**：
    - `tsconfig.json`：設定 `strict: true`、`noUncheckedIndexedAccess: true`、`noImplicitOverride: true`、`noFallthroughCasesInSwitch: true`
    - `.prettierrc`：`{ "printWidth": 120, "endOfLine": "lf" }`（若選用 Biome 則修補 `biome.json`）
-   - `.npmrc`：寫入 `registry=https://nexus.example.internal/repository/npm-proxy/`
+   - `.npmrc`：不寫入 `registry=`，套件來源交給使用者層級的 npm 設定；只在 `mirrors.auth: env` 時寫入 `:_auth=${NEXUS_NPM_AUTH}` 的帳密引用
    - `.vscode/`：設定 Prettier / Biome 為預設 formatter、存檔執行 `source.fixAll.eslint`、指定 `js/ts.tsdk.path` 為 `node_modules/typescript/lib`
 2. **手動建立程式碼設定檔（`snippet`）**：`eslint.config.js` 與 `vitest.config.ts` 是 JavaScript/TypeScript 程式碼，CLI 只會印出應套用的片段，不會自動改寫檔案。建議範本如下：
    ```js

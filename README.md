@@ -169,7 +169,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
    - **自動寫入（`managed`）**：
      - `tsconfig.json`：設定 `strict: true`、`noUncheckedIndexedAccess: true`、`noImplicitOverride: true`、`noFallthroughCasesInSwitch: true`
      - `.prettierrc`（`printWidth: 120`、`endOfLine: "lf"`）或 `biome.json`（含 `noExcessiveCognitiveComplexity`）
-     - `.npmrc`：設定內部 `registry`（當 `mirrors.auth: env` 時加上 `:_auth=${NEXUS_NPM_AUTH}`）
+     - `.npmrc`：只在 `mirrors.auth: env` 時寫入 `:_auth=${NEXUS_NPM_AUTH}`；不寫入 `registry=`，套件來源交給使用者層級的 npm 設定
      - `.vscode/`：設定 Prettier/Biome 存檔格式化、`source.fixAll.eslint`、`js/ts.tsdk.path`
    - **印出片段由開發者套用（`snippet`）**：`eslint.config.js` 與 `vitest.config.ts` 屬於程式碼設定檔，CLI 不會自動改寫，可建立如下最小設定：
      ```js
@@ -313,14 +313,16 @@ mirrors:
 
 ### 鏡像（`mirrors.*`）
 
-`mirrors.pypi`、`npm`、`go`、`maven` 等預設指向內部 Nexus（SPEC §10.1）。改成同一台內部主機上的其他 repository 直接寫值即可；**改成內部主機以外的網址算放寬**，必須寫成 `{value, reason}`，報告中一直列為偏離，沒有理由就是錯誤。這樣 §10.2「設定指向外部來源是錯誤」不會被宣告悄悄繞過。devguard 自己在公司網路外開發，所以它的 [.devguard.yaml](.devguard.yaml) 就是這樣寫的：
+`mirrors.pypi`、`npm`、`go`、`maven` 等預設指向內部 Nexus（SPEC §10.1）。改成同一台內部主機上的其他 repository 直接寫值即可；**改成內部主機以外的網址算放寬**，必須寫成 `{value, reason}`，報告中一直列為偏離，沒有理由就是錯誤。這樣 §10.2「設定指向外部來源是錯誤」不會被宣告悄悄繞過。例如在公司網路外開發 Python 專案：
 
 ```yaml
 mirrors:
-  npm:
-    value: https://registry.npmjs.org/
-    reason: "devguard 本身在公司網路外開發，沒有內部 Nexus 可用"
+  pypi:
+    value: https://pypi.org/simple
+    reason: "公司網路外開發，沒有內部 Nexus 可用"
 ```
+
+npm 例外：devguard 不檢查也不寫入專案 `.npmrc` 的 `registry=`，套件來源交給使用者層級的 npm 設定，所以不需要覆寫 `mirrors.npm`（devguard 自己的 [.devguard.yaml](.devguard.yaml) 就沒有 `mirrors` 區塊）。
 
 ### 還沒有宣告：`devguard draft`
 
@@ -458,7 +460,7 @@ web/ (TypeScript)
 | 語言 / 工具 | 專案設定檔落地位置 | `mirrors.auth: env` 時需設定的本機環境變數 / 檔案 |
 |---|---|---|
 | Python（`uv`） | `pyproject.toml` 的 `[[tool.uv.index]]`（`name = "nexus"`） | `UV_INDEX_NEXUS_USERNAME`、`UV_INDEX_NEXUS_PASSWORD`（或通用 `NEXUS_USERNAME`、`NEXUS_PASSWORD`） |
-| TypeScript（`npm` / `pnpm` / `yarn`） | `.npmrc` 的 `registry=` 與 `//<host>/<path>/:_auth=${NEXUS_NPM_AUTH}` | `NEXUS_NPM_AUTH`（`username:password` 的 base64）或 `NEXUS_NPM_TOKEN` |
+| TypeScript（`npm` / `pnpm` / `yarn`） | `.npmrc` 的 `//<host>/<path>/:_auth=${NEXUS_NPM_AUTH}`（`registry=` 交給使用者層級的 npm 設定） | `NEXUS_NPM_AUTH`（`username:password` 的 base64）或 `NEXUS_NPM_TOKEN` |
 | Java（Maven） | `.mvn/maven.config` + `.mvn/settings.xml` | `NEXUS_USERNAME`、`NEXUS_PASSWORD` |
 | Java（Gradle） | `settings.gradle(.kts)` 片段（`credentials(PasswordCredentials)`） | `ORG_GRADLE_PROJECT_nexusUsername`、`ORG_GRADLE_PROJECT_nexusPassword` |
 | Go | 使用者層級 `go env`（`GOPROXY`、`GOSUMDB`） | `NETRC` 環境變數指向的檔案，或 `%USERPROFILE%\_netrc` |

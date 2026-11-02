@@ -101,8 +101,6 @@ $ devguard check
         可用 fix 修正：devguard fix（建立 .prettierrc）
   錯誤  找不到 Vitest 設定檔（覆蓋率門檻設在 coverage.thresholds）  [settings/missing-file] vitest.config.ts
         需手動修正：建立 vitest.config.ts
-  錯誤  .npmrc 沒有設定 registry  [mirrors/missing] .npmrc
-        可用 fix 修正：devguard fix（在 .npmrc 寫入 registry=https://nexus.example.internal/repository/npm-proxy/）
   錯誤  格式不符合 Prettier  [prettier/format] tsconfig.json:1
         可用 fix 修正：devguard fix --code tsconfig.json
   …
@@ -111,7 +109,7 @@ $ devguard check
   錯誤  .gitattributes 沒有「* text=auto eol=lf」  [settings/gitattributes-eol] .gitattributes
         可用 fix 修正：devguard fix（在 .gitattributes 加上 * text=auto eol=lf）
 
-12 個錯誤、0 個偏離、0 個提示
+11 個錯誤、0 個偏離、0 個提示
 ```
 
 標「可用 fix 修正：devguard fix」的交給 [`devguard fix`](Command-fix.md)；標「devguard fix --code」的交給 [`fix --code`](Command-fix.md#fix---code修正程式碼)；其餘照訊息手動處理。

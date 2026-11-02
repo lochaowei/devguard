@@ -41,42 +41,14 @@ const YES: Interaction = {
   confirm: () => Promise.resolve(false),
 };
 
-describe("npm: the project's .npmrc points at the npm mirror (SPEC §10.2)", () => {
-  it("reports a missing .npmrc registry and repairs it as a managed key", async () => {
-    const findings = await check({ ".devguard.yaml": decl("typescript") });
-    expect(rules(findings)).toEqual(["error:mirrors/missing"]);
-    expect(findings[0]).toMatchObject({ layer: "config", file: ".npmrc" });
-    expect(findings[0]?.fix).toMatch(/^devguard fix/);
-    expect(findings[0]?.repairs).toEqual([{ op: "set", file: ".npmrc", path: ["registry"], value: NPM }]);
+describe("npm: the project's .npmrc keeps credentials out of the repo (SPEC §10.2)", () => {
+  it("does not require a .npmrc registry; the package source is the user's npm config (#65)", async () => {
+    expect(await check({ ".devguard.yaml": decl("typescript") })).toEqual([]);
   });
 
-  it("passes when registry is the mirror (trailing slash optional)", async () => {
-    const npmrc = "registry=https://nexus.example.internal/repository/npm-proxy\n";
-    expect(await check({ ".devguard.yaml": decl("typescript"), ".npmrc": npmrc })).toEqual([]);
-  });
-
-  it("reports registries that point at an external source", async () => {
+  it("accepts a registry pointing at any source, bare or scoped (#65)", async () => {
     const npmrc = "registry=https://registry.npmjs.org/\n@corp:registry=https://npm.pkg.github.com\n";
-    const findings = await check({ ".devguard.yaml": decl("typescript"), ".npmrc": npmrc });
-    expect(rules(findings)).toEqual(["error:mirrors/external", "error:mirrors/external"]);
-    expect(findings[0]?.message).toContain("https://registry.npmjs.org/");
-    expect(findings.flatMap((f) => f.repairs)).toEqual([
-      { op: "set", file: ".npmrc", path: ["registry"], value: NPM },
-      { op: "set", file: ".npmrc", path: ["@corp:registry"], value: NPM },
-    ]);
-  });
-
-  it("follows a declared mirror override, which needs a reason when it leaves the internal host", async () => {
-    const npmrc = { ".npmrc": "registry=https://registry.npmjs.org/\n" };
-    const bare = decl("typescript", "mirrors:\n  npm: https://registry.npmjs.org/\n");
-    expect(rules(await check({ ".devguard.yaml": bare, ...npmrc }))).toEqual([
-      "error:declaration/looser-without-reason",
-    ]);
-    const reasoned = decl("typescript", "mirrors:\n  npm: {value: https://registry.npmjs.org/, reason: 公司外開發}\n");
-    expect(rules(await check({ ".devguard.yaml": reasoned, ...npmrc }))).toEqual(["deviation:declaration/deviation"]);
-    const internal = decl("typescript", "mirrors:\n  npm: https://nexus.example.internal/repository/npm-group/\n");
-    const internalNpmrc = { ".npmrc": "registry=https://nexus.example.internal/repository/npm-group/\n" };
-    expect(await check({ ".devguard.yaml": internal, ...internalNpmrc })).toEqual([]);
+    expect(await check({ ".devguard.yaml": decl("typescript"), ".npmrc": npmrc })).toEqual([]);
   });
 
   describe("with mirrors.auth: env (SPEC §10.3)", () => {
@@ -105,9 +77,10 @@ describe("npm: the project's .npmrc points at the npm mirror (SPEC §10.2)", () 
 
   it("checks the .npmrc of each TypeScript component's directory", async () => {
     const yaml = "standard: team@1.0.0\ncomponents:\n  - path: web\n    language: typescript\n";
-    const findings = await check({ ".devguard.yaml": yaml, ".npmrc": `registry=${NPM}\n` });
+    const leak = "_authToken=cHc=\n";
+    const findings = await check({ ".devguard.yaml": yaml, ".npmrc": `registry=${NPM}\n`, "web/.npmrc": leak });
     expect(findings.map((f) => [f.rule, f.file, f.component])).toEqual([
-      ["mirrors/missing", "web/.npmrc", "web/ (TypeScript)"],
+      ["mirrors/plaintext-credentials", "web/.npmrc", "web/ (TypeScript)"],
     ]);
   });
 
@@ -374,7 +347,7 @@ describe("devguard fix writes the project-level mirror settings (SPEC §9.2)", (
     expect(await runFix({ cwd: dir, today: TODAY, io: YES }, layers)).toBe(0);
     expect((await runCheck({ cwd: dir, today: TODAY }, layers)).findings).toEqual([]);
     expect(readFileSync(join(dir, "web/.npmrc"), "utf8")).toBe(
-      `# keep\nregistry=${NPM}\n//nexus.example.internal/repository/npm-proxy/:_auth=\${NEXUS_NPM_AUTH}\n`,
+      `# keep\nregistry=https://registry.npmjs.org/\n//nexus.example.internal/repository/npm-proxy/:_auth=\${NEXUS_NPM_AUTH}\n`,
     );
     expect(readFileSync(join(dir, "svc/.mvn/settings.xml"), "utf8")).toContain("由 CLI 產生");
     expect(readFileSync(join(dir, "svc/.mvn/maven.config"), "utf8")).toBe("--settings .mvn/settings.xml\n");
