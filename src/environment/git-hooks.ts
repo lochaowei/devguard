@@ -1,11 +1,13 @@
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { callsDevguard, hookCommandLine, type GitHookName } from "../hooks/file.ts";
 import {
   detectFramework,
   frameworkEntry,
   hooksDisabled,
   hooksPathConflict,
+  PRE_COMMIT_MIN_VERSION,
   readHooksPath,
+  staleMinimumVersion,
   type FrameworkEntry,
   type HookFramework,
 } from "../hooks/frameworks.ts";
@@ -14,7 +16,7 @@ import { PRE_PUSH_ENV, prePushRunsTests } from "../hooks/pre-push.ts";
 import type { Exec } from "../process/exec.ts";
 import type { Finding } from "../report/finding.ts";
 import type { EnvironmentCheck } from "./types.ts";
-import { isDirectory } from "../shared/fs.ts";
+import { isDirectory, readIfExists } from "../shared/fs.ts";
 
 const INSTALL = "devguard install";
 
@@ -79,6 +81,20 @@ function frameworkProblem(hook: GitHookName, entry: FrameworkEntry): Finding | u
   };
 }
 
+/**
+ * The pre-commit config does not ask for the pre-commit version that knows devguard's `language: unsupported`
+ * entries; an older pre-commit then rejects the config without saying why (SPEC §7.4).
+ */
+async function preCommitVersionProblem(cwd: string, file: string): Promise<Finding | undefined> {
+  const stale = staleMinimumVersion((await readIfExists(join(cwd, file))) ?? "");
+  if (!stale) return undefined;
+  const now = stale.found === undefined ? "沒有設定" : `是 ${stale.found}`;
+  const message =
+    `${file} 的 minimum_pre_commit_version ${now}；devguard 的項目用 language: unsupported，` +
+    `需要 pre-commit ${PRE_COMMIT_MIN_VERSION} 以上，請設為 "${PRE_COMMIT_MIN_VERSION}"`;
+  return { ...problem("pre-commit-min-version", message), file };
+}
+
 /** What pre-commit needs to write every hook type devguard installs. */
 const PRE_COMMIT_INSTALL = `pre-commit install ${INSTALLED_HOOKS.map((h) => `--hook-type ${h}`).join(" ")}`;
 
@@ -137,9 +153,14 @@ export function createGitHooksCheck(options: GitHooksCheckOptions = {}): Environ
       if (repo.code !== 0) {
         return [problem("not-a-git-repo", `${cwd} 不是 git repo，無法安裝 git hook`, `git init，再執行 ${INSTALL}`)];
       }
-      const silenced = await hooksPathProblem(cwd, await detectFramework(cwd), exec);
+      const framework = await detectFramework(cwd);
+      const silenced = await hooksPathProblem(cwd, framework, exec);
       if (silenced) return [silenced];
       const findings: Finding[] = [];
+      if (framework?.name === "pre-commit") {
+        const stale = await preCommitVersionProblem(cwd, framework.file);
+        if (stale) findings.push(stale);
+      }
       for (const hook of INSTALLED_HOOKS) {
         const found = await hookProblem(cwd, hook, entryFor, exec);
         if (found) findings.push(hook === "pre-push" && !prePushRunsTests(env) ? asHint(found) : found);

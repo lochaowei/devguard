@@ -33,7 +33,7 @@ devguard doctor [--quiet] [--exit-zero] [--format text|json|sarif|vscode|claude]
 | 順序 | 檢查 | 規則 ID（`environment/…`、`mirrors/…`） | 什麼時候檢查 |
 |---|---|---|---|
 | 1 | 標準是否有更新：CLI 內建了宣告標準的較新 minor / patch 版本，提示執行 [`standard upgrade`](Command-standard-upgrade.md) | — | 一律 |
-| 2 | git hook：`core.hooksPath` 沒有停用 hook 或與框架衝突；hook 檔存在、是 devguard 的、checksum 沒變；或 hook 框架的設定有呼叫 devguard，且 pre-commit 框架已執行 `pre-commit install` | `not-a-git-repo`、`hooks-path-disabled`、`hooks-path-conflict`、`hooks-path-missing`、`hook-missing`、`hook-modified`、`hook-foreign`、`framework-entry-missing`、`framework-not-installed`（pre-push 的這幾項在沒有設定 `DEVGUARD_PRE_PUSH=full` 時只是提示，見[下方](#pre-push-的問題什麼時候算錯誤)） | 一律 |
+| 2 | git hook：`core.hooksPath` 沒有停用 hook 或與框架衝突；hook 檔存在、是 devguard 的、checksum 沒變；或 hook 框架的設定有呼叫 devguard，且 pre-commit 框架已執行 `pre-commit install`、設定的 `minimum_pre_commit_version` 至少為 `"4.4.0"` | `not-a-git-repo`、`hooks-path-disabled`、`hooks-path-conflict`、`hooks-path-missing`、`hook-missing`、`hook-modified`、`hook-foreign`、`framework-entry-missing`、`framework-not-installed`、`pre-commit-min-version`（pre-push 的這幾項在沒有設定 `DEVGUARD_PRE_PUSH=full` 時只是提示，見[下方](#pre-push-的問題什麼時候算錯誤)） | 一律 |
 | 3 | Claude Code：`claude --version` 達到 `claude.minVersion`；`.git/devguard/claude-last-seen` 存在（SessionStart hook 至少執行過一次） | `claude-version`、`claude-missing`（提示）、`claude-never-ran` | 專案有 devguard 的 Claude Code 設定時 |
 | 4 | VS Code 擴充套件：用 `code --list-extensions` 檢查推薦的已安裝、不推薦的沒有安裝 | 全部是提示，不會讓 `doctor` 失敗：`vscode-extension-missing`、`vscode-extension-unwanted`、`vscode-cli-missing`、`vscode-cli-failed` | 宣告有元件時 |
 | 5 | Go 的使用者層級鏡像：`go env GOPROXY` 只指向內部鏡像，`GOSUMDB` 透過鏡像且不是 `off` | `go-proxy`、`gosumdb`、`gosumdb-off` | 有 Go 元件時 |

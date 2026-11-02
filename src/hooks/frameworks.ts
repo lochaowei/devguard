@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { parse } from "yaml";
+import { isMap, isScalar, parse, parseDocument, Scalar } from "yaml";
 import { editConfigText, parseConfigText } from "../fix/edit.ts";
 import type { ChangePlan, FileWrite } from "../fix/plan.ts";
 import { nodeExec, type Exec } from "../process/exec.ts";
@@ -7,6 +7,7 @@ import { hookCommandLine, type GitHookName } from "./file.ts";
 import { readIfExists } from "../shared/fs.ts";
 import { isDirectory } from "../shared/fs.ts";
 import { isRecord } from "../shared/guards.ts";
+import { compareVersion } from "../standard/registry.ts";
 
 /** An existing hook framework (GLOSSARY: 既有 hook 框架) devguard injects into instead of writing hook files. */
 export type HookFrameworkName = "pre-commit" | "husky" | "lefthook";
@@ -39,6 +40,8 @@ interface Injector {
   file(framework: HookFramework, hook: GitHookName): string;
   hasEntry(text: string, hook: GitHookName, file: string): boolean;
   inject(file: string, text: string, hook: GitHookName, command: string): string;
+  /** Whatever else the file needs for devguard's entries to run, applied once after injecting. */
+  finish?(text: string): string;
   /** File mode to set after writing (a hook script). */
   mode?: number;
 }
@@ -62,6 +65,43 @@ function preCommitRepo(hook: GitHookName, command: string): Obj {
   };
 }
 
+/**
+ * The pre-commit version that knows `language: unsupported` (added in 4.4.0 as the new name for `system`). Older ones
+ * reject the config without saying why; with the minimum in the config, pre-commit names the version it needs.
+ */
+export const PRE_COMMIT_MIN_VERSION = "4.4.0";
+
+const MIN_VERSION_KEY = "minimum_pre_commit_version";
+
+const versionParts = (v: string): number[] => v.split(".").map((n) => Number.parseInt(n, 10) || 0);
+
+/**
+ * The config's `minimum_pre_commit_version` when it is missing (`found` undefined) or below `PRE_COMMIT_MIN_VERSION`;
+ * undefined when it is high enough.
+ */
+export function staleMinimumVersion(text: string): { found?: string } | undefined {
+  const config = parseYaml(text);
+  const value: unknown = isRecord(config) ? config[MIN_VERSION_KEY] : undefined;
+  if (typeof value !== "string" && typeof value !== "number") return {};
+  const found = String(value);
+  return compareVersion(versionParts(found), versionParts(PRE_COMMIT_MIN_VERSION)) < 0 ? { found } : undefined;
+}
+
+/** Raises `minimum_pre_commit_version` to `PRE_COMMIT_MIN_VERSION`, or adds it at the end; comments stay. */
+function requireMinimumVersion(text: string): string {
+  if (!staleMinimumVersion(text)) return text;
+  const doc = parseDocument(text);
+  if (!isMap(doc.contents)) return text;
+  const node: unknown = doc.get(MIN_VERSION_KEY, true);
+  if (isScalar(node)) node.value = PRE_COMMIT_MIN_VERSION;
+  else {
+    const value = new Scalar(PRE_COMMIT_MIN_VERSION);
+    value.type = Scalar.QUOTE_DOUBLE;
+    doc.set(MIN_VERSION_KEY, value);
+  }
+  return doc.toString({ lineWidth: 0 });
+}
+
 const preCommit: Injector = {
   file: (framework) => framework.file,
   hasEntry(text, hook) {
@@ -71,6 +111,7 @@ const preCommit: Injector = {
   },
   inject: (file, text, hook, command) =>
     editConfigText(file, text, [{ op: "add", path: ["repos"], value: preCommitRepo(hook, command) }]),
+  finish: requireMinimumVersion,
 };
 
 // --- husky ------------------------------------------------------------------------------------------------------
@@ -210,7 +251,30 @@ function setPathProblem(path: HooksPath, framework: HookFramework | undefined): 
   return undefined;
 }
 
-/** The framework edits that make each hook call devguard; hooks already calling it are left alone. */
+/** Each file's content before and after adding the hooks' missing devguard entries. */
+async function injectedFiles(
+  cwd: string,
+  framework: HookFramework,
+  injector: Injector,
+  hooks: readonly GitHookName[],
+  command: string,
+): Promise<Map<string, { before: string; after: string }>> {
+  const files = new Map<string, { before: string; after: string }>();
+  for (const hook of hooks) {
+    const file = injector.file(framework, hook);
+    const pending = files.get(file);
+    const before = pending?.before ?? (await readIfExists(join(cwd, file))) ?? "";
+    const current = pending?.after ?? before;
+    const after = injector.hasEntry(current, hook, file) ? current : injector.inject(file, current, hook, command);
+    files.set(file, { before, after });
+  }
+  return files;
+}
+
+/**
+ * The framework edits that make each hook call devguard, plus what the framework needs to run them (pre-commit's
+ * minimum version); hooks already calling it are left alone.
+ */
 export async function planFrameworkHooks(
   cwd: string,
   framework: HookFramework,
@@ -218,16 +282,12 @@ export async function planFrameworkHooks(
   command = "devguard",
 ): Promise<ChangePlan> {
   const injector = INJECTORS[framework.name];
-  const writes = new Map<string, FileWrite>();
-  for (const hook of hooks) {
-    const file = injector.file(framework, hook);
-    const pending = writes.get(file);
-    const before = pending?.before ?? (await readIfExists(join(cwd, file))) ?? "";
-    const current = pending?.after ?? before;
-    if (injector.hasEntry(current, hook, file)) continue;
-    const after = injector.inject(file, current, hook, command);
-    const mode = injector.mode === undefined ? {} : { mode: injector.mode };
-    writes.set(file, { file, category: "managed", before, after, ...mode });
+  const files = await injectedFiles(cwd, framework, injector, hooks, command);
+  const mode = injector.mode === undefined ? {} : { mode: injector.mode };
+  const writes: FileWrite[] = [];
+  for (const [file, { before, after }] of files) {
+    const finished = injector.finish ? injector.finish(after) : after;
+    if (finished !== before) writes.push({ file, category: "managed", before, after: finished, ...mode });
   }
-  return { writes: [...writes.values()], printed: [] };
+  return { writes, printed: [] };
 }

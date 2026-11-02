@@ -469,7 +469,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
   - 檔案內含 CLI 標記與 checksum。
   - 不使用 pre-commit、lefthook 或 husky 等框架。
 - **既有 hook 框架**：專案已經在用這類框架時，CLI 不覆寫它的 hook，而是在它的設定中注入一條呼叫 `devguard` 的項目：
-  - pre-commit：一條 `language: unsupported` 的 local hook
+  - pre-commit：一條 `language: unsupported` 的 local hook。`unsupported` 是 pre-commit 4.4.0 加入的值（`system` 的新名稱），所以需要 pre-commit 4.4.0 以上；CLI 同時確保頂層的 `minimum_pre_commit_version` 至少為 `"4.4.0"`：沒有就加上，較低就調高，較高就保留。版本不夠時，pre-commit 會自己回報需要的最低版本，而不是只說不認得 `unsupported`。
   - husky：`.husky/pre-commit` 中加一行
   - lefthook：加一個 job（YAML、TOML、JSON / JSONC 設定檔都支援）
 - **找不到 CLI**：擋下 commit。錯誤訊息附上安裝指令，並提示可用 `--no-verify` 暫時略過。
@@ -482,7 +482,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 - **pre-push 的完整測試由開發者開啟**：`install` 照常安裝 pre-push hook，但 hook 只在環境變數 `DEVGUARD_PRE_PUSH` 為 `full` 時，才執行 `check --full` 中的測試、覆蓋率與弱點掃描；未設定或其他值時直接放行，什麼都不印。開關放在開發者的環境而不是專案宣告，所以不改變 §4 的格式，切換時也不需要重新執行 `install`。
 - **「已安裝」的環境檢查**
   1. 讀取 `core.hooksPath` 及其設定來源。
-  2. 若使用既有框架，確認其設定中有呼叫 CLI 的項目；使用 pre-commit 框架時，另外確認 `pre-commit install --hook-type pre-commit --hook-type pre-push` 已執行（hooks 目錄中有 pre-commit 產生的 hook）。沒有使用框架時，確認 hook 檔存在、有 CLI 標記，且 checksum 正確。
+  2. 若使用既有框架，確認其設定中有呼叫 CLI 的項目；使用 pre-commit 框架時，另外確認 `pre-commit install --hook-type pre-commit --hook-type pre-push` 已執行（hooks 目錄中有 pre-commit 產生的 hook），且設定的 `minimum_pre_commit_version` 至少為 `"4.4.0"`（缺少或較低都是錯誤，`devguard install` 會修正）。沒有使用框架時，確認 hook 檔存在、有 CLI 標記，且 checksum 正確。
   3. `core.hooksPath` 指向 `/dev/null` 或不存在的目錄時，回報錯誤。
 
   步驟 2 中 pre-push 的問題（hook 不存在或被修改、框架設定缺項目、尚未以 `--hook-type pre-push` 執行 `pre-commit install`），在沒有設定 `DEVGUARD_PRE_PUSH=full` 時只列為**提示**，因為這時 pre-push 本來就不跑任何檢查；設定之後才算錯誤。
@@ -522,7 +522,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 | 類別 | 範例 | 做法 |
 |---|---|---|
 | CLI 全權產生 | `checkstyle.xml`、PMD ruleset、`.claude/rules/*`、`/standards-doctor` skill、git hook、Dependency-Check suppression 檔、`.mvn/settings.xml`、`.mvn/maven.config` | 整份重新產生，檔頭標示「由 CLI 產生」 |
-| 結構化的共用檔 | `pyproject.toml` 的 `[tool.*]`、`.golangci.yml`、`tsconfig.json`、`.prettierrc`、`.npmrc`、`.vscode/*`、`.claude/settings.json` | 只修改 CLI 管理的 key，並保留註解與順序（YAML 用 `yaml`，JSONC 用 `jsonc-parser`，TOML 用 `@decimalturn/toml-patch`；`@shopify/toml-patch` 需要在執行時載入 wasm，可能無法打包進 Bun exe） |
+| 結構化的共用檔 | `pyproject.toml` 的 `[tool.*]`、`.golangci.yml`、`tsconfig.json`、`.prettierrc`、`.npmrc`（只有帳密引用，不寫 `registry=`）、`.vscode/*`、`.claude/settings.json` | 只修改 CLI 管理的 key，並保留註解與順序（YAML 用 `yaml`，JSONC 用 `jsonc-parser`，TOML 用 `@decimalturn/toml-patch`；`@shopify/toml-patch` 需要在執行時載入 wasm，可能無法打包進 Bun exe） |
 | 建置檔與程式碼形式的設定檔 | `pom.xml`、`build.gradle`、`settings.gradle`、`vitest.config.ts`、`eslint.config.js` | 不自動修改，只印出要套用的片段或 diff |
 
 ### 9.3 互動方式
@@ -559,7 +559,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 |---|---|---|
 | uv | `pyproject.toml` 的 `[[tool.uv.index]]`（`name = "nexus"`、`default = true`；需要登入時再加 `authenticate = "always"`） | 專案，提交 |
 | Poetry（最近的 Python lockfile 是 `poetry.lock`） | `pyproject.toml` 的 `[[tool.poetry.source]]`（`name = "nexus"`、`url = <mirrors.pypi>`、`priority = "primary"`）；檢查並取代 uv 的 `[[tool.uv.index]]` | 專案，提交 |
-| npm / pnpm / yarn | 專案的 `.npmrc`（`registry=`） | 專案，提交 |
+| npm / pnpm / yarn | 套件來源由使用者層級的 npm 設定決定；CLI 不檢查也不寫入專案 `.npmrc` 的 `registry=` 與 scope 的 `:registry`（寫死在專案中會覆蓋使用者的企業鏡像設定）。專案 `.npmrc` 只檢查帳密（§10.3） | 使用者；專案 `.npmrc` 只放帳密引用 |
 | Maven | `.mvn/maven.config`（`--settings .mvn/settings.xml`）+ `.mvn/settings.xml`（mirror） | 專案，提交 |
 | Gradle | `settings.gradle` 的 `dependencyResolutionManagement.repositories` | 專案；CLI 只印出片段 |
 | Go | `go env -w GOPROXY=…`、`GOSUMDB` | 使用者；doctor 印出指令；CLI 自己執行 Go 工具時直接帶入 |
