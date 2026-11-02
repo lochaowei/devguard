@@ -7,6 +7,17 @@ import { isRecord } from "../shared/guards.ts";
 /** The Python type checkers a standard may allow for `typecheck.tool` (SPEC §6.1). */
 export type TypeChecker = "mypy" | "pyright" | "basedpyright";
 
+/**
+ * The pyright-based type checkers: they share pyright's settings format (`typeCheckingMode`, `pythonVersion`,
+ * pyrightconfig.json) and its `--outputjson` output.
+ */
+export type PyrightTool = Exclude<TypeChecker, "mypy">;
+
+/** Whether `tool` (e.g. a declared `typecheck.tool`) is a pyright-based type checker. */
+export function isPyrightTool(tool: unknown): tool is PyrightTool {
+  return tool === "pyright" || tool === "basedpyright";
+}
+
 /** One place a Python component configures a type checker. */
 export interface TypeCheckerConfig {
   /** Repo-relative path of the file. */

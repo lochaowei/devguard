@@ -33,6 +33,18 @@ export interface ToolRequest {
   range?: string;
 }
 
+/**
+ * A run of the Python `tool` in a component's directory, with the standard's range of it (`tools.<tool>`) for the
+ * install hint when it is missing (#68). Tools the standard does not pin (e.g. `coverage`) get no range.
+ */
+export function pythonToolRequest(
+  component: { dir: string; effective: Readonly<Record<string, unknown>> },
+  tool: string,
+): Omit<ToolRequest, "args"> {
+  const range = component.effective[`tools.${tool}`];
+  return { language: "python", tool, dir: component.dir, ...(typeof range === "string" ? { range } : {}) };
+}
+
 export interface ToolResult {
   code: number;
   stdout: string;

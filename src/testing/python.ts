@@ -10,6 +10,7 @@ import {
   testToolFailed,
   type Measured,
 } from "./coverage.ts";
+import { pythonToolRequest } from "../tools/runner.ts";
 import type { TestChecker, TestContext, TestTarget } from "./types.ts";
 
 /** pytest exit codes: 0 all passed, 1 some failed, 5 no tests collected; anything else is a usage or internal error. */
@@ -39,12 +40,7 @@ function totals(text: string | undefined): Measured[] | undefined {
 export const pythonTests: TestChecker = {
   language: "python",
   async check(target: TestTarget, ctx: TestContext): Promise<Finding[]> {
-    const run = (tool: string, args: string[]) => {
-      // The standard's range of the tool, for the install hint when it is missing (#68); `coverage` has none.
-      const range = target.effective[`tools.${tool}`];
-      const request = { language: "python", tool, dir: target.dir, args } as const;
-      return ctx.tools.run(typeof range === "string" ? { ...request, range } : request);
-    };
+    const run = (tool: string, args: string[]) => ctx.tools.run({ ...pythonToolRequest(target, tool), args });
     const pytest = await run("pytest", ["--cov", "--cov-branch", "--cov-report="]);
     if (!PYTEST_RAN.has(pytest.code)) return [testToolFailed(target, "pytest", pytest)];
     const findings: Finding[] = [];
