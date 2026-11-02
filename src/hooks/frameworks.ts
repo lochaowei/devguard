@@ -88,12 +88,32 @@ export function staleMinimumVersion(text: string): { found?: string } | undefine
   return compareVersion(versionParts(found), versionParts(PRE_COMMIT_MIN_VERSION)) < 0 ? { found } : undefined;
 }
 
-/** Raises `minimum_pre_commit_version` to `PRE_COMMIT_MIN_VERSION`, or adds it at the end; comments stay. */
+const MIN_VERSION_VALUE = `"${PRE_COMMIT_MIN_VERSION}"`;
+
+/**
+ * The config with `PRE_COMMIT_MIN_VERSION` written in as text: over the value `node` of the existing key, or as a new
+ * last line of a block mapping (`node` undefined). Undefined when neither applies.
+ */
+function minimumVersionTextEdit(text: string, node: unknown, flow: boolean): string | undefined {
+  const range = isScalar(node) ? node.range : undefined;
+  if (range && range[1] > range[0]) return text.slice(0, range[0]) + MIN_VERSION_VALUE + text.slice(range[1]);
+  if (node !== undefined || flow) return undefined;
+  const body = text === "" || text.endsWith("\n") ? text : `${text}\n`;
+  return `${body}${MIN_VERSION_KEY}: ${MIN_VERSION_VALUE}\n`;
+}
+
+/**
+ * Raises `minimum_pre_commit_version` to `PRE_COMMIT_MIN_VERSION`, or adds it at the end of a block mapping. Only the
+ * version's own text changes: the rest of the file is kept byte for byte, whatever its style. A config the text edit
+ * cannot handle (an empty value, a flow mapping at the top) goes through the YAML document instead, comments kept.
+ */
 function requireMinimumVersion(text: string): string {
   if (!staleMinimumVersion(text)) return text;
   const doc = parseDocument(text);
   if (!isMap(doc.contents)) return text;
   const node: unknown = doc.get(MIN_VERSION_KEY, true);
+  const edited = minimumVersionTextEdit(text, node, doc.contents.flow === true);
+  if (edited !== undefined) return edited;
   if (isScalar(node)) node.value = PRE_COMMIT_MIN_VERSION;
   else {
     const value = new Scalar(PRE_COMMIT_MIN_VERSION);
