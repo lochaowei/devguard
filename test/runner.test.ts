@@ -23,6 +23,7 @@ function fakeRunner(files: Record<string, string>, extra: Partial<ToolRunnerDeps
     exists: (p) => p in files,
     readText: (p) => files[p],
     pathEnv: "C:\\bin;C:\\scoop\\shims",
+    processEnv: {},
     ...extra,
   });
   return { runner, started, unset };
@@ -69,6 +70,65 @@ describe("tool runner: Python", () => {
       message: "找不到 uv",
       install: "scoop install uv",
     });
+  });
+});
+
+describe("tool runner: Python with UV_PROJECT_ENVIRONMENT (#66)", () => {
+  it("finds the tool in a relative project environment, resolved against the project directory", async () => {
+    const { runner, started } = fakeRunner(
+      { "C:\\repo\\api\\venv\\Scripts\\ruff.exe": "" },
+      { processEnv: { UV_PROJECT_ENVIRONMENT: "venv" } },
+    );
+    await runner.run(req({ language: "python", tool: "ruff", dir: "api/", args: ["check", "."] }));
+    expect(started).toEqual([{ file: "uv", args: ["run", "--no-sync", "ruff", "check", "."], cwd: "C:\\repo\\api" }]);
+  });
+
+  it("finds the tool in an absolute project environment", async () => {
+    const { runner, started } = fakeRunner(
+      { "D:\\envs\\api\\Scripts\\ruff.exe": "" },
+      { processEnv: { UV_PROJECT_ENVIRONMENT: "D:\\envs\\api" } },
+    );
+    await runner.run(req({ language: "python", tool: "ruff", dir: "api/" }));
+    expect(started[0]?.file).toBe("uv");
+  });
+
+  it("uses bin/ of an absolute project environment outside Windows", async () => {
+    const { runner, started } = fakeRunner(
+      { "/opt/envs/api/bin/ruff": "" },
+      { cwd: "/repo", platform: "linux", processEnv: { UV_PROJECT_ENVIRONMENT: "/opt/envs/api" } },
+    );
+    await runner.run(req({ language: "python", tool: "ruff", dir: "api/" }));
+    expect(started[0]?.cwd).toBe("/repo/api");
+  });
+
+  it("no longer looks in .venv when the variable points elsewhere", async () => {
+    const { runner } = fakeRunner(
+      { "C:\\repo\\.venv\\Scripts\\ruff.exe": "" },
+      { processEnv: { UV_PROJECT_ENVIRONMENT: "venv" } },
+    );
+    await missing(runner.run(req({ language: "python", tool: "ruff" })));
+  });
+
+  it("names the project environments it looked in when the tool is missing", async () => {
+    const { runner } = fakeRunner({}, { processEnv: { UV_PROJECT_ENVIRONMENT: "venv" } });
+    const m = await missing(runner.run(req({ language: "python", tool: "ruff", dir: "api/" })));
+    expect(m.message).toBe("找不到 ruff：專案環境（C:\\repo\\api\\venv、C:\\repo\\venv）中沒有安裝");
+    expect(m.install).toBe("cd api && uv sync");
+  });
+
+  it("names the .venv directories it looked in when the variable is unset", async () => {
+    const { runner } = fakeRunner({});
+    const m = await missing(runner.run(req({ language: "python", tool: "ruff", dir: "api/" })));
+    expect(m.message).toBe("找不到 ruff：專案環境（C:\\repo\\api\\.venv、C:\\repo\\.venv）中沒有安裝");
+  });
+
+  it("does not apply to Poetry projects, which keep the in-project .venv", async () => {
+    const { runner, started } = fakeRunner(
+      { "C:\\repo\\poetry.lock": "", "C:\\repo\\.venv\\Scripts\\ruff.exe": "" },
+      { processEnv: { UV_PROJECT_ENVIRONMENT: "venv" } },
+    );
+    await runner.run(req({ language: "python", tool: "ruff" }));
+    expect(started[0]?.file).toBe("C:\\repo\\.venv\\Scripts\\ruff.exe");
   });
 });
 
