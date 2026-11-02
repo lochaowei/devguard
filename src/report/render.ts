@@ -21,7 +21,8 @@ function renderFinding(f: Finding): string[] {
   const where = f.file ? ` ${f.file}${f.line ? `:${String(f.line)}` : ""}` : "";
   const lines = [`  ${LEVEL_LABEL[f.level]}  ${f.message}  [${f.rule}]${where}`];
   const how = isFixable(f) ? "可用 fix 修正" : "需手動修正";
-  lines.push(`        ${how}${f.fix ? `：${f.fix}` : ""}`);
+  // A multi-line fix (e.g. the uv install hint) continues indented under its first line.
+  lines.push(`        ${how}${f.fix ? `：${f.fix.replaceAll("\n", "\n          ")}` : ""}`);
   return lines;
 }
 

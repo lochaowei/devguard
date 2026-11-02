@@ -99,4 +99,9 @@ describe("renderText fixability", () => {
     expect(text).toContain("[c]\n        需手動修正\n");
     expect(text).toContain("[d]\n        可用 fix 修正：改寫 pom.xml\n");
   });
+
+  it("indents every line of a multi-line fix under the finding (#67)", () => {
+    const text = renderText({ components: [], findings: [f("error", { rule: "a", fix: "第一行\n第二行" })] });
+    expect(text).toContain("[a]\n        需手動修正：第一行\n          第二行\n");
+  });
 });

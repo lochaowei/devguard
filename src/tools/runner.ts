@@ -72,7 +72,7 @@ export class ToolMissingError extends Error {
   }
 
   report(): string {
-    return `${this.message}\n  安裝：${this.install}\n`;
+    return `${this.message}\n  安裝：${this.install.replaceAll("\n", "\n    ")}\n`;
   }
 }
 
@@ -116,9 +116,23 @@ const GIT_REPO_ENV: readonly string[] = [
   "GIT_PREFIX",
 ];
 
-/** Programs the CLI starts by name, with the install hint shown when they are missing. */
+/**
+ * How to install uv. `pip install uv` puts it in the Python Scripts directory, which is not on PATH by default, so the
+ * hint also covers an installed uv the CLI cannot see (#67).
+ */
+const UV_INSTALL = [
+  "任選一種方式安裝 uv：",
+  "官方安裝腳本（macOS / Linux）：curl -LsSf https://astral.sh/uv/install.sh | sh",
+  '官方安裝腳本（Windows）：powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"',
+  "pipx install uv",
+  "pip install uv",
+  "scoop install uv（Windows）",
+  "已用 pip 安裝仍找不到 uv 時，把 Python 的 Scripts 目錄（Windows）或 ~/.local/bin（其他平台）加進 PATH，再以 uv --version 確認",
+].join("\n");
+
+/** Programs the CLI starts by name, with the install hint shown when they are missing. A hint may span lines. */
 const LAUNCHERS: Readonly<Record<string, string>> = {
-  uv: "scoop install uv",
+  uv: UV_INSTALL,
   poetry: "scoop install poetry",
   go: "scoop install go",
 };
