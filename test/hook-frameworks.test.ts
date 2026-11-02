@@ -74,6 +74,30 @@ describe("install into an existing hook framework (SPEC §7.4)", () => {
     expect(existsSync(join(dir, ".git/hooks/pre-commit"))).toBe(false);
   });
 
+  it.each([
+    ["no minimum version", PRE_COMMIT_CONFIG, "4.4.0"],
+    ["an older minimum version", `minimum_pre_commit_version: "3.0.0" # old\n${PRE_COMMIT_CONFIG}`, "4.4.0"],
+    ["a newer minimum version", `minimum_pre_commit_version: "4.6.0"\n${PRE_COMMIT_CONFIG}`, "4.6.0"],
+  ])("pre-commit: requires pre-commit 4.4.0 for `language: unsupported` (%s)", async (_, config, expected) => {
+    const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": config });
+    await runInstall({ cwd: dir, today: TODAY, io: io() });
+    const text = read(dir, ".pre-commit-config.yaml");
+    expect((parse(text) as { minimum_pre_commit_version: string }).minimum_pre_commit_version).toBe(expected);
+    expect(text).toContain(`minimum_pre_commit_version: "${expected}"`);
+    expect(text).toContain("# shared hooks");
+    expect(text).toContain("rev: v0.6.0 # pinned");
+  });
+
+  it("pre-commit: raises a too-old minimum version when the devguard entries are already there", async () => {
+    const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": PRE_COMMIT_CONFIG });
+    await runInstall({ cwd: dir, today: TODAY, io: io() });
+    const installed = read(dir, ".pre-commit-config.yaml");
+    const stale = installed.replace(/minimum_pre_commit_version: .*/, 'minimum_pre_commit_version: "3.0.0"');
+    writeFileSync(join(dir, ".pre-commit-config.yaml"), stale);
+    await runInstall({ cwd: dir, today: TODAY, io: io() });
+    expect(read(dir, ".pre-commit-config.yaml")).toBe(installed);
+  });
+
   it("pre-commit: running install again injects nothing more", async () => {
     const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": PRE_COMMIT_CONFIG });
     await runInstall({ cwd: dir, today: TODAY, io: io() });
