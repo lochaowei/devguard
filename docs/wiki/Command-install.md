@@ -43,8 +43,17 @@ devguard install [--yes] [--cwd <dir>]
       - `core.hooksPath` 指向 `/dev/null` 或 `nul`（停用所有 hook）：不寫 hook 檔，只印出衝突。
    4. 檢查 `core.hooksPath` 有沒有衝突，有的話印出來。例如用 pre-commit 框架時設了 `core.hooksPath`（pre-commit 會拒絕安裝），或用 husky 時沒有指向 `.husky/_`。
 2. **規劃設定**：與 `fix` 相同的可修正檢查層，差別是 Claude Code 層會**建立**整套 `.claude/` 設定（`fix` 只更新已存在的）。
-3. 合併兩份計畫，依互動規則預覽並套用。
-4. **提示下一步**：用 pre-commit 框架時，pre-commit 的 hook 要等 `pre-commit install` 才會寫進 hooks 目錄，`install` 只把項目加進設定。所以結束時（預覽與套用都一樣），`install` 用與 [`doctor`](Command-doctor.md) 的 `framework-not-installed` 相同的判斷檢查；`pre-commit` 或 `pre-push` 的 hook 還不是 pre-commit 產生的，就印出：
+3. **檢查既有的型別檢查器設定**：Python 元件已有另一個型別檢查器的設定，而且宣告的 `typecheck.tool` 不讀它時，預覽多一段警告。看的是元件目錄的 `pyproject.toml` 的 `[tool.mypy]`、`[tool.pyright]`、`[tool.basedpyright]`，以及 `mypy.ini`、`.mypy.ini`、`pyrightconfig.json`（pyright 與 basedpyright 都讀它）。警告說明可以在 `.devguard.yaml` 宣告 `typecheck.tool` 改用既有的工具；目前宣告的標準不允許那個工具時（例如 `team@1.1.0` 的 `basedpyright`），一併說明要先升級標準。`install` 不會修改宣告，計畫中的其他變更（例如新增 `[tool.mypy] strict = true`）照常列出。
+
+   ```text
+   pyproject.toml：警告：已有宣告以外的型別檢查器設定，不會修改宣告；請自行決定
+       ./ (Python) 宣告的 typecheck.tool 是 mypy，但 [tool.basedpyright] 是 basedpyright 的設定
+       要改用既有的工具，請在 .devguard.yaml 這個元件的 overrides 宣告：
+         typecheck.tool: basedpyright
+   ```
+
+4. 合併計畫，依互動規則預覽並套用。
+5. **提示下一步**：用 pre-commit 框架時，pre-commit 的 hook 要等 `pre-commit install` 才會寫進 hooks 目錄，`install` 只把項目加進設定。所以結束時（預覽與套用都一樣），`install` 用與 [`doctor`](Command-doctor.md) 的 `framework-not-installed` 相同的判斷檢查；`pre-commit` 或 `pre-push` 的 hook 還不是 pre-commit 產生的，就印出：
 
    ```text
    下一步：執行 pre-commit install --hook-type pre-commit --hook-type pre-push，hook 框架才會把 hook 寫進 hooks 目錄（install 不會自動執行）。

@@ -1,4 +1,7 @@
+import { valueInForce, type Resolution } from "../declaration/resolve.ts";
 import { parseConfigText } from "../fix/edit.ts";
+import type { Printed } from "../fix/plan.ts";
+import { repoReader } from "../shared/fs.ts";
 import { isRecord } from "../shared/guards.ts";
 
 /** The Python type checkers a standard may allow for `typecheck.tool` (SPEC §6.1). */
@@ -44,4 +47,34 @@ export async function typeCheckerConfigs(
     if ((await read(file)) !== undefined) configs.push({ file, where: name, tools });
   }
   return configs;
+}
+
+/** How to declare `tool` for a component instead, or why the component's standard does not allow it yet. */
+function declareInstead(tool: TypeChecker, allowed: readonly string[]): string {
+  if (allowed.includes(tool)) return `typecheck.tool: ${tool}`;
+  return `typecheck.tool: ${tool}（目前宣告的標準不允許，需先以 devguard standard upgrade 升級）`;
+}
+
+/**
+ * What `install` warns about (#68): each type checker setting of a Python component that the declared
+ * `typecheck.tool` does not read, with how to declare the configured checker instead. The declaration is left as is.
+ */
+export async function otherTypeCheckers(cwd: string, resolution: Resolution): Promise<Printed[]> {
+  const item = resolution.standard?.languages.python["typecheck.tool"];
+  const allowed = item?.allowed ?? [];
+  const printed: Printed[] = [];
+  for (const c of resolution.components.filter((c) => c.language === "python")) {
+    const inForce = valueInForce(item?.value, c.effective["typecheck.tool"]);
+    const declared = typeof inForce === "string" ? inForce : "mypy";
+    for (const config of await typeCheckerConfigs(c.dir, repoReader(cwd))) {
+      if (config.tools.some((t) => t === declared)) continue;
+      const lines = [
+        `${c.name} 宣告的 typecheck.tool 是 ${declared}，但 ${config.where} 是 ${config.tools.join(" / ")} 的設定`,
+        "要改用既有的工具，請在 .devguard.yaml 這個元件的 overrides 宣告：",
+        ...config.tools.map((t) => `  ${declareInstead(t, allowed)}`),
+      ];
+      printed.push({ file: config.file, category: "typecheck", lines });
+    }
+  }
+  return printed;
 }
