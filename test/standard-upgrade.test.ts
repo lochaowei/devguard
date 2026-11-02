@@ -12,6 +12,8 @@ import { diffStandards, upgradeSuggestion } from "../src/standard/upgrade.ts";
 import { runStandardUpgrade } from "../src/standard/upgrade-run.ts";
 import type { PackageRequest, ToolRunner } from "../src/tools/runner.ts";
 import { team_1_0_0 } from "../src/standard/team-1.0.0.ts";
+import { team_1_1_0 as bundled_1_1_0 } from "../src/standard/team-1.1.0.ts";
+import { team_1_2_0 } from "../src/standard/team-1.2.0.ts";
 import type { ItemValue, Language, Standard } from "../src/standard/types.ts";
 import { rules, TODAY } from "./helpers.ts";
 
@@ -91,6 +93,20 @@ describe("diffStandards: the standard items that change", () => {
   it("ignores languages the project does not use", () => {
     expect(diffStandards(team_1_0_0, team_1_1_0, ["go"])).toHaveLength(1);
   });
+
+  it("lists a choice whose allowed values change even when its value stays (team@1.1.0 → team@1.2.0)", () => {
+    expect(diffStandards(bundled_1_1_0, team_1_2_0, ["python"])).toEqual([
+      {
+        scope: "python",
+        key: "typecheck.tool",
+        label: "型別檢查工具",
+        before: "mypy",
+        after: "mypy",
+        allowed: { added: ["basedpyright"], removed: [] },
+      },
+      { scope: "python", key: "tools.basedpyright", label: "basedpyright 版本範圍", after: ">=1.40,<2" },
+    ]);
+  });
 });
 
 /** A Python component whose pyproject.toml meets team@1.0.0 (written by `fix`), with ruff 0.17.2 locked. */
@@ -132,7 +148,10 @@ function fakeTools() {
   return { tools, managed };
 }
 
-async function upgrade(dir: string, extra: { target?: string; apply?: boolean; tools?: ToolRunner } = {}) {
+async function upgrade(
+  dir: string,
+  extra: { target?: string; apply?: boolean; tools?: ToolRunner; bundled?: readonly Standard[] } = {},
+) {
   let out = "";
   const code = await runStandardUpgrade({
     cwd: dir,
@@ -161,6 +180,18 @@ describe("devguard standard upgrade (SPEC §5.5)", () => {
     expect(read(dir, ".devguard.yaml")).toBe(before.decl);
     expect(read(dir, "pyproject.toml")).toBe(before.py);
     expect(managed).toEqual([]);
+  });
+
+  it("previews a choice that allows another value, with its value unchanged", async () => {
+    const dir = await pythonRepo(OVERRIDES);
+    const allows = version("team@1.1.0", (s) => {
+      const item = s.languages.python["typecheck.tool"];
+      if (item?.allowed === undefined) throw new Error("no typecheck.tool");
+      const typecheck = { ...item, allowed: [...item.allowed, "basedpyright"] };
+      return { ...s, languages: { ...s.languages, python: { ...s.languages.python, "typecheck.tool": typecheck } } };
+    });
+    const { out } = await upgrade(dir, { target: "team@1.1.0", bundled: [team_1_0_0, allows] });
+    expect(out).toContain('Python｜型別檢查工具："mypy"（可選值新增 "basedpyright"）');
   });
 
   it("a preview with changes pending exits 1, so CI can tell an upgrade is due (SPEC §11)", async () => {
