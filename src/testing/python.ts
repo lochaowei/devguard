@@ -39,7 +39,12 @@ function totals(text: string | undefined): Measured[] | undefined {
 export const pythonTests: TestChecker = {
   language: "python",
   async check(target: TestTarget, ctx: TestContext): Promise<Finding[]> {
-    const run = (tool: string, args: string[]) => ctx.tools.run({ language: "python", tool, dir: target.dir, args });
+    const run = (tool: string, args: string[]) => {
+      // The standard's range of the tool, for the install hint when it is missing (#68); `coverage` has none.
+      const range = target.effective[`tools.${tool}`];
+      const request = { language: "python", tool, dir: target.dir, args } as const;
+      return ctx.tools.run(typeof range === "string" ? { ...request, range } : request);
+    };
     const pytest = await run("pytest", ["--cov", "--cov-branch", "--cov-report="]);
     if (!PYTEST_RAN.has(pytest.code)) return [testToolFailed(target, "pytest", pytest)];
     const findings: Finding[] = [];

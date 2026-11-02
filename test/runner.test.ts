@@ -189,6 +189,49 @@ describe("tool runner: Python with Poetry (#44)", () => {
   });
 });
 
+describe("tool runner: a Python tool missing from the dev dependencies (#68)", () => {
+  const based = { language: "python", tool: "basedpyright", dir: "api/", range: ">=1.40,<2" } as const;
+  const PYPROJECT = "C:\\repo\\api\\pyproject.toml";
+
+  it("asks to add it with uv add --dev and the standard's range", async () => {
+    const { runner } = fakeRunner({ [PYPROJECT]: '[project]\nname = "api"\n' });
+    const m = await missing(runner.run(req(based)));
+    expect(m.install).toBe('cd api && uv add --dev "basedpyright>=1.40,<2"');
+  });
+
+  it("asks to add it with poetry add --group dev in a Poetry project", async () => {
+    const { runner } = fakeRunner({ [PYPROJECT]: '[project]\nname = "api"\n', "C:\\repo\\api\\poetry.lock": "" });
+    const m = await missing(runner.run(req(based)));
+    expect(m.install).toBe('cd api && poetry add --group dev "basedpyright>=1.40,<2"');
+  });
+
+  it("still asks for uv sync when a dependency group lists it", async () => {
+    const toml = '[project]\nname = "api"\n\n[dependency-groups]\ndev = ["basedpyright>=1.40"]\n';
+    const { runner } = fakeRunner({ [PYPROJECT]: toml });
+    expect((await missing(runner.run(req(based)))).install).toBe("cd api && uv sync");
+  });
+
+  it("still asks for poetry install when a Poetry group lists it, under any spelling of its name", async () => {
+    const toml = '[tool.poetry.group.dev.dependencies]\nBasedPyright = ">=1.40"\n';
+    const { runner } = fakeRunner({ [PYPROJECT]: toml, "C:\\repo\\api\\poetry.lock": "" });
+    const m = await missing(runner.run(req(based)));
+    expect(m.install).toBe("cd api && poetry config virtualenvs.in-project true && poetry install");
+  });
+
+  it("counts a workspace root's pyproject.toml that lists it", async () => {
+    const root = '[project]\nname = "ws"\n\n[dependency-groups]\ndev = ["basedpyright"]\n';
+    const { runner } = fakeRunner({ [PYPROJECT]: '[project]\nname = "api"\n', "C:\\repo\\pyproject.toml": root });
+    expect((await missing(runner.run(req(based)))).install).toBe("cd api && uv sync");
+  });
+
+  it("keeps uv sync without a pyproject.toml or without a range to add", async () => {
+    expect((await missing(fakeRunner({}).runner.run(req(based)))).install).toBe("cd api && uv sync");
+    const { runner } = fakeRunner({ [PYPROJECT]: '[project]\nname = "api"\n' });
+    const noRange = { language: "python", tool: "basedpyright", dir: "api/" } as const;
+    expect((await missing(runner.run(req(noRange)))).install).toBe("cd api && uv sync");
+  });
+});
+
 describe("tool runner: TypeScript", () => {
   it("runs node_modules/.bin/<tool>.cmd on Windows", async () => {
     const bin = "C:\\repo\\web\\node_modules\\.bin\\eslint.cmd";

@@ -324,6 +324,21 @@ describe("python checker: basedpyright (#68)", () => {
     ]);
   });
 
+  it("passes each tool's standard range to the runner, for the install hint when it is missing", async () => {
+    const effective = {
+      "typecheck.tool": "basedpyright",
+      "tools.ruff": ">=0.17,<1",
+      "tools.basedpyright": ">=1.40,<2",
+    };
+    const { tools, calls } = fakeTools({ "ruff check": { stdout: "[]" }, basedpyright: { stdout: "{}" } });
+    await check(target({ effective }), tools);
+    expect(calls.map((c) => [c.tool, c.range])).toEqual([
+      ["ruff", ">=0.17,<1"],
+      ["ruff", ">=0.17,<1"],
+      ["basedpyright", ">=1.40,<2"],
+    ]);
+  });
+
   it("names basedpyright among the tools that check the working tree", () => {
     expect(pythonChecker.workingTreeTools(basedTarget())).toEqual(["basedpyright"]);
   });
