@@ -1,5 +1,5 @@
 import type { Repair } from "../fix/repair.ts";
-import { internal, mirrorFinding, redact, sameUrl, type MirrorChecker, type MirrorProblem } from "./common.ts";
+import { mirrorFinding, type MirrorChecker, type MirrorProblem } from "./common.ts";
 
 /** The npm variable `.npmrc` references when the mirror needs credentials (SPEC §10.3). */
 export const NPM_AUTH_VARIABLE = "NEXUS_NPM_AUTH";
@@ -34,34 +34,15 @@ export function npmrcVariables(text: string): string[] {
 /** `https://host/path/` -> `//host/path/`, the prefix npm scopes credentials with. */
 const npmScope = (url: string): string => url.replace(/^[a-z]+:/i, "").replace(/\/*$/, "/");
 
-/** npm / pnpm / yarn: the component's `.npmrc` sets `registry=` to the npm mirror (SPEC §10.2, §10.3). */
+/**
+ * npm / pnpm / yarn: the component's `.npmrc` keeps credentials out of the repo (SPEC §10.2, §10.3).
+ * `registry=` is not checked or written: the package source belongs to the user-level npm config (#65).
+ */
 export const checkNpm: MirrorChecker = async (component, mirrors, read) => {
   const file = `${component.dir}.npmrc`;
   const entries = iniEntries((await read(file)) ?? "");
   const setTo = (key: string, value: string): Repair[] => [{ op: "set", file, path: [key], value }];
   const problems: MirrorProblem[] = [];
-
-  const registries = entries.filter((e) => e.key === "registry" || e.key.endsWith(":registry"));
-  if (!registries.some((e) => e.key === "registry")) {
-    const detail = `在 ${file} 寫入 registry=${mirrors.npm}`;
-    problems.push({
-      rule: "missing",
-      message: `${file} 沒有設定 registry`,
-      detail,
-      repairs: setTo("registry", mirrors.npm),
-    });
-  }
-  // The registry itself must be the mirror; a scope may use another repository of the same Nexus.
-  const fine = (r: IniEntry) => (r.key === "registry" ? sameUrl : internal)(r.value, mirrors.npm);
-  for (const e of registries.filter((r) => !fine(r))) {
-    problems.push({
-      rule: "external",
-      message: `${file} 的 ${e.key} 指向外部來源 ${redact(e.value)}`,
-      detail: `改為 ${e.key}=${mirrors.npm}`,
-      repairs: setTo(e.key, mirrors.npm),
-      line: e.line,
-    });
-  }
 
   const scope = npmScope(mirrors.npm);
   const authKey = `${scope}:_auth`;
