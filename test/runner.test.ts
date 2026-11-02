@@ -199,14 +199,22 @@ describe("tool runner: a Python tool missing from the dev dependencies (#68)", (
     expect(m.install).toBe('cd api && uv add --dev "basedpyright>=1.40,<2"');
   });
 
-  it("asks to add it with poetry add --group dev in a Poetry project", async () => {
+  it("asks to add it with poetry add --group dev, in-project so devguard finds it, in a Poetry project", async () => {
     const { runner } = fakeRunner({ [PYPROJECT]: '[project]\nname = "api"\n', "C:\\repo\\api\\poetry.lock": "" });
     const m = await missing(runner.run(req(based)));
-    expect(m.install).toBe('cd api && poetry add --group dev "basedpyright>=1.40,<2"');
+    expect(m.install).toBe(
+      'cd api && poetry config virtualenvs.in-project true && poetry add --group dev "basedpyright>=1.40,<2"',
+    );
   });
 
   it("still asks for uv sync when a dependency group lists it", async () => {
     const toml = '[project]\nname = "api"\n\n[dependency-groups]\ndev = ["basedpyright>=1.40"]\n';
+    const { runner } = fakeRunner({ [PYPROJECT]: toml });
+    expect((await missing(runner.run(req(based)))).install).toBe("cd api && uv sync");
+  });
+
+  it("still asks for uv sync when uv's legacy [tool.uv] dev-dependencies lists it", async () => {
+    const toml = '[project]\nname = "api"\n\n[tool.uv]\ndev-dependencies = ["basedpyright>=1.40"]\n';
     const { runner } = fakeRunner({ [PYPROJECT]: toml });
     expect((await missing(runner.run(req(based)))).install).toBe("cd api && uv sync");
   });

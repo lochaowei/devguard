@@ -10,6 +10,26 @@ export interface ItemChange {
   label: string;
   before?: ItemValue;
   after?: ItemValue;
+  /** A choice item kept in both versions whose alternatives changed, e.g. `typecheck.tool` allowing basedpyright. */
+  allowed?: { added: string[]; removed: string[] };
+}
+
+/** How a choice item's allowed values changed; undefined when they did not. */
+function allowedChange(a: ItemDef, b: ItemDef): ItemChange["allowed"] {
+  const before = a.allowed ?? [];
+  const after = b.allowed ?? [];
+  const added = after.filter((v) => !before.includes(v));
+  const removed = before.filter((v) => !after.includes(v));
+  return added.length > 0 || removed.length > 0 ? { added, removed } : undefined;
+}
+
+/** How one item changed between two versions; undefined when its value and allowed values stay. */
+function diffItem(scope: ItemChange["scope"], key: string, a?: ItemDef, b?: ItemDef): ItemChange | undefined {
+  if (!b) return a && { scope, key, label: a.label, before: a.value };
+  if (!a) return { scope, key, label: b.label, after: b.value };
+  const allowed = allowedChange(a, b);
+  if (!allowed && JSON.stringify(a.value) === JSON.stringify(b.value)) return undefined;
+  return { scope, key, label: b.label, before: a.value, after: b.value, ...(allowed ? { allowed } : {}) };
 }
 
 function diffItems(
@@ -17,18 +37,15 @@ function diffItems(
   from: Readonly<Record<string, ItemDef>>,
   to: Readonly<Record<string, ItemDef>>,
 ): ItemChange[] {
-  const changes: ItemChange[] = [];
-  for (const key of new Set([...Object.keys(from), ...Object.keys(to)])) {
-    const a = from[key];
-    const b = to[key];
-    if (a && b && JSON.stringify(a.value) === JSON.stringify(b.value)) continue;
-    const label = (b ?? a)?.label ?? key;
-    changes.push({ scope, key, label, ...(a ? { before: a.value } : {}), ...(b ? { after: b.value } : {}) });
-  }
-  return changes;
+  return [...new Set([...Object.keys(from), ...Object.keys(to)])].flatMap(
+    (key) => diffItem(scope, key, from[key], to[key]) ?? [],
+  );
 }
 
-/** The standard items whose values differ between `from` and `to`: the global ones and those of `languages`. */
+/**
+ * The standard items whose values (or, for a choice, allowed values) differ between `from` and `to`: the global ones
+ * and those of `languages`.
+ */
 export function diffStandards(from: Standard, to: Standard, languages: readonly Language[]): ItemChange[] {
   return [
     ...diffItems("global", from.global, to.global),

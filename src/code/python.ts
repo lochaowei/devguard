@@ -1,5 +1,6 @@
 import type { Finding } from "../report/finding.ts";
-import type { ToolRequest, ToolResult } from "../tools/runner.ts";
+import { isPyrightTool, type PyrightTool } from "../settings/type-checkers.ts";
+import { pythonToolRequest, type ToolResult } from "../tools/runner.ts";
 import { codeFinding, firstDifferentLine, runBatched, splitStaged, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
 
@@ -20,12 +21,6 @@ function parseJson(text: string): unknown {
   }
 }
 
-/** A run of `tool` in the target's directory, with the standard's range of it for the install hint (#68). */
-function toolRequest(target: CodeTarget, tool: string): Omit<ToolRequest, "args"> {
-  const range = target.effective[`tools.${tool}`];
-  return { language: "python", tool, dir: target.dir, ...(typeof range === "string" ? { range } : {}) };
-}
-
 function ruffFindings(target: CodeTarget, ctx: CodeCheckContext, result: ToolResult): Finding[] {
   const diagnostics = result.code <= 1 ? parseJson(result.stdout) : undefined;
   if (!Array.isArray(diagnostics)) return [toolFailed(target, "ruff", result)];
@@ -42,7 +37,7 @@ function ruffFindings(target: CodeTarget, ctx: CodeCheckContext, result: ToolRes
 
 /** `--force-exclude` keeps Ruff's configured excludes in force for explicitly passed files. */
 async function lint(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
-  const request = toolRequest(target, "ruff");
+  const request = pythonToolRequest(target, "ruff");
   const args = ["check", "--output-format", "json", "--no-fix", "--force-exclude"];
   const { staged, onDisk } = await splitStaged(target, ctx);
   const results = await runBatched(ctx.tools, request, args, onDisk);
@@ -55,7 +50,7 @@ async function lint(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[
 /** `ruff format --stdin-filename` prints the staged version formatted; any difference is a format finding. */
 async function formatStaged(target: CodeTarget, ctx: CodeCheckContext, file: string, text: string): Promise<Finding[]> {
   const args = ["format", "--force-exclude", "--stdin-filename", file, "-"];
-  const result = await ctx.tools.run({ ...toolRequest(target, "ruff"), args, stdin: text });
+  const result = await ctx.tools.run({ ...pythonToolRequest(target, "ruff"), args, stdin: text });
   if (result.code !== 0) return [toolFailed(target, "ruff format", result)];
   if (result.stdout === text) return [];
   const at = { file: toRepoPath(ctx.cwd, target.dir, file), line: firstDifferentLine(text, result.stdout) };
@@ -92,7 +87,7 @@ function firstChangedLines(diff: string): Map<string, number> {
 
 /** `ruff format --diff` checks without writing; the diff locates the first line each file would change. */
 async function format(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
-  const request = toolRequest(target, "ruff");
+  const request = pythonToolRequest(target, "ruff");
   const { staged, onDisk } = await splitStaged(target, ctx);
   const findings: Finding[] = [];
   for (const { file, text } of staged) findings.push(...(await formatStaged(target, ctx, file, text)));
@@ -133,7 +128,7 @@ function mypyFinding(target: CodeTarget, ctx: CodeCheckContext, text: string): F
 /** mypy checks the whole component ("."), honouring its configured excludes (SPEC §7.1). */
 async function mypy(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
   const args = ["--no-pretty", "--no-error-summary", "--show-error-codes", "--no-color-output", "."];
-  const result = await ctx.tools.run({ ...toolRequest(target, "mypy"), args });
+  const result = await ctx.tools.run({ ...pythonToolRequest(target, "mypy"), args });
   if (result.code === 0) return [];
   const findings = result.stdout.split(/\r?\n/).flatMap((text) => mypyFinding(target, ctx, text) ?? []);
   return findings.length > 0 ? findings : [toolFailed(target, "mypy", result)];
@@ -147,12 +142,9 @@ interface PyrightDiagnostic {
   range?: { start: { line: number } };
 }
 
-/** The pyright-based type checkers: basedpyright prints the same `--outputjson` output as pyright. */
-type PyrightTool = "pyright" | "basedpyright";
-
 /** pyright (or basedpyright) with no file arguments checks the project its configuration describes. */
 async function pyright(target: CodeTarget, ctx: CodeCheckContext, tool: PyrightTool): Promise<Finding[]> {
-  const result = await ctx.tools.run({ ...toolRequest(target, tool), args: ["--outputjson"] });
+  const result = await ctx.tools.run({ ...pythonToolRequest(target, tool), args: ["--outputjson"] });
   const output = result.code <= 1 ? parseJson(result.stdout) : undefined;
   const diagnostics = (output as { generalDiagnostics?: unknown } | undefined)?.generalDiagnostics;
   if (!Array.isArray(diagnostics)) return [toolFailed(target, tool, result)];
@@ -173,7 +165,7 @@ async function pyright(target: CodeTarget, ctx: CodeCheckContext, tool: PyrightT
 /** The declared type checker; mypy unless `typecheck.tool` names a pyright-based one. */
 function typeChecker(target: CodeTarget): "mypy" | PyrightTool {
   const tool = target.effective["typecheck.tool"];
-  return tool === "pyright" || tool === "basedpyright" ? tool : "mypy";
+  return isPyrightTool(tool) ? tool : "mypy";
 }
 
 /** Ruff lint and format, and mypy, pyright or basedpyright, all run through `uv run` (SPEC §6.1, §5.2). */

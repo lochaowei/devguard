@@ -33,6 +33,18 @@ export interface ToolRequest {
   range?: string;
 }
 
+/**
+ * A run of the Python `tool` in a component's directory, with the standard's range of it (`tools.<tool>`) for the
+ * install hint when it is missing (#68). Tools the standard does not pin (e.g. `coverage`) get no range.
+ */
+export function pythonToolRequest(
+  component: { dir: string; effective: Readonly<Record<string, unknown>> },
+  tool: string,
+): Omit<ToolRequest, "args"> {
+  const range = component.effective[`tools.${tool}`];
+  return { language: "python", tool, dir: component.dir, ...(typeof range === "string" ? { range } : {}) };
+}
+
 export interface ToolResult {
   code: number;
   stdout: string;
@@ -177,12 +189,14 @@ function listedInPyproject(tool: string, dirs: readonly string[], env: Env): boo
 
 /**
  * How to get a missing Python tool: the manager's install when a pyproject.toml lists it (or there is no range to
- * add it in), otherwise adding it to the dev dependencies the way `standard upgrade` does (#68).
+ * add it in), otherwise adding it to the dev dependencies the way `standard upgrade` does (#68), after what puts the
+ * environment where devguard looks for the tool (Poetry's `virtualenvs.in-project`).
  */
 function pythonInstall(req: ToolRequest, dirs: readonly string[], env: Env, name: PythonManager): string {
   const manager = PYTHON_MANAGERS[name];
   if (req.range === undefined || listedInPyproject(req.tool, dirs, env) !== false) return manager.install;
-  return [manager.program, ...manager.addDev, `"${req.tool}${req.range}"`].join(" ");
+  const add = [manager.program, ...manager.addDev, `"${req.tool}${req.range}"`].join(" ");
+  return manager.inProject === undefined ? add : `${manager.inProject} && ${add}`;
 }
 
 /**

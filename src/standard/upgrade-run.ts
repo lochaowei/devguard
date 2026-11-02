@@ -325,14 +325,27 @@ function section(title: string, lines: readonly string[], empty: string): string
   return [title, ...(lines.length === 0 ? [`  ${empty}`] : lines.map((l) => `  ${l}`)), ""];
 }
 
+/** A choice's changed alternatives, e.g. `（可選值新增 "basedpyright"）`; "" when they did not change. */
+function allowedNote(allowed: ItemChange["allowed"]): string {
+  if (!allowed) return "";
+  const list = (values: readonly string[]) => values.map((v) => fmt(v)).join("、");
+  const parts = [
+    ...(allowed.added.length > 0 ? [`新增 ${list(allowed.added)}`] : []),
+    ...(allowed.removed.length > 0 ? [`移除 ${list(allowed.removed)}`] : []),
+  ];
+  return `（可選值${parts.join("；")}）`;
+}
+
 function itemLine(c: ItemChange): string {
   const value =
     c.before === undefined
       ? `（新增）${fmt(c.after)}`
       : c.after === undefined
         ? `${fmt(c.before)}（移除）`
-        : `${fmt(c.before)} → ${fmt(c.after)}`;
-  return `${scopeLabel(c.scope)}｜${c.label}：${value}`;
+        : JSON.stringify(c.before) === JSON.stringify(c.after)
+          ? fmt(c.after)
+          : `${fmt(c.before)} → ${fmt(c.after)}`;
+  return `${scopeLabel(c.scope)}｜${c.label}：${value}${allowedNote(c.allowed)}`;
 }
 
 const LEVEL_LABEL: Partial<Record<Finding["level"], string>> = { error: "錯誤", deviation: "偏離" };

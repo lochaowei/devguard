@@ -98,6 +98,46 @@ describe("install into an existing hook framework (SPEC §7.4)", () => {
     expect(read(dir, ".pre-commit-config.yaml")).toBe(installed);
   });
 
+  describe("pre-commit: raising the minimum version leaves the rest of an unusually formatted config as it was", () => {
+    // Comments, flow style, single and double quotes, 4-space indentation and extra spaces: the devguard
+    // entries are already there, so only the minimum version is the CLI's to change.
+    const rest = [
+      "# shared hooks, kept as written",
+      "default_stages:   [pre-commit,  pre-push]   # flow sequence",
+      "repos:",
+      "    -   repo: 'https://github.com/pre-commit/pre-commit-hooks'   # single-quoted",
+      '        rev: "v4.6.0"',
+      "        hooks:  [ {id: trailing-whitespace,  args: ['--markdown-linebreak-ext=md']} ]",
+      "    -   repo: local",
+      "        hooks:",
+      "            -   id: devguard",
+      "                name: devguard",
+      '                entry: "devguard hook git-pre-commit"',
+      "                language: unsupported",
+      "                stages: [pre-commit]",
+      "            -   {id: devguard-pre-push, name: devguard, entry: 'devguard hook git-pre-push', language: unsupported, stages: [pre-push]}",
+      "",
+      "# trailing comment",
+      "",
+    ];
+
+    it("replaces only the value of an older minimum_pre_commit_version", async () => {
+      const old = "minimum_pre_commit_version:   '3.0.0'   # old, single-quoted";
+      const config = [rest[0], rest[1], old, ...rest.slice(2)].join("\n");
+      const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": config });
+      await runInstall({ cwd: dir, today: TODAY, io: io() });
+      const raised = 'minimum_pre_commit_version:   "4.4.0"   # old, single-quoted';
+      expect(read(dir, ".pre-commit-config.yaml")).toBe([rest[0], rest[1], raised, ...rest.slice(2)].join("\n"));
+    });
+
+    it("appends a missing minimum_pre_commit_version and changes nothing else", async () => {
+      const config = rest.join("\n");
+      const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": config });
+      await runInstall({ cwd: dir, today: TODAY, io: io() });
+      expect(read(dir, ".pre-commit-config.yaml")).toBe(`${config}minimum_pre_commit_version: "4.4.0"\n`);
+    });
+  });
+
   it("pre-commit: running install again injects nothing more", async () => {
     const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": PRE_COMMIT_CONFIG });
     await runInstall({ cwd: dir, today: TODAY, io: io() });

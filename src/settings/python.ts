@@ -7,6 +7,7 @@ import { judgeConfigValue, setAt } from "./judge.ts";
 import type { ItemDef } from "../standard/types.ts";
 import { isRecord } from "../shared/guards.ts";
 import { coverageGateOff } from "../testing/coverage.ts";
+import { isPyrightTool, type PyrightTool } from "./type-checkers.ts";
 
 type Table = Record<string, unknown>;
 
@@ -290,13 +291,10 @@ function checkRuffVersion(r: Report, ruff: ToolSection, floor: string | undefine
   }
 }
 
-/** The pyright-based type checkers, which share pyright's settings format (`typeCheckingMode`, `pythonVersion`). */
-type PyrightTool = "pyright" | "basedpyright";
-
 /** The declared type checker when it is pyright-based; undefined for mypy. */
 function pyrightTool(r: Report): PyrightTool | undefined {
   const tool = r.want("typecheck.tool");
-  return tool === "pyright" || tool === "basedpyright" ? tool : undefined;
+  return isPyrightTool(tool) ? tool : undefined;
 }
 
 function checkPythonVersion(
@@ -327,10 +325,8 @@ function checkPythonVersion(
  * `found` is the chosen tool's settings, which for the pyright-based ones may be pyrightconfig.json instead of
  * [tool.pyright] / [tool.basedpyright].
  */
-function checkTypecheck(r: Report, doc: Table, found: ToolSection | undefined): void {
-  const pyrightBased = pyrightTool(r);
-  const pyright = pyrightBased !== undefined;
-  const section = pyrightBased ?? "mypy";
+function checkTypecheck(r: Report, doc: Table, pyright: PyrightTool | undefined, found?: ToolSection): void {
+  const section = pyright ?? "mypy";
   const option = pyright ? "typeCheckingMode" : "strict";
   const strictValue = pyright ? "strict" : true;
   if (!found) {
@@ -456,9 +452,10 @@ export function checkPyproject(
   if (ruff) checkRuff(r, ruff);
   else r.fixable("ruff-missing", "pyproject.toml 沒有 [tool.ruff] 設定", "新增 [tool.ruff]", newRuff(r, doc));
   // pyright's pythonVersion is checked whichever type checker is declared; basedpyright's only when it is declared.
-  const pyrightName = pyrightTool(r) === "basedpyright" ? "basedpyright" : "pyright";
+  const pyright = pyrightTool(r);
+  const pyrightName = pyright ?? "pyright";
   checkPythonVersion(r, doc, ruff, sections[pyrightName], pyrightName);
-  checkTypecheck(r, doc, sections[pyrightTool(r) ?? "mypy"]);
+  checkTypecheck(r, doc, pyright, sections[pyright ?? "mypy"]);
   checkCoverage(r, doc);
   return r.findings;
 }

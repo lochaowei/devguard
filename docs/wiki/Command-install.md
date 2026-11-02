@@ -31,7 +31,7 @@ devguard install [--yes] [--cwd <dir>]
 
       | 框架 | 加入的內容 |
       |---|---|
-      | pre-commit | `repos` 中加一個 `repo: local`，hook id 為 `devguard`（pre-commit 階段）與 `devguard-pre-push`，`language: unsupported`、`always_run: true`；並把頂層的 `minimum_pre_commit_version` 設為至少 `"4.4.0"`（沒有就加上，較低就調高，較高就保留） |
+      | pre-commit | `repos` 中加一個 `repo: local`，hook id 為 `devguard`（pre-commit 階段）與 `devguard-pre-push`，`language: unsupported`、`always_run: true`；並把頂層的 `minimum_pre_commit_version` 設為至少 `"4.4.0"`（沒有就加在檔尾，較低就只改寫這個值，較高就保留；檔案其餘部分維持原樣） |
       | lefthook | `pre-commit.jobs` / `pre-push.jobs` 各加一個 `name: devguard`（原本用 `commands` 寫法的則加在 `commands.devguard`） |
       | husky | 在 `.husky/pre-commit`、`.husky/pre-push` 結尾加一行呼叫 devguard 的指令 |
 
@@ -59,7 +59,7 @@ devguard install [--yes] [--cwd <dir>]
    下一步：執行 pre-commit install --hook-type pre-commit --hook-type pre-push，hook 框架才會把 hook 寫進 hooks 目錄（install 不會自動執行）。
    ```
 
-   `install` 不會自己執行這條指令，這則提示也不改變 exit code。hook 已經安裝、或不使用 hook 框架時，不會印出。
+   `install` 不會自己執行這條指令，這則提示也不改變 exit code。hook 已經安裝、或不使用 hook 框架時，不會印出。設定了 `core.hooksPath` 時也不會印出：pre-commit 這時拒絕安裝，`install` 改為列出這個衝突（與 `doctor` 回報 `hooks-path-conflict` 而非 `framework-not-installed` 一致）。
 
 ### 產生的 hook 檔
 

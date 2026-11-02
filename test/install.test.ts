@@ -193,6 +193,15 @@ describe("devguard install (SPEC §3.2, §7.4)", () => {
       expect(out.out).toContain(COMMAND);
     });
 
+    it("does not ask for it while core.hooksPath keeps pre-commit from installing (doctor reports the conflict)", async () => {
+      const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": "repos: []\n" });
+      execFileSync("git", ["config", "core.hooksPath", ".githooks"], { cwd: dir });
+      const out = io();
+      await runInstall({ cwd: dir, today: TODAY, io: out });
+      expect(out.out).toContain("pre-commit 在 core.hooksPath 有設定時拒絕安裝 hook");
+      expect(out.out).not.toContain("下一步");
+    });
+
     it("does not apply to a repo without a hook framework", async () => {
       const dir = repo({ ".devguard.yaml": DECL });
       const out = io();
