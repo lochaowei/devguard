@@ -1,6 +1,7 @@
 import { claudeCodeCheck } from "./claude-code.ts";
 import { gitHooksCheck } from "./git-hooks.ts";
 import { goMirrorsCheck } from "./go-mirrors.ts";
+import { javaRuntimeCheck } from "./java-runtime.ts";
 import { mirrorCredentialsCheck } from "./mirror-credentials.ts";
 import { npmAuditCheck } from "./npm-audit.ts";
 import { createStandardUpgradeCheck } from "./standard-upgrade.ts";
@@ -19,6 +20,7 @@ export const ENVIRONMENT_CHECKS: readonly EnvironmentCheck[] = [
   claudeCodeCheck,
   vscodeExtensionsCheck,
   goMirrorsCheck,
+  javaRuntimeCheck,
   mirrorCredentialsCheck,
   npmAuditCheck,
 ];
