@@ -66,10 +66,38 @@ describe("tool runner: Python", () => {
   it("reports a missing uv itself", async () => {
     const enoent: Exec = () => Promise.reject(Object.assign(new Error("spawn uv ENOENT"), { code: "ENOENT" }));
     const { runner } = fakeRunner({ "C:\\repo\\.venv\\Scripts\\ruff.exe": "" }, { exec: enoent });
-    expect(await missing(runner.run(req({ language: "python", tool: "ruff" })))).toEqual({
-      message: "找不到 uv",
-      install: "scoop install uv",
-    });
+    const m = await missing(runner.run(req({ language: "python", tool: "ruff" })));
+    expect(m.message).toBe("找不到 uv");
+    expect(m.install).toContain("curl -LsSf https://astral.sh/uv/install.sh | sh");
+    expect(m.install).toContain('powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"');
+    expect(m.install).toContain("pipx install uv");
+    expect(m.install).toContain("pip install uv");
+    expect(m.install).toContain("scoop install uv");
+  });
+
+  it("tells a pip-installed uv that is not on PATH how to reach it (#67)", async () => {
+    const enoent: Exec = () => Promise.reject(Object.assign(new Error("spawn uv ENOENT"), { code: "ENOENT" }));
+    const { runner } = fakeRunner({ "C:\\repo\\.venv\\Scripts\\ruff.exe": "" }, { exec: enoent });
+    const m = await missing(runner.run(req({ language: "python", tool: "ruff" })));
+    expect(m.install).toContain("Scripts");
+    expect(m.install).toContain("~/.local/bin");
+    expect(m.install).toContain("PATH");
+    expect(m.install).toContain("uv --version");
+  });
+
+  it("indents every line of a multi-line install hint in the report (#67)", async () => {
+    const enoent: Exec = () => Promise.reject(Object.assign(new Error("spawn uv ENOENT"), { code: "ENOENT" }));
+    const { runner } = fakeRunner({ "C:\\repo\\.venv\\Scripts\\ruff.exe": "" }, { exec: enoent });
+    const run = runner.run(req({ language: "python", tool: "ruff" }));
+    const report = await run.then(
+      () => "",
+      (e: unknown) => (e instanceof ToolMissingError ? e.report() : ""),
+    );
+    const lines = report.trimEnd().split("\n");
+    expect(lines[0]).toBe("找不到 uv");
+    expect(lines[1]).toMatch(/^ {2}安裝：/);
+    expect(lines.length).toBeGreaterThan(3);
+    for (const line of lines.slice(2)) expect(line).toMatch(/^ {4}\S/);
   });
 });
 
@@ -273,7 +301,10 @@ describe("tool runner: Go", () => {
   it("reports a missing go itself", async () => {
     const enoent: Exec = () => Promise.reject(Object.assign(new Error("spawn go ENOENT"), { code: "ENOENT" }));
     const { runner } = fakeRunner({ "C:\\repo\\go.mod": GO_MOD }, { exec: enoent });
-    expect((await missing(runner.run(req({ language: "go", tool: "stringer" })))).message).toBe("找不到 go");
+    expect(await missing(runner.run(req({ language: "go", tool: "stringer" })))).toEqual({
+      message: "找不到 go",
+      install: "scoop install go",
+    });
   });
 
   it("runs go itself for module commands, offline and with the local toolchain", async () => {
