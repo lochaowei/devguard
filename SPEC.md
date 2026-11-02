@@ -248,7 +248,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 - **發佈**：預設標準內建在 CLI 中。每個 CLI 版本都附帶目前 major 版本與前一個 major 版本的所有標準版本。標準的原始檔放在一個內部 repo。
 - **版本號的意義**：
   - **major**：可能讓原本通過的專案失敗。例如收緊、新增規則、工具版本範圍改成不相容的範圍。
-  - **minor**：不會讓任何專案失敗。例如新增選用項目、新增替代工具、放寬、擴大相容的工具版本範圍、更換鏡像網址。
+  - **minor**：不會讓任何專案失敗。例如新增選用項目、新增替代工具（`team@1.2.0` 新增 `basedpyright`）、放寬、擴大相容的工具版本範圍、更換鏡像網址。
   - **patch**：只修改說明。
 - **專案宣告寫確切版本**。
   - 有 minor 或 patch 更新時，doctor 建議升級。
@@ -269,7 +269,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 
 ---
 
-## 6. 各語言的預設標準（`team@1.0.0` 草案，及 `team@1.1.0`、`legacy@1.0.0`）
+## 6. 各語言的預設標準（`team@1.0.0` 草案，及 `team@1.1.0`、`team@1.2.0`、`legacy@1.0.0`）
 
 本節的表格是 `team@1.0.0`。`team@1.1.0`（minor，§5.5）沿用 `team@1.0.0` 的所有項目，只有以下差異：
 
@@ -281,7 +281,11 @@ CLI 依偵測到的工具設定檔產生**草稿**：
   - Java：`tools.spotless-maven-plugin` `>=2.44,<4`、`tools.spotless-gradle-plugin` `>=7,<9`、`tools.checkstyle` `>=10.21,<15`。
   - 其餘工具範圍不變：ESLint 9（2026-08-06 EOL）、TypeScript 5、Jest 29、Biome 1、pytest 7、pytest-cov 6 之前、mypy 1.18 之前的版本線上游都不再發佈修正；Go 工具的現行版本已在範圍內。
 
-`devguard draft` 寫入、`doctor` 建議升級到的都是 CLI 內建的最新 `team` 版本（目前是 `team@1.1.0`）。既有專案可以改宣告基線標準 `legacy@1.0.0`（§6.5）。
+`team@1.2.0`（minor，§5.5）沿用 `team@1.1.0` 的所有項目，只有以下差異（#68）：
+
+- Python 的 `typecheck.tool` 多一個替代工具 `basedpyright`（§6.1），並新增 `tools.basedpyright` `>=1.40,<2`。下限依 #36 的原則取上游仍在修補的最舊版本線：basedpyright 的版本都從 `main` 依序發佈，不回補舊版本線（2026-11-03 查證 PyPI 與 GitHub Releases：1.39 的最後一版 1.39.10 在 1.40.0 之前發佈，目前最新是 1.40.2），所以只有 1.40 仍在維護；上限是下一個 major。
+
+`devguard draft` 寫入、`doctor` 建議升級到的都是 CLI 內建的最新 `team` 版本（目前是 `team@1.2.0`）。既有專案可以改宣告基線標準 `legacy@1.0.0`（§6.5）。
 
 ### 6.1 Python
 
@@ -292,8 +296,8 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | `lint.rules` | `E, W, F, I, B, UP, C90, SIM, N, S, TID`；測試檔放寬 `S101` | 一律寫入 `lint.select`（會取代 Ruff 的預設規則集；Ruff 0.16 起預設規則大幅增加），不使用 `extend-select`；`per-file-ignores` |
 | `format.lineLength` | 120（風格） | Ruff `line-length` |
 | `complexity.cyclomatic` | 10 | Ruff C901 `max-complexity` |
-| `typecheck.tool` | `mypy`；允許替代工具 `pyright` | `[tool.mypy]` / `[tool.pyright]` |
-| `typecheck.strict` | `true` | mypy `strict` / pyright `strict` |
+| `typecheck.tool` | `mypy`；允許替代工具 `pyright`（`team@1.2.0` 起另有 `basedpyright`） | `[tool.mypy]` / `[tool.pyright]`（或 `pyrightconfig.json`）/ `[tool.basedpyright]`（或 `pyrightconfig.json`）。basedpyright 以 `basedpyright --outputjson` 執行，輸出格式與 pyright 相同。`devguard draft` 遇到 `pyrightconfig.json` 寫入 `pyright`，遇到 `[tool.basedpyright]` 寫入 `basedpyright` |
+| `typecheck.strict` | `true` | mypy `strict` / pyright、basedpyright `typeCheckingMode = "strict"` |
 | `test.tool` | pytest + pytest-cov | — |
 | `coverage.lines` | 行覆蓋率與分支覆蓋率**各自**都要達到 80%（`branch = true`），與 TS、Java 一致 | CLI 執行 `coverage json`，從 `totals` 分別計算行與分支的覆蓋率並自行判定。不使用 `fail_under`，因為它在 branch 模式下檢查的是行加分支的合併總數。 |
 | `deps.manager` | `uv`；允許替代工具 `poetry` | 決定 `deps.lockfile` 要求哪個 lockfile。執行工具（§5.2）、鏡像設定（§10.2）、鏡像帳密（§10.3）與 `standard upgrade`（§5.5）不讀這個項目，只看最近的 Python lockfile：`poetry.lock` 時用 Poetry，否則用 uv |

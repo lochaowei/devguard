@@ -1,14 +1,18 @@
-# 各語言預設標準（`team@1.0.0`、`team@1.1.0`、`legacy@1.0.0`）與檢查對照表
+# 各語言預設標準（`team@1.0.0`、`team@1.1.0`、`team@1.2.0`、`legacy@1.0.0`）與檢查對照表
 
 本文整理內建預設標準 `team@1.0.0`（定義於 [`src/standard/team-1.0.0.ts`](../../src/standard/team-1.0.0.ts)）在四種語言中的預設值、設定檢查項目、程式碼檢查執行方式，以及 `--full` 測試與覆蓋率檢查邏輯。
 
-`team@1.1.0`（定義於 [`src/standard/team-1.1.0.ts`](../../src/standard/team-1.1.0.ts)）是 CLI 內建的最新版本，`devguard draft` 寫入、`doctor` 建議升級到的都是它。它沿用 `team@1.0.0` 的所有項目，只有以下差異（都是放寬，見 [SPEC §6](../../SPEC.md)）：
+`team@1.1.0`（定義於 [`src/standard/team-1.1.0.ts`](../../src/standard/team-1.1.0.ts)）沿用 `team@1.0.0` 的所有項目，只有以下差異（都是放寬，見 [SPEC §6](../../SPEC.md)）：
 
 - TypeScript 不再要求 `eslint-plugin-sonarjs`（見 [TypeScript](#3-typescript)）。因此 `team@1.1.0` 與 `legacy@1.0.0` 下，TypeScript 的 `complexity.cognitive` 只在使用 Biome 時強制；使用 ESLint 時只是參考值。
 - 語言最低版本不變：`java.minVersion` 維持 `"17"`（需要 Java 8 的既有專案改用 `legacy@1.0.0`）；Python、Node、Go 的最低版本已是上游仍支援的最舊版本。
 - 工具版本範圍（#36 於 2026-10-27 審視並訂定）：`tools.ruff` `>=0.17,<1`、`tools.pyright` `>=1.1.400,<2`、`tools.vitest` `>=4.1,<6`、`tools.spotless-maven-plugin` `>=2.44,<4`、`tools.spotless-gradle-plugin` `>=7,<9`、`tools.checkstyle` `>=10.21,<15`。下限不低於上游仍在修補的版本線。
 
-下文各語言的「工具版本範圍」列的是 `team@1.0.0` 的值，`team@1.1.0` 的差異標在括號中。
+`team@1.2.0`（定義於 [`src/standard/team-1.2.0.ts`](../../src/standard/team-1.2.0.ts)）是 CLI 內建的最新版本，`devguard draft` 寫入、`doctor` 建議升級到的都是它。它沿用 `team@1.1.0` 的所有項目，只多了一個替代工具（minor，見 [SPEC §6](../../SPEC.md)）：
+
+- Python 的 `typecheck.tool` 允許 `basedpyright`，並新增 `tools.basedpyright` `>=1.40,<2`。basedpyright 的版本都從 `main` 依序發佈、不回補舊版本線（2026-11-03 查證 PyPI 與 GitHub Releases），所以下限是目前唯一仍在維護的 1.40。
+
+下文各語言的「工具版本範圍」列的是 `team@1.0.0` 的值，`team@1.1.0`、`team@1.2.0` 的差異標在括號中。
 
 ### 既有專案的基線標準 `legacy@1.0.0`
 
@@ -59,8 +63,8 @@
 | `lint.rules` | `["E", "W", "F", "I", "B", "UP", "C90", "SIM", "N", "S", "TID"]` | 寫入 `[tool.ruff.lint] select`（測試檔放寬 `S101`） |
 | `format.lineLength` | `120` | 風格項目（`[tool.ruff] line-length`） |
 | `complexity.cyclomatic` | `10` | `[tool.ruff.lint.mccabe] max-complexity` |
-| `typecheck.tool` | `"mypy"` | 允許替代：`pyright` |
-| `typecheck.strict` | `true` | `[tool.mypy] strict = true` 或 `[tool.pyright] typeCheckingMode = "strict"` |
+| `typecheck.tool` | `"mypy"` | 允許替代：`pyright`；`team@1.2.0` 起另有 `basedpyright` |
+| `typecheck.strict` | `true` | `[tool.mypy] strict = true`，或 `[tool.pyright]` / `[tool.basedpyright]`（兩者也都讀 `pyrightconfig.json`）的 `typeCheckingMode = "strict"` |
 | `test.tool` | `"pytest"` | 搭配 `pytest-cov` |
 | `coverage.lines` | `80` | 行覆蓋率與分支覆蓋率**各自**須達 80% |
 | `deps.manager` | `"uv"` | 允許替代：`poetry` |
@@ -76,12 +80,13 @@
   - `tools.ruff`：`>=0.17,<0.18`（`team@1.1.0`：`>=0.17,<1`）
   - `tools.mypy`：`>=1.18,<2`
   - `tools.pyright`：`>=1.1.400,<1.2`（`team@1.1.0`：`>=1.1.400,<2`）
+  - `tools.basedpyright`：`team@1.2.0` 新增，`>=1.40,<2`
   - `tools.pytest`：`>=8,<10`
   - `tools.pytest-cov`：`>=6,<8`
 - **程式碼檢查（`code` 層）**：
   - `lint`：`uv run --no-sync ruff check --output-format json`（`--staged` 時改用 `--stdin-filename <path> -` 讀取 staged 內容）
   - `format`：`uv run --no-sync ruff format --check`（`--staged` 時改用 `--stdin-filename <path> -`）
-  - `typecheck`：`uv run --no-sync mypy` 或 `uv run --no-sync pyright --outputjson`
+  - `typecheck`：`uv run --no-sync mypy`、`uv run --no-sync pyright --outputjson` 或 `uv run --no-sync basedpyright --outputjson`（輸出格式與 pyright 相同，rule 以 `basedpyright/` 開頭）
 - **自動修正程式碼（`fix --code`）**：
   - `uv run --no-sync ruff check --fix --force-exclude`
   - `uv run --no-sync ruff format --force-exclude`

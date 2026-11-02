@@ -14,7 +14,7 @@
 
 **v0.2.0：SPEC 的指令都已實作**（`check`、`doctor`、`fix`、`install`、`hook`、`draft`、`standard upgrade`）。以 Bun 打包成單一 exe，透過 GitHub Release 發佈（見[安裝](#安裝)）。見下方[路線圖](#路線圖)與[已知限制](#已知限制)。
 
-- **專案宣告與草稿**：解析並檢查 `.devguard.yaml`（9 種標準項目類型、覆寫與偏離規則、到期日檢查、未涵蓋程式檔提示），以及依既有設定產生宣告草稿（`devguard draft`，含 Gradle、pnpm、yarn、Poetry、Biome、Jest、pyright 等工具選擇）。
+- **專案宣告與草稿**：解析並檢查 `.devguard.yaml`（9 種標準項目類型、覆寫與偏離規則、到期日檢查、未涵蓋程式檔提示），以及依既有設定產生宣告草稿（`devguard draft`，含 Gradle、pnpm、yarn、Poetry、Biome、Jest、pyright、basedpyright 等工具選擇）。
 - **四語言設定檢查與一致性檢查**：Python（`pyproject.toml`、`ruff.toml`、`pyrightconfig.json`）、Go（`.golangci.yml` / `.golangci.yaml`、`go.mod`）、TypeScript（`tsconfig.json`、ESLint、Prettier、Biome、Vitest / Jest、`package.json`）、Java（`pom.xml`、`build.gradle(.kts)`、`checkstyle.xml`、PMD ruleset、`lombok.config`）與共通 `.gitattributes`（`* text=auto eol=lf`）。monorepo 的子元件沿用上層目錄的共用設定檔。
 - **依賴規則與工具版本範圍**：lockfile 是否提交（含 `go mod tidy -diff`、Maven Enforcer、Gradle `gradle.lockfile`）、直接依賴是否包含禁用套件（`deps.banned`），以及鎖定的工具版本（`uv.lock` / `poetry.lock`、`package-lock.json` / `pnpm-lock.yaml` / `yarn.lock` 等）是否落在標準允許的範圍內（`tools.*`）。
 - **程式碼、測試與弱點掃描**：透過專案環境鎖定的工具執行 lint、format 與 typecheck；`check --full` 再跑測試、行 / 分支覆蓋率門檻與弱點掃描。
@@ -64,7 +64,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 
 ### 3. 各語言快速開始（Per-Language Quick Start）
 
-#### Python（`uv` + `ruff` + `mypy` / `pyright` + `pytest`）
+#### Python（`uv` + `ruff` + `mypy` / `pyright` / `basedpyright` + `pytest`）
 
 1. **前置環境與安裝專案工具**（Python `>= 3.11`，預設使用 `uv`，亦可於宣告改用 `poetry`）：
    ```bash
@@ -74,12 +74,12 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
    ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.1.0
+   standard: team@1.2.0
    components:
      - path: ./
        language: python
        # overrides:
-       #   typecheck.tool: pyright   # 允許替代：mypy（預設）| pyright
+       #   typecheck.tool: pyright   # 允許替代：mypy（預設）| pyright | basedpyright
        #   deps.manager: poetry      # 允許替代：uv（預設）| poetry
    ```
 3. **產生設定與安裝防線**：
@@ -89,12 +89,12 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
    `install` / `fix` 會在 `pyproject.toml` 自動寫入並維護（保留原有註解與順序）：
    - `[tool.ruff]`：`line-length = 120`、`target-version`（依 `requires-python` 或 `3.11`）
    - `[tool.ruff.lint]`：`select = ["E", "W", "F", "I", "B", "UP", "C90", "SIM", "N", "S", "TID"]`（不使用 `extend-select`）、`mccabe.max-complexity = 10`，以及測試檔放寬 `S101`（`per-file-ignores`）
-   - `[tool.mypy]`：`strict = true`、`python_version`（或 `[tool.pyright]` 的 `typeCheckingMode = "strict"`）
+   - `[tool.mypy]`：`strict = true`、`python_version`（或 `[tool.pyright]` / `[tool.basedpyright]` 的 `typeCheckingMode = "strict"`）
    - `[tool.coverage.run]`：`branch = true`
    - `[[tool.uv.index]]`：指向內部 PyPI 鏡像 `nexus`（`default = true`）
 4. **日常檢查與修正**：
    ```bash
-   devguard check          # 透過 uv run --no-sync 執行 ruff check、ruff format --check、mypy/pyright
+   devguard check          # 透過 uv run --no-sync 執行 ruff check、ruff format --check、mypy/pyright/basedpyright
    devguard fix --code     # 執行 ruff check --fix 與 ruff format
    devguard check --full   # 執行 pytest --cov --cov-branch，要求行與分支覆蓋率「各自」>= 80%
    ```
@@ -118,7 +118,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
      ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.1.0
+   standard: team@1.2.0
    components:
      - path: ./
        language: go
@@ -153,7 +153,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
    ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.1.0
+   standard: team@1.2.0
    components:
      - path: ./
        language: typescript
@@ -225,7 +225,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
      ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.1.0
+   standard: team@1.2.0
    components:
      - path: ./
        language: java

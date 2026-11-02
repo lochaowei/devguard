@@ -49,15 +49,15 @@ describe("standard upgrade moves legacy@1.0.0 to team@1.1.0 (#37)", () => {
     const dir = repo({ ".devguard.yaml": component("legacy@1.0.0", "python") });
     const { code, out } = await upgrade(dir, { target: "team@1.0.0" });
     expect(code).toBe(2);
-    expect(out).toBe("無法從 legacy@1.0.0 升級到 team@1.0.0；可以升級到 team@1.1.0\n");
+    expect(out).toBe("無法從 legacy@1.0.0 升級到 team@1.0.0；可以升級到 team@1.1.0、team@1.2.0\n");
   });
 
   it("never moves team to legacy", async () => {
-    const dir = repo({ ".devguard.yaml": component("team@1.1.0", "python") });
-    expect(await upgrade(dir)).toEqual({ code: 0, out: "已經是這個 devguard 內建的最新標準 team@1.1.0\n" });
+    const dir = repo({ ".devguard.yaml": component("team@1.2.0", "python") });
+    expect(await upgrade(dir)).toEqual({ code: 0, out: "已經是這個 devguard 內建的最新標準 team@1.2.0\n" });
     expect(await upgrade(dir, { target: "legacy@1.0.0" })).toEqual({
       code: 2,
-      out: "無法從 team@1.1.0 升級到 legacy@1.0.0\n",
+      out: "無法從 team@1.2.0 升級到 legacy@1.0.0\n",
     });
   });
 });
@@ -70,18 +70,18 @@ describe("doctor and draft stay on team (#37)", () => {
   };
 
   it("doctor suggests no move from team to legacy", async () => {
-    expect(await upgradeHints("team@1.1.0")).toEqual([]);
-    expect(await upgradeHints("team@1.0.0")).toEqual(["devguard standard upgrade team@1.1.0"]);
+    expect(await upgradeHints("team@1.2.0")).toEqual([]);
+    expect(await upgradeHints("team@1.0.0")).toEqual(["devguard standard upgrade team@1.2.0"]);
   });
 
   it("doctor does not offer legacy → team as an update that cannot fail the project", async () => {
     expect(await upgradeHints("legacy@1.0.0")).toEqual([]);
   });
 
-  it("draft writes team@1.1.0, not legacy", async () => {
+  it("draft writes the newest team, not legacy", async () => {
     const cwd = repo({ "pyproject.toml": "[project]\nname = 'app'\n", "app/main.py": "" });
     const { text } = await draftDeclaration({ cwd, today: TODAY, files: ["pyproject.toml", "app/main.py"] });
-    expect(text).toContain("standard: team@1.1.0");
+    expect(text).toContain("standard: team@1.2.0");
   });
 });
 

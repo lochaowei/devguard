@@ -141,19 +141,22 @@ interface PyrightDiagnostic {
   range?: { start: { line: number } };
 }
 
-/** pyright with no file arguments checks the project its configuration describes. */
-async function pyright(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
-  const request = { language: "python", tool: "pyright", dir: target.dir, args: ["--outputjson"] } as const;
+/** The pyright-based type checkers: basedpyright prints the same `--outputjson` output as pyright. */
+type PyrightTool = "pyright" | "basedpyright";
+
+/** pyright (or basedpyright) with no file arguments checks the project its configuration describes. */
+async function pyright(target: CodeTarget, ctx: CodeCheckContext, tool: PyrightTool): Promise<Finding[]> {
+  const request = { language: "python", tool, dir: target.dir, args: ["--outputjson"] } as const;
   const result = await ctx.tools.run(request);
   const output = result.code <= 1 ? parseJson(result.stdout) : undefined;
   const diagnostics = (output as { generalDiagnostics?: unknown } | undefined)?.generalDiagnostics;
-  if (!Array.isArray(diagnostics)) return [toolFailed(target, "pyright", result)];
+  if (!Array.isArray(diagnostics)) return [toolFailed(target, tool, result)];
   return (diagnostics as PyrightDiagnostic[])
     .filter((d) => d.severity !== "information")
     .map((d) =>
       codeFinding(target, {
         level: d.severity === "error" ? "error" : "hint",
-        rule: `pyright/${d.rule ?? d.severity}`,
+        rule: `${tool}/${d.rule ?? d.severity}`,
         message: d.message,
         file: d.file === undefined ? undefined : toRepoPath(ctx.cwd, target.dir, d.file),
         line: d.range === undefined ? undefined : d.range.start.line + 1,
@@ -162,21 +165,27 @@ async function pyright(target: CodeTarget, ctx: CodeCheckContext): Promise<Findi
     );
 }
 
-/** Ruff lint and format, and mypy or pyright, all run through `uv run` (SPEC §6.1, §5.2). */
+/** The declared type checker; mypy unless `typecheck.tool` names a pyright-based one. */
+function typeChecker(target: CodeTarget): "mypy" | PyrightTool {
+  const tool = target.effective["typecheck.tool"];
+  return tool === "pyright" || tool === "basedpyright" ? tool : "mypy";
+}
+
+/** Ruff lint and format, and mypy, pyright or basedpyright, all run through `uv run` (SPEC §6.1, §5.2). */
 export const pythonChecker: CodeChecker = {
   language: "python",
   // Ruff reads stdin; the type checkers read the whole project from disk.
   workingTreeTools(target) {
     if (!target.categories.has("typecheck")) return [];
-    return [target.effective["typecheck.tool"] === "pyright" ? "pyright" : "mypy"];
+    return [typeChecker(target)];
   },
   async check(target, ctx) {
     const findings: Finding[] = [];
     if (target.categories.has("lint")) findings.push(...(await lint(target, ctx)));
     if (target.categories.has("format")) findings.push(...(await format(target, ctx)));
     if (target.categories.has("typecheck")) {
-      const usePyright = target.effective["typecheck.tool"] === "pyright";
-      findings.push(...(await (usePyright ? pyright(target, ctx) : mypy(target, ctx))));
+      const tool = typeChecker(target);
+      findings.push(...(await (tool === "mypy" ? mypy(target, ctx) : pyright(target, ctx, tool))));
     }
     return findings;
   },

@@ -294,6 +294,41 @@ describe("python checker: pyright", () => {
   });
 });
 
+describe("python checker: basedpyright (#68)", () => {
+  const basedTarget = () => target({ effective: { "typecheck.tool": "basedpyright" }, categories: only("typecheck") });
+
+  it("runs basedpyright when typecheck.tool is basedpyright and reports its diagnostics", async () => {
+    const stdout = JSON.stringify({
+      version: "1.40.2",
+      generalDiagnostics: [
+        {
+          file: abs("api", "src", "app.py"),
+          severity: "error",
+          message: 'Type of "x" is Any',
+          range: { start: { line: 6, character: 0 }, end: { line: 6, character: 1 } },
+          rule: "reportAny",
+        },
+      ],
+    });
+    const { tools, calls } = fakeTools({ basedpyright: { code: 1, stdout } });
+    const findings = await check(basedTarget(), tools);
+    expect(calls).toEqual([{ language: "python", tool: "basedpyright", dir: "api/", args: ["--outputjson"] }]);
+    expect(findings).toEqual([
+      expect.objectContaining({
+        level: "error",
+        rule: "basedpyright/reportAny",
+        message: 'Type of "x" is Any',
+        file: "api/src/app.py",
+        line: 7,
+      }),
+    ]);
+  });
+
+  it("names basedpyright among the tools that check the working tree", () => {
+    expect(pythonChecker.workingTreeTools(basedTarget())).toEqual(["basedpyright"]);
+  });
+});
+
 describe("python checker: categories", () => {
   it("runs Ruff lint, Ruff format and the type checker for a full check", async () => {
     const { tools, calls } = fakeTools({ "ruff check": { stdout: "[]" } });

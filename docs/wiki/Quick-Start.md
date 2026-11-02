@@ -84,17 +84,19 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
   uv add --dev "ruff>=0.17,<1" "mypy>=1.18,<2" "pytest>=8,<10" "pytest-cov>=6,<8"
   # 若型別檢查改用 pyright：
   # uv add --dev "pyright>=1.1.400,<2"
+  # 若型別檢查改用 basedpyright（team@1.2.0 起）：
+  # uv add --dev "basedpyright>=1.40,<2"
   ```
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.1.0
+standard: team@1.2.0
 components:
   - path: ./
     language: python
     # 選用覆寫範例：
     # overrides:
-    #   typecheck.tool: pyright   # 允許替代：mypy（預設）| pyright
+    #   typecheck.tool: pyright   # 允許替代：mypy（預設）| pyright | basedpyright
     #   deps.manager: poetry      # 允許替代：uv（預設）| poetry
     #   format.lineLength: 100    # 風格項目：直接寫值
 ```
@@ -163,7 +165,7 @@ Poetry 專案（最近的 lockfile 是 `poetry.lock`）改為寫入 `[[tool.poet
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.1.0
+standard: team@1.2.0
 components:
   - path: ./
     language: go
@@ -239,7 +241,7 @@ formatters:
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.1.0
+standard: team@1.2.0
 components:
   - path: ./
     language: typescript
