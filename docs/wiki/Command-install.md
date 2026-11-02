@@ -44,6 +44,13 @@ devguard install [--yes] [--cwd <dir>]
    4. 檢查 `core.hooksPath` 有沒有衝突，有的話印出來。例如用 pre-commit 框架時設了 `core.hooksPath`（pre-commit 會拒絕安裝），或用 husky 時沒有指向 `.husky/_`。
 2. **規劃設定**：與 `fix` 相同的可修正檢查層，差別是 Claude Code 層會**建立**整套 `.claude/` 設定（`fix` 只更新已存在的）。
 3. 合併兩份計畫，依互動規則預覽並套用。
+4. **提示下一步**：用 pre-commit 框架時，pre-commit 的 hook 要等 `pre-commit install` 才會寫進 hooks 目錄，`install` 只把項目加進設定。所以結束時（預覽與套用都一樣），`install` 用與 [`doctor`](Command-doctor.md) 的 `framework-not-installed` 相同的判斷檢查；`pre-commit` 或 `pre-push` 的 hook 還不是 pre-commit 產生的，就印出：
+
+   ```text
+   下一步：執行 pre-commit install --hook-type pre-commit --hook-type pre-push，hook 框架才會把 hook 寫進 hooks 目錄（install 不會自動執行）。
+   ```
+
+   `install` 不會自己執行這條指令，這則提示也不改變 exit code。hook 已經安裝、或不使用 hook 框架時，不會印出。
 
 ### 產生的 hook 檔
 
@@ -80,6 +87,8 @@ command -v devguard >/dev/null 2>&1 || { echo 'devguard：找不到 CLI（devgua
 | `0` | 已套用，或沒有需要寫入的檔案 |
 | `1` | 有需要寫入的檔案但沒有套用（拒絕、非互動環境沒有 `--yes`） |
 | `2` | 沒有 hook 框架且不是 git repo：`<dir> 不是 git repo，無法安裝 git hook`；或其他 CLI 失敗 |
+
+「下一步」的提示不影響 exit code。
 
 ---
 
@@ -125,7 +134,7 @@ $ devguard install --yes
 | `這個 hook 不是 devguard 產生的，不會覆寫；請在其中加上：…` | 已經有手寫或其他工具的 hook 檔。把印出的那一行加進去，或改用 hook 框架 |
 | `core.hooksPath = … ：pre-commit 在 core.hooksPath 有設定時拒絕安裝 hook` | 照訊息移除 `core.hooksPath`，再執行 `pre-commit install` 與 `pre-commit install --hook-type pre-push` |
 | `core.hooksPath 未設定，husky 的 hook 沒有安裝；請執行 npx husky` | husky 的 hook 要靠 `core.hooksPath` 生效。執行 `npx husky` |
-| 用 pre-commit 框架，`doctor` 仍說 hook 沒有安裝 | 框架設定中有項目還不夠，要執行 `pre-commit install`（以及 `--hook-type pre-push`）把 hook 寫進 hooks 目錄 |
+| `下一步：執行 pre-commit install --hook-type pre-commit --hook-type pre-push…`，或 `doctor` 說 pre-commit 的 hook 沒有安裝 | 框架設定中有項目還不夠，要執行這條指令把 hook 寫進 hooks 目錄 |
 | commit 時 pre-commit 說需要較新的版本（`minimum_pre_commit_version`），或說不認得 `unsupported` | 本機的 pre-commit 低於 4.4.0。升級 pre-commit（例如 `pip install -U pre-commit`）；後者表示設定還沒有 `minimum_pre_commit_version`，再執行一次 `devguard install` |
 | commit 時出現 `devguard：找不到 CLI（devguard），已擋下這次 git commit` | `devguard.exe` 不在 PATH 上。照訊息安裝；緊急時可用 `git commit --no-verify` 暫時略過 |
 
