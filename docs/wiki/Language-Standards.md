@@ -23,6 +23,12 @@
 | `deps.banned` | 只保留 Python `pycrypto`、TypeScript `request`、Java `log4j:log4j`；Go 為空。JUnit 4（`junit:junit`）等不再禁用 |
 | `java.minVersion` | `"8"`（`team@1.1.0` 是 `"17"`），讓 Java 8 的既有專案可以納管 |
 
+`java.minVersion` 是程式碼的目標版本（Maven `maven.compiler.release`、Gradle toolchain），不是執行工具用的 JDK。Java 工具（Checkstyle、Spotless、palantir-java-format）的版本範圍沿用 `team@1.1.0`，所以：
+
+- 執行 Java 工具至少需要 **JDK 11**；使用 Spotless 3.x（Maven）或 8.x（Gradle）時需要 **JDK 17**。
+- Java 8 的既有專案以 JDK 11 以上建置，並以 release 8 為目標即可（例如 `maven.compiler.release` 設為 `8`）。
+- 只有 JDK 8 的機器上，[`doctor`](Command-doctor.md) 會以 `environment/java-runtime` 提示。
+
 `devguard draft` 不會寫入 `legacy`，要使用時把草稿的 `standard` 改成 `legacy@1.0.0`。`doctor` 不會建議從 `legacy` 升級到 `team`（會收緊），也不會建議從 `team` 改用 `legacy`。
 
 ---

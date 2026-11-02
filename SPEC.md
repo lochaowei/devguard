@@ -83,7 +83,7 @@
 |---|---|
 | `devguard install` | 在專案中產生各防線的設定（`.vscode/`、`.claude/`、git hook、工具設定檔、鏡像設定），並安裝 pre-commit 與 pre-push hook |
 | `devguard check [檔案…] [--staged] [--full] [--only <類別>] [--format text\|json\|sarif\|vscode\|claude] [--strict] [--verbose]` | 執行設定、一致性與程式碼檢查，不含環境檢查。指定檔案時只對這些檔案跑程式碼檢查。供 CI 與 git hook 使用。`--staged` 只檢查 staged 的檔案，內容與 pre-commit hook 相同 |
-| `devguard doctor [--quiet] [--exit-zero] [--format …]` | `check` 加上環境檢查（擴充套件、hook 是否安裝、Claude Code、鏡像、帳密變數是否存在）。`--exit-zero`：有問題時也以 0 結束，給 `/standards-doctor` skill 嵌入結果用（§7.3） |
+| `devguard doctor [--quiet] [--exit-zero] [--format …]` | `check` 加上環境檢查（擴充套件、hook 是否安裝、Claude Code、鏡像、執行 Java 工具的 JDK、帳密變數是否存在）。`--exit-zero`：有問題時也以 0 結束，給 `/standards-doctor` skill 嵌入結果用（§7.3） |
 | `devguard draft` | 專案尚無 `.devguard.yaml` 時，依偵測到的元件與既有工具設定產生宣告草稿（§4.3），不覆寫既有檔案 |
 | `devguard fix [--yes]` | 修正**設定**（§9） |
 | `devguard fix --code [files] [--yes]` | 修正**程式碼**：格式化與可自動修正的 lint |
@@ -364,6 +364,8 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | `complexity.cyclomatic` / `cognitive` | 20 / 25 | Python 只有 `cyclomatic` |
 | `deps.banned` | Python `pycrypto`；TypeScript `request`；Java `log4j:log4j`；Go 無 | 只保留有已知且不會修正的弱點的套件。JUnit 4（`junit:junit`）、`nose`、`moment`、`node-fetch`、`github.com/pkg/errors`、`github.com/golang/protobuf` 不再禁用 |
 | `java.minVersion` | 8 | `team@1.1.0` 是 17；`legacy@1.0.0` 明確寫為 8，讓 Java 8 的既有專案可以納管 |
+
+`java.minVersion` 是程式碼的**目標版本**（Maven `maven.compiler.release`、Gradle toolchain），不是執行工具用的 JDK。`legacy@1.0.0` 的 Java 工具版本範圍沿用 `team@1.1.0`，範圍內沒有能在 JDK 8 上執行的版本：執行 Java 工具至少需要 JDK 11（Checkstyle 10 起、spotless-maven-plugin 2.31 起、palantir-java-format 2.x）；使用 Spotless 3.x（Maven）或 8.x（Gradle）時需要 JDK 17。Java 8 的既有專案以 JDK 11 以上建置、以 release 8 為目標即可。有 Java 元件時，doctor 讀取 `java -version` 的主版本，低於 11 時給 `environment/java-runtime` 提示（不算錯誤；找不到 `java` 時不提示，工具執行失敗由 `check` 回報）。
 
 升級到 `team@1.1.0` 時，預覽會列出這些項目收緊後專案新出現的錯誤。
 
