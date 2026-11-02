@@ -23,6 +23,12 @@
 | `deps.banned` | 只保留 Python `pycrypto`、TypeScript `request`、Java `log4j:log4j`；Go 為空。JUnit 4（`junit:junit`）等不再禁用 |
 | `java.minVersion` | `"8"`（`team@1.1.0` 是 `"17"`），讓 Java 8 的既有專案可以納管 |
 
+`java.minVersion` 是程式碼的目標版本（Maven `maven.compiler.release`、Gradle toolchain），不是執行工具用的 JDK。Java 工具（Checkstyle、Spotless、palantir-java-format）的版本範圍沿用 `team@1.1.0`，所以：
+
+- 執行 Java 工具至少需要 **JDK 11**；使用 Spotless 3.x（Maven）或 8.x（Gradle）時需要 **JDK 17**。
+- Java 8 的既有專案以 JDK 11 以上建置，並以 release 8 為目標即可（例如 `maven.compiler.release` 設為 `8`）。
+- 只有 JDK 8 的機器上，[`doctor`](Command-doctor.md) 會以 `environment/java-runtime` 提示。
+
 `devguard draft` 不會寫入 `legacy`，要使用時把草稿的 `standard` 改成 `legacy@1.0.0`。`doctor` 不會建議從 `legacy` 升級到 `team`（會收緊），也不會建議從 `team` 改用 `legacy`。
 
 ---
@@ -64,7 +70,7 @@
 
 ### 執行方式
 
-- **工具執行器**：`uv run --no-sync <tool>`（鎖定版本讀取自 `uv.lock` 或 `poetry.lock`）。Poetry 專案（最近的 lockfile 是 `poetry.lock`）改為直接執行專案內 `.venv` 中的工具，需要 `poetry config virtualenvs.in-project true`；以下的 `uv run --no-sync` 對 Poetry 專案都換成 `.venv` 中的執行檔
+- **工具執行器**：`uv run --no-sync <tool>`（鎖定版本讀取自 `uv.lock` 或 `poetry.lock`）。工具須已安裝在專案環境：有設定 `UV_PROJECT_ENVIRONMENT` 時就是它指定的目錄（絕對路徑照用，相對路徑相對於專案目錄，與 uv 相同），否則是 `.venv`；找不到時訊息會列出實際找過的路徑。Poetry 專案不讀 `UV_PROJECT_ENVIRONMENT`。Poetry 專案（最近的 lockfile 是 `poetry.lock`）改為直接執行專案內 `.venv` 中的工具，需要 `poetry config virtualenvs.in-project true`；以下的 `uv run --no-sync` 對 Poetry 專案都換成 `.venv` 中的執行檔
 - **內部鏡像**：uv 專案在 `pyproject.toml` 設定 `[[tool.uv.index]]`（`name = "nexus"`、`default = true`）；Poetry 專案改為 `[[tool.poetry.source]]`（`name = "nexus"`、`url = <mirrors.pypi>`、`priority = "primary"`），帳密只透過 `POETRY_HTTP_BASIC_NEXUS_USERNAME` / `POETRY_HTTP_BASIC_NEXUS_PASSWORD` 提供。兩者都由 `devguard fix` 寫入，`standard upgrade --apply` 對 Poetry 專案執行 `poetry add --group dev`
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
   - `tools.ruff`：`>=0.17,<0.18`（`team@1.1.0`：`>=0.17,<1`）
