@@ -2,7 +2,7 @@ import { pathToolHint } from "../distribution.ts";
 import { existsSync } from "node:fs";
 import { posix, win32 } from "node:path";
 import type { Language } from "../standard/types.ts";
-import { nodeExec, type Command, type Exec } from "../process/exec.ts";
+import { nodeExec, type Command, type EnvVars, type Exec } from "../process/exec.ts";
 import { goEnv } from "./go-env.ts";
 import { PYTHON_MANAGERS, pythonManager, type PythonManager } from "./python-manager.ts";
 import { isEnoent, readIfExistsSync } from "../shared/fs.ts";
@@ -86,6 +86,8 @@ export interface ToolRunnerDeps {
   readText?: (path: string) => string | undefined;
   /** PATH, for tools the developer installs rather than the project (golangci-lint, launchers). */
   pathEnv?: string;
+  /** The process environment, e.g. `UV_PROJECT_ENVIRONMENT`; `process.env` when absent. */
+  processEnv?: EnvVars;
 }
 
 type Resolved = { ok: true; command: Command } | { ok: false; message: string; install: string };
@@ -96,6 +98,7 @@ interface Env {
   exists: (path: string) => boolean;
   readText: (path: string) => string | undefined;
   pathEnv: string;
+  vars: EnvVars;
 }
 
 /**
@@ -136,22 +139,31 @@ function managerAt(dir: string, root: string, env: Env): PythonManager {
 }
 
 /**
- * The tool in the project's `.venv`. A uv project runs it through `uv run --no-sync`; a Poetry project runs the
- * executable directly, which needs Poetry's environment inside the project (`virtualenvs.in-project`).
+ * The project environment directories to look in, nearest first. A uv project reads `UV_PROJECT_ENVIRONMENT` as uv
+ * does: an absolute path as is, a relative one against the project directory; `.venv` when unset. Poetry ignores it.
+ */
+function projectEnvironments(manager: PythonManager, dirs: readonly string[], env: Env): string[] {
+  const configured = manager === "uv" ? env.vars.UV_PROJECT_ENVIRONMENT : undefined;
+  if (configured && env.path.isAbsolute(configured)) return [env.path.normalize(configured)];
+  return dirs.map((d) => env.path.join(d, configured || ".venv"));
+}
+
+/**
+ * The tool in the project environment (`projectEnvironments`). A uv project runs it through `uv run --no-sync`; a
+ * Poetry project runs the executable directly, which needs Poetry's environment inside the project
+ * (`virtualenvs.in-project`).
  */
 function python(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
   const cwd = dirs[0] ?? "";
-  const manager = PYTHON_MANAGERS[managerAt(req.dir, dirs.at(-1) ?? "", env)];
-  const bin = dirs
-    .map((d) =>
-      env.windows
-        ? env.path.join(d, ".venv", "Scripts", `${req.tool}.exe`)
-        : env.path.join(d, ".venv", "bin", req.tool),
-    )
+  const name = managerAt(req.dir, dirs.at(-1) ?? "", env);
+  const manager = PYTHON_MANAGERS[name];
+  const environments = projectEnvironments(name, dirs, env);
+  const bin = environments
+    .map((e) => (env.windows ? env.path.join(e, "Scripts", `${req.tool}.exe`) : env.path.join(e, "bin", req.tool)))
     .find((p) => env.exists(p));
   if (!bin) {
     const install = inDir(req.dir, manager.install);
-    return { ok: false, message: `找不到 ${req.tool}：專案環境（.venv）中沒有安裝`, install };
+    return { ok: false, message: `找不到 ${req.tool}：專案環境（${environments.join("、")}）中沒有安裝`, install };
   }
   return { ok: true, command: { ...manager.runTool(bin, req.tool, req.args ?? []), cwd } };
 }
@@ -272,6 +284,7 @@ export function createToolRunner(deps: ToolRunnerDeps): Required<ToolRunner> {
     exists: deps.exists ?? existsSync,
     readText: deps.readText ?? readIfExistsSync,
     pathEnv: deps.pathEnv ?? process.env.PATH ?? "",
+    vars: deps.processEnv ?? process.env,
   };
   const exec = deps.exec ?? nodeExec;
   const dirOf = (dir: string) => env.path.join(deps.cwd, dir.replace(/\/$/, ""));
