@@ -46,6 +46,7 @@ $ devguard draft
    |---|---|---|
    | Python | `deps.manager: poetry` | 有 `poetry.lock`（比 `uv.lock` 近） |
    | Python | `typecheck.tool: pyright` | 有 `pyrightconfig.json` |
+   | Python | `typecheck.tool: basedpyright` | 元件的 `pyproject.toml` 有 `[tool.basedpyright]`（優先於 `pyrightconfig.json`） |
    | TypeScript | `lint.tool: biome` | 有 `biome.json(c)`（比 `eslint.config.*` 近） |
    | TypeScript | `test.tool: jest` | 有 `jest.config.*`（比 `vitest.config.*` 近） |
    | TypeScript | `deps.manager: pnpm` / `yarn` | 有 `pnpm-lock.yaml` / `yarn.lock`（比 `package-lock.json` 近） |
@@ -83,7 +84,7 @@ $ devguard draft
 ```yaml
 # 由 devguard draft 依既有的工具設定產生的草稿（SPEC §4.3）。
 # 與預設標準相同的項目已省略；比預設寬鬆的項目附有 TODO 理由，填寫理由之前 devguard check 不會通過。
-standard: team@1.1.0
+standard: team@1.2.0
 components:
   - path: ./
     language: python

@@ -45,7 +45,7 @@ devguard check [檔案…] [--staged] [--only lint|format|typecheck] [--full]
 |---|---|---|---|
 | 1 | `declaration` | `config` | 解析 `.devguard.yaml`、驗證標準版本、比對覆寫與偏離理由 / 到期日、檢查同語言風格一致性 |
 | 2 | `uncovered-files` | `config` | 沒有被任何元件涵蓋的四語言程式檔，套用推定的預設標準並給提示 |
-| 3 | `settings-python` | `config` | `pyproject.toml` 的 Ruff、mypy / pyright 設定 |
+| 3 | `settings-python` | `config` | `pyproject.toml` 的 Ruff、mypy / pyright / basedpyright 設定 |
 | 4 | `settings-go` | `config` | `go.mod` 的 Go 版本與 `.golangci.yml` |
 | 5 | `settings-java` | `config` | Maven / Gradle 建置檔、Wrapper、`checkstyle.xml`、PMD ruleset、`lombok.config` |
 | 6 | `deps` | `config` | lockfile 是否已提交、直接依賴是否違反 `deps.banned` |
@@ -61,7 +61,7 @@ devguard check [檔案…] [--staged] [--only lint|format|typecheck] [--full]
 
 各種範圍選項的影響：
 
-- **指定檔案**：設定檢查（1–12）照常跑整個專案；`code` 層只檢查這些檔案。`tsc`、`mypy`、`pyright` 這類無法只檢查單一檔案的工具，仍會檢查檔案所屬的整個元件。
+- **指定檔案**：設定檢查（1–12）照常跑整個專案；`code` 層只檢查這些檔案。`tsc`、`mypy`、`pyright`、`basedpyright` 這類無法只檢查單一檔案的工具，仍會檢查檔案所屬的整個元件。
 - **指定的檔案不是原始碼**：TypeScript 元件內的檔案（`.js`、`.mjs`、`.json`、`.md`、`.prettierrc`、`LICENSE` 等）都交給元件的 linter 與 formatter，由工具決定是否處理（ESLint `--no-warn-ignored`、Prettier `--ignore-unknown`、Biome `--files-ignore-unknown=true`），回報的問題與全專案檢查一致。工具不處理的檔案不產生 finding。只有這類檔案時，不跑型別檢查。
 - **`--staged`**：只跑 `declaration`、`code` 兩層；有依賴檔（`package.json`、lockfile 等）被 staged 時再加上 `deps`。細節見 [hook 頁的 git-pre-commit](Command-hook.md#git-pre-commit)。
 - **宣告的 `ignore`**：符合的檔案從檔案清單中排除，不會觸發 `uncovered-files` 提示，也不會交給 `code`、`tests`、`vuln` 層，即使在命令列上指定或已 staged 也一樣（格式見[專案宣告](Project-Declaration.md#排除路徑ignore)）。以整個目錄為單位執行的工具（元件的 `eslint .`、`prettier .`、`tsc`、`mypy` 等）仍依各自的設定決定範圍；元件目錄內要排除的檔案，也要在該工具的設定中排除。
@@ -172,7 +172,7 @@ $ devguard check --strict > /dev/null; echo $?
 
 | 現象 | 原因與處理 |
 |---|---|
-| `找不到 eslint：node_modules 中沒有安裝`，exit `2` | `check` 遇到專案工具沒有安裝會直接中止。照提示安裝（`npm ci`、`uv sync`、`poetry install` 等）；想看完整的環境問題清單改跑 [`doctor`](Command-doctor.md)，它會把缺工具列成一筆錯誤並繼續 |
+| `找不到 eslint：node_modules 中沒有安裝`，exit `2` | `check` 遇到專案工具沒有安裝會直接中止。照提示安裝（`npm ci`、`uv sync`、`poetry install` 等）。標準要求的 Python 工具（例如 `basedpyright`）沒有列在 `pyproject.toml` 的依賴中時，`uv sync` 也裝不到它，提示改為 `uv add --dev "basedpyright>=1.40,<2"`（Poetry 專案為 `poetry add --group dev "…"`），範圍取標準的 `tools.*`；想看完整的環境問題清單改跑 [`doctor`](Command-doctor.md)，它會把缺工具列成一筆錯誤並繼續 |
 | `找不到 uv`，exit `2` | uv 專案的 Python 工具透過 `uv run` 執行，devguard 只在 PATH 上找 uv。照提示選一種方式安裝（官方安裝腳本、`pipx install uv`、`pip install uv`、`scoop install uv`）。已用 `pip install uv` 安裝卻仍出現時，uv 在 Python 的 Scripts 目錄（Windows）或 `~/.local/bin`（其他平台），預設不在 PATH 上：把該目錄加進 PATH，重開終端機後以 `uv --version` 確認 |
 | TypeScript 專案卻出現 `找不到 golangci-lint` | 檔案清單來自 `git ls-files`（含未被忽略的未追蹤檔）。沒有 `.gitignore` 時 `node_modules/` 裡的 `.go`、`.py` 等檔案也會被當成專案檔案。把 `node_modules/`、`.venv/` 等加進 `.gitignore` |
 | `eslint 執行失敗（exit 2）…` `[code/tool-failed]` | 工具本身執行失敗（缺設定檔、缺 plugin 等）。照提示在元件目錄直接執行該工具看完整訊息 |

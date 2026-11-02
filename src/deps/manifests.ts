@@ -15,7 +15,7 @@ export interface Dependency {
 type Read = (path: string) => Promise<string | undefined>;
 
 /** PEP 503 normalized name. */
-const pyName = (name: string) => name.toLowerCase().replace(/[-_.]+/g, "-");
+export const pyName = (name: string) => name.toLowerCase().replace(/[-_.]+/g, "-");
 
 const PY_REQ = /^\s*([A-Za-z0-9][A-Za-z0-9._-]*)/;
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

@@ -18,6 +18,8 @@ import { listRepoFiles } from "./repo/files.ts";
 import { defaultStandard } from "./standard/registry.ts";
 import { EXTENSION_LANGUAGE, LANGUAGES, type Language, type Standard } from "./standard/types.ts";
 import { upwards } from "./repo/paths.ts";
+import { typeCheckerConfigs, type TypeChecker } from "./settings/type-checkers.ts";
+import { readIfExists } from "./shared/fs.ts";
 
 /** The settings checks whose readers the draft reuses: their findings carry the values read from config files. */
 const SETTINGS_LAYERS: readonly CheckLayer[] = [
@@ -93,12 +95,22 @@ const JEST_CONFIGS = ["js", "mjs", "cjs", "ts", "mts", "cts", "json"].map((e) =>
 
 interface FileProbe {
   nearest: (win: readonly string[], lose?: readonly string[]) => boolean;
+  /** The type checkers only the component's own settings are for (a `[tool.basedpyright]` table, a mypy.ini). */
+  typeCheckers: ReadonlySet<TypeChecker>;
+}
+
+/** What the draft knows of the repo's files: which exist, and each Python component's type checker settings. */
+interface DraftFiles {
+  present: ReadonlySet<string>;
+  typeCheckers: ReadonlyMap<string, ReadonlySet<TypeChecker>>;
 }
 
 const CHOICE_RULES: Readonly<Record<Language, (p: FileProbe) => [boolean, string, string][]>> = {
   python: (p) => [
     [p.nearest(["poetry.lock"], ["uv.lock"]), "deps.manager", "poetry"],
     [p.nearest(["pyrightconfig.json"]), "typecheck.tool", "pyright"],
+    // basedpyright also reads pyrightconfig.json, so its own table wins over the rule above.
+    [p.typeCheckers.has("basedpyright"), "typecheck.tool", "basedpyright"],
   ],
   go: () => [],
   typescript: (p) => [
@@ -124,9 +136,10 @@ function nearestChoice(
 }
 
 /** Infers non-default tool choices (`build.tool`, `deps.manager`, `lint.tool`, etc.) from the component's files. */
-function inferToolChoices(c: DraftComponent, present: ReadonlySet<string>): Record<string, string> {
+function inferToolChoices(c: DraftComponent, files: DraftFiles): Record<string, string> {
   const probe: FileProbe = {
-    nearest: (win, lose) => nearestChoice(c.dir, present, win, lose),
+    nearest: (win, lose) => nearestChoice(c.dir, files.present, win, lose),
+    typeCheckers: files.typeCheckers.get(c.dir) ?? new Set(),
   };
   return Object.fromEntries(
     CHOICE_RULES[c.language](probe)
@@ -140,7 +153,7 @@ function defaultResolution(
   components: readonly DraftComponent[],
   standard: Standard,
   today: string,
-  present: ReadonlySet<string>,
+  files: DraftFiles,
 ): Resolution {
   return resolveDeclaration(
     {
@@ -149,7 +162,7 @@ function defaultResolution(
       components: components.map((c) => ({
         path: displayDir(c.dir),
         language: c.language,
-        overrides: Object.entries(inferToolChoices(c, present)).map(([key, raw]) => ({ key, raw })),
+        overrides: Object.entries(inferToolChoices(c, files)).map(([key, raw]) => ({ key, raw })),
       })),
       globalOverrides: [],
       ignore: [],
@@ -175,18 +188,34 @@ function overridesFrom(findings: readonly Finding[], standard: Standard, languag
   return overrides;
 }
 
+/** Per Python component directory, the type checkers whose settings only they read (`typeCheckerConfigs`). */
+async function pythonTypeCheckers(
+  cwd: string,
+  components: readonly DraftComponent[],
+  present: ReadonlySet<string>,
+): Promise<Map<string, Set<TypeChecker>>> {
+  const read = (file: string) => (present.has(file) ? readIfExists(join(cwd, file)) : Promise.resolve(undefined));
+  const found = new Map<string, Set<TypeChecker>>();
+  for (const c of components.filter((c) => c.language === "python")) {
+    const configs = await typeCheckerConfigs(c.dir, read);
+    found.set(c.dir, new Set(configs.flatMap((config) => (config.tools.length === 1 ? config.tools : []))));
+  }
+  return found;
+}
+
 /** A draft `.devguard.yaml` for a project that has none, from the components and tool settings found (SPEC §4.3). */
 export async function draftDeclaration(options: DraftOptions): Promise<Draft> {
   const { cwd, today } = options;
   const ignore = options.ignore ?? [];
-  const files = withoutIgnored(ignore, options.files);
+  const listed = withoutIgnored(ignore, options.files);
   const standard = defaultStandard();
   if (!standard) throw new Error("no bundled standard");
-  const present = new Set(files.map(normalizePath));
-  const components = inferComponents(files);
-  const resolution = defaultResolution(components, standard, today, present);
+  const present = new Set(listed.map(normalizePath));
+  const components = inferComponents(listed);
+  const files = { present, typeCheckers: await pythonTypeCheckers(cwd, components, present) };
+  const resolution = defaultResolution(components, standard, today, files);
   const seed: CheckLayer = { id: "draft", run: () => Promise.resolve({ findings: [], resolution }) };
-  const { findings } = await runCheck({ cwd, today, listFiles: () => Promise.resolve([...files]) }, [
+  const { findings } = await runCheck({ cwd, today, listFiles: () => Promise.resolve([...listed]) }, [
     seed,
     ...SETTINGS_LAYERS,
   ]);
@@ -194,7 +223,7 @@ export async function draftDeclaration(options: DraftOptions): Promise<Draft> {
     standard: standard.id,
     components: resolution.components.map((c) => {
       const overrides: Record<string, Override> = {
-        ...inferToolChoices(c, present),
+        ...inferToolChoices(c, files),
         ...overridesFrom(
           findings.filter((f) => f.component === c.name),
           standard,

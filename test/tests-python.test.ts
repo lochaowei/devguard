@@ -48,6 +48,15 @@ describe("Python tests", () => {
     ]);
   });
 
+  it("passes pytest's standard range to the runner, for the install hint when it is missing (#68)", async () => {
+    const { tools, calls } = python({ covered_lines: 90, num_statements: 100, num_branches: 10, covered_branches: 9 });
+    await check(tools);
+    expect(calls.map((c) => [c.tool, c.range])).toEqual([
+      ["pytest", ">=8,<10"],
+      ["coverage", undefined],
+    ]);
+  });
+
   it("judges line and branch coverage from the totals separately", async () => {
     const lowBranches = { covered_lines: 95, num_statements: 100, num_branches: 40, covered_branches: 30 };
     const r = await check(python(lowBranches).tools);

@@ -206,3 +206,68 @@ describe("devguard install (SPEC §3.2, §7.4)", () => {
     await expect(runInstall({ cwd: dir, today: TODAY, io: io() })).rejects.toThrow("git repo");
   });
 });
+
+describe("devguard install: a type checker the project already configures (#68)", () => {
+  const decl = (overrides = "") =>
+    "standard: team@1.2.0\ncomponents:\n  - path: ./\n    language: python\n" +
+    (overrides === "" ? "" : `    overrides:\n      ${overrides}\n`);
+  const BASED = '[project]\nname = "app"\n\n[tool.basedpyright]\ntypeCheckingMode = "strict"\n';
+
+  /** The preview of `install` without --yes: nothing is written. */
+  async function preview(files: Record<string, string>) {
+    const out = io(false);
+    await runInstall({ cwd: repo(files), today: TODAY, io: out });
+    return out.out;
+  }
+
+  it("warns in the preview when mypy is declared but the project has [tool.basedpyright]", async () => {
+    const out = await preview({ ".devguard.yaml": decl(), "pyproject.toml": BASED });
+    expect(out).toContain(
+      [
+        "pyproject.toml：警告：已有宣告以外的型別檢查器設定，不會修改宣告；請自行決定",
+        "    ./ (Python) 宣告的 typecheck.tool 是 mypy，但 [tool.basedpyright] 是 basedpyright 的設定",
+        "    要改用既有的工具，請在 .devguard.yaml 這個元件的 overrides 宣告：",
+        "      typecheck.tool: basedpyright",
+      ].join("\n"),
+    );
+  });
+
+  it("says the standard must be upgraded first when it does not allow the configured checker", async () => {
+    const onOld = "standard: team@1.1.0\ncomponents:\n  - path: ./\n    language: python\n";
+    const out = await preview({ ".devguard.yaml": onOld, "pyproject.toml": BASED });
+    expect(out).toContain(
+      "typecheck.tool: basedpyright（目前宣告的標準不允許，需先以 devguard standard upgrade 升級）",
+    );
+  });
+
+  it("does not change the declaration itself", async () => {
+    const dir = repo({ ".devguard.yaml": decl(), "pyproject.toml": BASED });
+    await runInstall({ cwd: dir, today: TODAY, io: io() });
+    expect(read(dir, ".devguard.yaml")).toBe(decl());
+  });
+
+  it("says nothing when the declared type checker is the configured one", async () => {
+    expect(
+      await preview({ ".devguard.yaml": decl("typecheck.tool: basedpyright"), "pyproject.toml": BASED }),
+    ).not.toContain("警告");
+    const pyrightconfig = { "pyproject.toml": '[project]\nname = "app"\n', "pyrightconfig.json": "{}" };
+    expect(await preview({ ".devguard.yaml": decl("typecheck.tool: basedpyright"), ...pyrightconfig })).not.toContain(
+      "警告",
+    );
+  });
+
+  it("names both pyright-based checkers for a pyrightconfig.json, and mypy for a mypy.ini", async () => {
+    const files = { "pyproject.toml": '[project]\nname = "app"\n', "pyrightconfig.json": "{}" };
+    const out = await preview({ ".devguard.yaml": decl(), ...files });
+    expect(out).toContain("pyrightconfig.json：警告");
+    expect(out).toContain("typecheck.tool: pyright");
+    expect(out).toContain("typecheck.tool: basedpyright");
+    const mypy = await preview({
+      ".devguard.yaml": decl("typecheck.tool: pyright"),
+      "pyproject.toml": '[project]\nname = "app"\n',
+      "mypy.ini": "[mypy]\nstrict = True\n",
+    });
+    expect(mypy).toContain("mypy.ini：警告");
+    expect(mypy).toContain("typecheck.tool: mypy");
+  });
+});

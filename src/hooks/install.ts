@@ -16,6 +16,7 @@ import {
   type HookFileStatus,
 } from "./file.ts";
 import { detectFramework, hooksDisabled, hooksPathConflict, planFrameworkHooks, readHooksPath } from "./frameworks.ts";
+import { otherTypeCheckers } from "../settings/type-checkers.ts";
 import { readIfExists } from "../shared/fs.ts";
 
 /** The hooks `devguard install` writes (SPEC §7.4). */
@@ -155,7 +156,8 @@ export interface InstallOptions extends CheckOptions {
 
 /**
  * `devguard install` (SPEC §3.2): the tool settings `fix` would generate plus the git hooks, previewed and applied
- * together under the shared interaction rules. Returns the exit code.
+ * together under the shared interaction rules, with a warning for each type checker the project already configures
+ * other than the declared one (#68). Returns the exit code.
  */
 export async function runInstall(options: InstallOptions): Promise<0 | 1> {
   const hookOptions = { exec: options.exec, ...(options.hookCommand ? { command: options.hookCommand } : {}) };
@@ -166,9 +168,10 @@ export async function runInstall(options: InstallOptions): Promise<0 | 1> {
     options,
     FIX_LAYERS.map((l) => (l.id === CLAUDE_CODE_LAYER_ID ? claude : l)),
   );
+  const typeCheckers = config.resolution ? await otherTypeCheckers(options.cwd, config.resolution) : [];
   const plan: ChangePlan = {
     writes: [...config.writes, ...hooks.writes],
-    printed: [...config.printed, ...hooks.printed],
+    printed: [...config.printed, ...typeCheckers, ...hooks.printed],
   };
   const code = await previewThenApply(options.io, {
     preview: renderPlan(plan),
