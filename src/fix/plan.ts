@@ -21,8 +21,11 @@ export interface FileWrite {
 /** Something printed for a person to apply: build files, code-form config, user-level settings. */
 export interface Printed {
   file: string;
-  /** `conflict`: a setting that stops the git hooks from running (`core.hooksPath`, SPEC §7.4). */
-  category: "snippet" | "user" | "conflict";
+  /**
+   * `conflict`: a setting that stops the git hooks from running (`core.hooksPath`, SPEC §7.4). `typecheck`: the
+   * project already configures a type checker other than the declared one (#68).
+   */
+  category: "snippet" | "user" | "conflict" | "typecheck";
   lines: string[];
 }
 
@@ -194,6 +197,7 @@ const PRINT_LABEL = {
   snippet: "建置檔或程式碼形式的設定，不會自動修改；請自行套用",
   user: "使用者層級的設定，不會修改；請自行套用",
   conflict: "core.hooksPath 衝突，hook 不會執行；請自行處理",
+  typecheck: "警告：已有宣告以外的型別檢查器設定，不會修改宣告；請自行決定",
 } as const;
 
 /** A diff line (`-` / `+` / ` ` marker) with any credential it shows masked (SPEC §10.3). */

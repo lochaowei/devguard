@@ -1,4 +1,4 @@
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, relative } from "node:path";
 import { FIX_LAYERS, type CheckOptions } from "../check.ts";
 import { CLAUDE_CODE_LAYER_ID, createClaudeCodeLayer } from "../layers/claude-code.ts";
 import { normalizePath } from "../declaration/path.ts";
@@ -6,47 +6,24 @@ import { previewThenApply, type Interaction } from "../fix/interaction.ts";
 import { applyPlan, renderPlan, type ChangePlan, type Printed } from "../fix/plan.ts";
 import { planConfigFix } from "../fix/run.ts";
 import { nodeExec, type Exec } from "../process/exec.ts";
-import { UsageError } from "../report/failure.ts";
+import { hookCommandLine, inspectHookFile, renderHookFile, type GitHookName, type HookFileOptions } from "./file.ts";
 import {
-  hookCommandLine,
-  inspectHookFile,
-  renderHookFile,
-  type GitHookName,
-  type HookFileOptions,
-  type HookFileStatus,
-} from "./file.ts";
-import { detectFramework, hooksDisabled, hooksPathConflict, planFrameworkHooks, readHooksPath } from "./frameworks.ts";
+  detectFramework,
+  hooksDisabled,
+  hooksPathConflict,
+  planFrameworkHooks,
+  PRE_COMMIT_INSTALL,
+  preCommitHooksNotInstalled,
+  readHooksPath,
+} from "./frameworks.ts";
+import { hookFilePath, INSTALLED_HOOKS, installedHook } from "./location.ts";
+import { otherTypeCheckers } from "../settings/type-checkers.ts";
 import { readIfExists } from "../shared/fs.ts";
-
-/** The hooks `devguard install` writes (SPEC §7.4). */
-export const INSTALLED_HOOKS: readonly GitHookName[] = ["pre-commit", "pre-push"];
-
-/** Where git looks for a hook: `core.hooksPath` when set, otherwise `.git/hooks` (also right in a worktree). */
-export async function hookFilePath(cwd: string, hook: GitHookName, exec: Exec = nodeExec): Promise<string> {
-  const r = await exec({ file: "git", args: ["rev-parse", "--git-path", `hooks/${hook}`], cwd });
-  if (r.code !== 0) throw new UsageError(`${cwd} 不是 git repo，無法安裝 git hook`);
-  return resolve(cwd, r.stdout.trim());
-}
 
 /** A path as shown in the plan: relative to `cwd` when inside it, otherwise absolute; forward slashes. */
 function shown(cwd: string, path: string): string {
   const rel = relative(cwd, path);
   return normalizePath(rel.startsWith("..") || isAbsolute(rel) ? path : rel);
-}
-
-export interface InstalledHook {
-  /** Absolute path of the hook file. */
-  path: string;
-  status: HookFileStatus | { kind: "missing" };
-  /** The file's content, when it exists. */
-  text?: string;
-}
-
-/** Whether a hook is installed: missing, someone else's, or devguard's with an intact checksum (for doctor, §7.4). */
-export async function installedHook(cwd: string, hook: GitHookName, exec: Exec = nodeExec): Promise<InstalledHook> {
-  const path = await hookFilePath(cwd, hook, exec);
-  const text = await readIfExists(path);
-  return text === undefined ? { path, status: { kind: "missing" } } : { path, status: inspectHookFile(text), text };
 }
 
 /**
@@ -132,7 +109,8 @@ export interface InstallOptions extends CheckOptions {
 
 /**
  * `devguard install` (SPEC §3.2): the tool settings `fix` would generate plus the git hooks, previewed and applied
- * together under the shared interaction rules. Returns the exit code.
+ * together under the shared interaction rules, with a warning for each type checker the project already configures
+ * other than the declared one (#68). Returns the exit code.
  */
 export async function runInstall(options: InstallOptions): Promise<0 | 1> {
   const hookOptions = { exec: options.exec, ...(options.hookCommand ? { command: options.hookCommand } : {}) };
@@ -143,13 +121,22 @@ export async function runInstall(options: InstallOptions): Promise<0 | 1> {
     options,
     FIX_LAYERS.map((l) => (l.id === CLAUDE_CODE_LAYER_ID ? claude : l)),
   );
+  const typeCheckers = config.resolution ? await otherTypeCheckers(options.cwd, config.resolution) : [];
   const plan: ChangePlan = {
     writes: [...config.writes, ...hooks.writes],
-    printed: [...config.printed, ...hooks.printed],
+    printed: [...config.printed, ...typeCheckers, ...hooks.printed],
   };
-  return previewThenApply(options.io, {
+  const code = await previewThenApply(options.io, {
     preview: renderPlan(plan),
     pending: plan.writes.length > 0,
     apply: () => applyPlan(options.cwd, plan),
   });
+  // The framework entry does nothing until the framework writes its hooks, which install leaves to the person (#70);
+  // the same hooks doctor reports as framework-not-installed.
+  if ((await preCommitHooksNotInstalled(options.cwd, options.exec)).size > 0) {
+    options.io.write(
+      `下一步：執行 ${PRE_COMMIT_INSTALL}，hook 框架才會把 hook 寫進 hooks 目錄（install 不會自動執行）。\n`,
+    );
+  }
+  return code;
 }

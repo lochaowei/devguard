@@ -2,10 +2,11 @@ import { pathToolHint } from "../distribution.ts";
 import { existsSync } from "node:fs";
 import { posix, win32 } from "node:path";
 import type { Language } from "../standard/types.ts";
-import { nodeExec, type Command, type Exec } from "../process/exec.ts";
+import { nodeExec, type Command, type EnvVars, type Exec } from "../process/exec.ts";
 import { goEnv } from "./go-env.ts";
 import { PYTHON_MANAGERS, pythonManager, type PythonManager } from "./python-manager.ts";
 import { isEnoent, readIfExistsSync } from "../shared/fs.ts";
+import { pyName, pyprojectDependencies } from "../deps/manifests.ts";
 
 export interface ToolRequest {
   language: Language;
@@ -25,6 +26,23 @@ export interface ToolRequest {
   env?: Readonly<Record<string, string>>;
   /** Fed to the tool's stdin, e.g. the staged version of a file (SPEC §7.4). */
   stdin?: string;
+  /**
+   * Python only: the standard's version range of the tool (`tools.<tool>`). When the tool is missing and no
+   * pyproject.toml lists it, the install hint adds it to the dev dependencies in this range (#68).
+   */
+  range?: string;
+}
+
+/**
+ * A run of the Python `tool` in a component's directory, with the standard's range of it (`tools.<tool>`) for the
+ * install hint when it is missing (#68). Tools the standard does not pin (e.g. `coverage`) get no range.
+ */
+export function pythonToolRequest(
+  component: { dir: string; effective: Readonly<Record<string, unknown>> },
+  tool: string,
+): Omit<ToolRequest, "args"> {
+  const range = component.effective[`tools.${tool}`];
+  return { language: "python", tool, dir: component.dir, ...(typeof range === "string" ? { range } : {}) };
 }
 
 export interface ToolResult {
@@ -72,7 +90,7 @@ export class ToolMissingError extends Error {
   }
 
   report(): string {
-    return `${this.message}\n  安裝：${this.install}\n`;
+    return `${this.message}\n  安裝：${this.install.replaceAll("\n", "\n    ")}\n`;
   }
 }
 
@@ -86,6 +104,8 @@ export interface ToolRunnerDeps {
   readText?: (path: string) => string | undefined;
   /** PATH, for tools the developer installs rather than the project (golangci-lint, launchers). */
   pathEnv?: string;
+  /** The process environment, e.g. `UV_PROJECT_ENVIRONMENT`; `process.env` when absent. */
+  processEnv?: EnvVars;
 }
 
 type Resolved = { ok: true; command: Command } | { ok: false; message: string; install: string };
@@ -96,6 +116,7 @@ interface Env {
   exists: (path: string) => boolean;
   readText: (path: string) => string | undefined;
   pathEnv: string;
+  vars: EnvVars;
 }
 
 /**
@@ -113,9 +134,23 @@ const GIT_REPO_ENV: readonly string[] = [
   "GIT_PREFIX",
 ];
 
-/** Programs the CLI starts by name, with the install hint shown when they are missing. */
+/**
+ * How to install uv. `pip install uv` puts it in the Python Scripts directory, which is not on PATH by default, so the
+ * hint also covers an installed uv the CLI cannot see (#67).
+ */
+const UV_INSTALL = [
+  "任選一種方式安裝 uv：",
+  "官方安裝腳本（macOS / Linux）：curl -LsSf https://astral.sh/uv/install.sh | sh",
+  '官方安裝腳本（Windows）：powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"',
+  "pipx install uv",
+  "pip install uv",
+  "scoop install uv（Windows）",
+  "已用 pip 安裝仍找不到 uv 時，把 Python 的 Scripts 目錄（Windows）或 ~/.local/bin（其他平台）加進 PATH，再以 uv --version 確認",
+].join("\n");
+
+/** Programs the CLI starts by name, with the install hint shown when they are missing. A hint may span lines. */
 const LAUNCHERS: Readonly<Record<string, string>> = {
-  uv: "scoop install uv",
+  uv: UV_INSTALL,
   poetry: "scoop install poetry",
   go: "scoop install go",
 };
@@ -136,22 +171,50 @@ function managerAt(dir: string, root: string, env: Env): PythonManager {
 }
 
 /**
- * The tool in the project's `.venv`. A uv project runs it through `uv run --no-sync`; a Poetry project runs the
- * executable directly, which needs Poetry's environment inside the project (`virtualenvs.in-project`).
+ * The project environment directories to look in, nearest first. A uv project reads `UV_PROJECT_ENVIRONMENT` as uv
+ * does: an absolute path as is, a relative one against the project directory; `.venv` when unset. Poetry ignores it.
+ */
+function projectEnvironments(manager: PythonManager, dirs: readonly string[], env: Env): string[] {
+  const configured = manager === "uv" ? env.vars.UV_PROJECT_ENVIRONMENT : undefined;
+  if (configured && env.path.isAbsolute(configured)) return [env.path.normalize(configured)];
+  return dirs.map((d) => env.path.join(d, configured || ".venv"));
+}
+
+/** Whether a pyproject.toml of the component or a directory above it lists `tool`; undefined when there is none. */
+function listedInPyproject(tool: string, dirs: readonly string[], env: Env): boolean | undefined {
+  const texts = dirs.flatMap((d) => env.readText(env.path.join(d, "pyproject.toml")) ?? []);
+  if (texts.length === 0) return undefined;
+  return texts.some((t) => pyprojectDependencies(t, "pyproject.toml").some((d) => pyName(d.name) === pyName(tool)));
+}
+
+/**
+ * How to get a missing Python tool: the manager's install when a pyproject.toml lists it (or there is no range to
+ * add it in), otherwise adding it to the dev dependencies the way `standard upgrade` does (#68), after what puts the
+ * environment where devguard looks for the tool (Poetry's `virtualenvs.in-project`).
+ */
+function pythonInstall(req: ToolRequest, dirs: readonly string[], env: Env, name: PythonManager): string {
+  const manager = PYTHON_MANAGERS[name];
+  if (req.range === undefined || listedInPyproject(req.tool, dirs, env) !== false) return manager.install;
+  const add = [manager.program, ...manager.addDev, `"${req.tool}${req.range}"`].join(" ");
+  return manager.inProject === undefined ? add : `${manager.inProject} && ${add}`;
+}
+
+/**
+ * The tool in the project environment (`projectEnvironments`). A uv project runs it through `uv run --no-sync`; a
+ * Poetry project runs the executable directly, which needs Poetry's environment inside the project
+ * (`virtualenvs.in-project`).
  */
 function python(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
   const cwd = dirs[0] ?? "";
-  const manager = PYTHON_MANAGERS[managerAt(req.dir, dirs.at(-1) ?? "", env)];
-  const bin = dirs
-    .map((d) =>
-      env.windows
-        ? env.path.join(d, ".venv", "Scripts", `${req.tool}.exe`)
-        : env.path.join(d, ".venv", "bin", req.tool),
-    )
+  const name = managerAt(req.dir, dirs.at(-1) ?? "", env);
+  const manager = PYTHON_MANAGERS[name];
+  const environments = projectEnvironments(name, dirs, env);
+  const bin = environments
+    .map((e) => (env.windows ? env.path.join(e, "Scripts", `${req.tool}.exe`) : env.path.join(e, "bin", req.tool)))
     .find((p) => env.exists(p));
   if (!bin) {
-    const install = inDir(req.dir, manager.install);
-    return { ok: false, message: `找不到 ${req.tool}：專案環境（.venv）中沒有安裝`, install };
+    const install = inDir(req.dir, pythonInstall(req, dirs, env, name));
+    return { ok: false, message: `找不到 ${req.tool}：專案環境（${environments.join("、")}）中沒有安裝`, install };
   }
   return { ok: true, command: { ...manager.runTool(bin, req.tool, req.args ?? []), cwd } };
 }
@@ -272,6 +335,7 @@ export function createToolRunner(deps: ToolRunnerDeps): Required<ToolRunner> {
     exists: deps.exists ?? existsSync,
     readText: deps.readText ?? readIfExistsSync,
     pathEnv: deps.pathEnv ?? process.env.PATH ?? "",
+    vars: deps.processEnv ?? process.env,
   };
   const exec = deps.exec ?? nodeExec;
   const dirOf = (dir: string) => env.path.join(deps.cwd, dir.replace(/\/$/, ""));

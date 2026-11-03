@@ -1,4 +1,5 @@
 import { FIX_LAYERS, runCheck, type CheckLayer, type CheckOptions } from "../check.ts";
+import type { Resolution } from "../declaration/resolve.ts";
 import { planFixHooks } from "../hooks/install.ts";
 import type { Exec } from "../process/exec.ts";
 import { renderText } from "../report/render.ts";
@@ -14,6 +15,8 @@ export interface FixOptions extends CheckOptions {
 export interface ConfigFix extends ChangePlan {
   /** The report of the declaration errors when there is no usable declaration to fix against. */
   blocked?: string;
+  /** The declaration the plan was made against. */
+  resolution?: Resolution;
 }
 
 /** Runs the config checks and plans the repairs their findings carry, by file category. Writes nothing. */
@@ -26,10 +29,11 @@ export async function planConfigFix(
   if (!result.resolution?.standard && result.findings.some((f) => f.level === "error")) {
     return { writes: [], printed: [], blocked: renderText(result, false) };
   }
-  return planChanges(
+  const plan = await planChanges(
     options.cwd,
     result.findings.flatMap((f) => f.repairs ?? []),
   );
+  return { ...plan, ...(result.resolution ? { resolution: result.resolution } : {}) };
 }
 
 /**

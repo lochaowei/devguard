@@ -83,7 +83,7 @@
 |---|---|
 | `devguard install` | 在專案中產生各防線的設定（`.vscode/`、`.claude/`、git hook、工具設定檔、鏡像設定），並安裝 pre-commit 與 pre-push hook |
 | `devguard check [檔案…] [--staged] [--full] [--only <類別>] [--format text\|json\|sarif\|vscode\|claude] [--strict] [--verbose]` | 執行設定、一致性與程式碼檢查，不含環境檢查。指定檔案時只對這些檔案跑程式碼檢查。供 CI 與 git hook 使用。`--staged` 只檢查 staged 的檔案，內容與 pre-commit hook 相同 |
-| `devguard doctor [--quiet] [--exit-zero] [--format …]` | `check` 加上環境檢查（擴充套件、hook 是否安裝、Claude Code、鏡像、帳密變數是否存在）。`--exit-zero`：有問題時也以 0 結束，給 `/standards-doctor` skill 嵌入結果用（§7.3） |
+| `devguard doctor [--quiet] [--exit-zero] [--format …]` | `check` 加上環境檢查（擴充套件、hook 是否安裝、Claude Code、鏡像、執行 Java 工具的 JDK、帳密變數是否存在）。`--exit-zero`：有問題時也以 0 結束，給 `/standards-doctor` skill 嵌入結果用（§7.3） |
 | `devguard draft` | 專案尚無 `.devguard.yaml` 時，依偵測到的元件與既有工具設定產生宣告草稿（§4.3），不覆寫既有檔案 |
 | `devguard fix [--yes]` | 修正**設定**（§9） |
 | `devguard fix --code [files] [--yes]` | 修正**程式碼**：格式化與可自動修正的 lint |
@@ -206,11 +206,11 @@ CLI 依偵測到的工具設定檔產生**草稿**：
   - Java：`pom.xml` / `build.gradle` 中的 plugin 版本
 - **golangci-lint 例外**：不放進 `go.mod` 的 `tool`。使用指定版本的 binary，由開發者放到 PATH，CLI 從 PATH 呼叫並核對版本。
 - CLI 執行工具的方式：
-  - Python：`uv run <tool>`；Poetry 專案（最近的 lockfile 是 `poetry.lock`）直接執行專案內 `.venv` 中的工具，所以 Poetry 必須設定 `virtualenvs.in-project true`
+  - Python：`uv run <tool>`，工具須已安裝在專案環境中。專案環境是 `UV_PROJECT_ENVIRONMENT` 指定的目錄（絕對路徑照用，相對路徑相對於專案目錄，與 uv 相同），未設定時為 `.venv`；找不到工具時，訊息列出實際找過的專案環境路徑。Poetry 專案（最近的 lockfile 是 `poetry.lock`）不讀 `UV_PROJECT_ENVIRONMENT`，直接執行專案內 `.venv` 中的工具，所以 Poetry 必須設定 `virtualenvs.in-project true`
   - TypeScript：`node_modules/.bin/<tool>`
   - Go：`go tool <名稱>`
   - Java：`./mvnw` / `./gradlew`
-- 工具尚未安裝時，CLI **不會自行下載**，而是報錯並附上一行安裝指令（例如 `uv sync`、`poetry config virtualenvs.in-project true && poetry install`、`npm ci`），透過內部鏡像安裝。
+- 工具尚未安裝時，CLI **不會自行下載**，而是報錯並附上一行安裝指令（例如 `uv sync`、`poetry config virtualenvs.in-project true && poetry install`、`npm ci`），透過內部鏡像安裝。標準要求的 Python 開發工具（型別檢查器、Ruff、pytest）不在專案環境、元件與上層目錄的 `pyproject.toml` 也都沒有列在依賴中時，`uv sync` 裝不到它，提示改為加入開發依賴的指令，格式與 `standard upgrade` 相同（§5.5）：uv 專案 `uv add --dev "<工具><範圍>"`，Poetry 專案 `poetry config virtualenvs.in-project true && poetry add --group dev "<工具><範圍>"`（前半與 `poetry install` 的提示相同，工具才會裝進 devguard 會找的專案內 `.venv`），範圍取標準的 `tools.<工具>`（#68）。已列在依賴中只是還沒安裝時，維持 `uv sync`／`poetry install`。找不到 uv 本身時，提示改為多行：列出官方安裝腳本、`pipx install uv`、`pip install uv`、`scoop install uv`（Windows），並說明已用 pip 安裝時要把 Python 的 Scripts 目錄（Windows）或 `~/.local/bin`（其他平台）加進 PATH，再以 `uv --version` 確認；devguard 不會到 PATH 以外的位置找 uv。
 
 來源：[工具版本權威與一致性檢查](.scratch/coding-standards-guard/issues/14-tool-version-authority.md)
 
@@ -248,14 +248,14 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 - **發佈**：預設標準內建在 CLI 中。每個 CLI 版本都附帶目前 major 版本與前一個 major 版本的所有標準版本。標準的原始檔放在一個內部 repo。
 - **版本號的意義**：
   - **major**：可能讓原本通過的專案失敗。例如收緊、新增規則、工具版本範圍改成不相容的範圍。
-  - **minor**：不會讓任何專案失敗。例如新增選用項目、新增替代工具、放寬、擴大相容的工具版本範圍、更換鏡像網址。
+  - **minor**：不會讓任何專案失敗。例如新增選用項目、新增替代工具（`team@1.2.0` 新增 `basedpyright`）、放寬、擴大相容的工具版本範圍、更換鏡像網址。
   - **patch**：只修改說明。
 - **專案宣告寫確切版本**。
   - 有 minor 或 patch 更新時，doctor 建議升級。
   - 宣告的版本比 CLI 內建的新：**錯誤**，提示從 GitHub Release 下載新版 devguard（§3.1）。
   - 宣告的版本已經不在 CLI 中：**錯誤**，提示升級標準。
 - **`devguard standard upgrade`**：預設只預覽，內容包括：
-  - 標準項目的差異
+  - 標準項目的差異（預設值，以及選項項目的可選值）
   - 對本專案的影響（哪些覆寫變得多餘、哪些會成為新的偏離或錯誤）
   - 需要調整的工具版本
   - 需要執行的套件管理指令
@@ -269,7 +269,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 
 ---
 
-## 6. 各語言的預設標準（`team@1.0.0` 草案，及 `team@1.1.0`、`legacy@1.0.0`）
+## 6. 各語言的預設標準（`team@1.0.0` 草案，及 `team@1.1.0`、`team@1.2.0`、`legacy@1.0.0`）
 
 本節的表格是 `team@1.0.0`。`team@1.1.0`（minor，§5.5）沿用 `team@1.0.0` 的所有項目，只有以下差異：
 
@@ -281,7 +281,11 @@ CLI 依偵測到的工具設定檔產生**草稿**：
   - Java：`tools.spotless-maven-plugin` `>=2.44,<4`、`tools.spotless-gradle-plugin` `>=7,<9`、`tools.checkstyle` `>=10.21,<15`。
   - 其餘工具範圍不變：ESLint 9（2026-08-06 EOL）、TypeScript 5、Jest 29、Biome 1、pytest 7、pytest-cov 6 之前、mypy 1.18 之前的版本線上游都不再發佈修正；Go 工具的現行版本已在範圍內。
 
-`devguard draft` 寫入、`doctor` 建議升級到的都是 CLI 內建的最新 `team` 版本（目前是 `team@1.1.0`）。既有專案可以改宣告基線標準 `legacy@1.0.0`（§6.5）。
+`team@1.2.0`（minor，§5.5）沿用 `team@1.1.0` 的所有項目，只有以下差異（#68）：
+
+- Python 的 `typecheck.tool` 多一個替代工具 `basedpyright`（§6.1），並新增 `tools.basedpyright` `>=1.40,<2`。下限依 #36 的原則取上游仍在修補的最舊版本線：basedpyright 的版本都從 `main` 依序發佈，不回補舊版本線（2026-11-03 查證 PyPI 與 GitHub Releases：1.39 的最後一版 1.39.10 在 1.40.0 之前發佈，目前最新是 1.40.2），所以只有 1.40 仍在維護；上限是下一個 major。
+
+`devguard draft` 寫入、`doctor` 建議升級到的都是 CLI 內建的最新 `team` 版本（目前是 `team@1.2.0`）。既有專案可以改宣告基線標準 `legacy@1.0.0`（§6.5）。
 
 ### 6.1 Python
 
@@ -292,8 +296,8 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | `lint.rules` | `E, W, F, I, B, UP, C90, SIM, N, S, TID`；測試檔放寬 `S101` | 一律寫入 `lint.select`（會取代 Ruff 的預設規則集；Ruff 0.16 起預設規則大幅增加），不使用 `extend-select`；`per-file-ignores` |
 | `format.lineLength` | 120（風格） | Ruff `line-length` |
 | `complexity.cyclomatic` | 10 | Ruff C901 `max-complexity` |
-| `typecheck.tool` | `mypy`；允許替代工具 `pyright` | `[tool.mypy]` / `[tool.pyright]` |
-| `typecheck.strict` | `true` | mypy `strict` / pyright `strict` |
+| `typecheck.tool` | `mypy`；允許替代工具 `pyright`（`team@1.2.0` 起另有 `basedpyright`） | `[tool.mypy]` / `[tool.pyright]`（或 `pyrightconfig.json`）/ `[tool.basedpyright]`（或 `pyrightconfig.json`）。basedpyright 以 `basedpyright --outputjson` 執行，輸出格式與 pyright 相同。`devguard draft` 遇到 `pyrightconfig.json` 寫入 `pyright`，遇到 `[tool.basedpyright]` 寫入 `basedpyright`。專案已有宣告的工具不讀的型別檢查器設定（`[tool.mypy]`／`mypy.ini`、`[tool.pyright]`、`[tool.basedpyright]`、`pyrightconfig.json`）時，`devguard install` 的預覽發出警告，說明可以宣告 `typecheck.tool` 改用既有工具；`install` 不修改宣告 |
+| `typecheck.strict` | `true` | mypy `strict` / pyright、basedpyright `typeCheckingMode = "strict"` |
 | `test.tool` | pytest + pytest-cov | — |
 | `coverage.lines` | 行覆蓋率與分支覆蓋率**各自**都要達到 80%（`branch = true`），與 TS、Java 一致 | CLI 執行 `coverage json`，從 `totals` 分別計算行與分支的覆蓋率並自行判定。不使用 `fail_under`，因為它在 branch 模式下檢查的是行加分支的合併總數。 |
 | `deps.manager` | `uv`；允許替代工具 `poetry` | 決定 `deps.lockfile` 要求哪個 lockfile。執行工具（§5.2）、鏡像設定（§10.2）、鏡像帳密（§10.3）與 `standard upgrade`（§5.5）不讀這個項目，只看最近的 Python lockfile：`poetry.lock` 時用 Poetry，否則用 uv |
@@ -364,6 +368,8 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | `complexity.cyclomatic` / `cognitive` | 20 / 25 | Python 只有 `cyclomatic` |
 | `deps.banned` | Python `pycrypto`；TypeScript `request`；Java `log4j:log4j`；Go 無 | 只保留有已知且不會修正的弱點的套件。JUnit 4（`junit:junit`）、`nose`、`moment`、`node-fetch`、`github.com/pkg/errors`、`github.com/golang/protobuf` 不再禁用 |
 | `java.minVersion` | 8 | `team@1.1.0` 是 17；`legacy@1.0.0` 明確寫為 8，讓 Java 8 的既有專案可以納管 |
+
+`java.minVersion` 是程式碼的**目標版本**（Maven `maven.compiler.release`、Gradle toolchain），不是執行工具用的 JDK。`legacy@1.0.0` 的 Java 工具版本範圍沿用 `team@1.1.0`，範圍內沒有能在 JDK 8 上執行的版本：執行 Java 工具至少需要 JDK 11（Checkstyle 10 起、spotless-maven-plugin 2.31 起、palantir-java-format 2.x）；使用 Spotless 3.x（Maven）或 8.x（Gradle）時需要 JDK 17。Java 8 的既有專案以 JDK 11 以上建置、以 release 8 為目標即可。有 Java 元件時，doctor 讀取 `java -version` 的主版本，低於 11 時給 `environment/java-runtime` 提示（不算錯誤；找不到 `java` 時不提示，工具執行失敗由 `check` 回報）。
 
 升級到 `team@1.1.0` 時，預覽會列出這些項目收緊後專案新出現的錯誤。
 
@@ -467,9 +473,10 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
   - 檔案內含 CLI 標記與 checksum。
   - 不使用 pre-commit、lefthook 或 husky 等框架。
 - **既有 hook 框架**：專案已經在用這類框架時，CLI 不覆寫它的 hook，而是在它的設定中注入一條呼叫 `devguard` 的項目：
-  - pre-commit：一條 `language: unsupported` 的 local hook
+  - pre-commit：一條 `language: unsupported` 的 local hook。`unsupported` 是 pre-commit 4.4.0 加入的值（`system` 的新名稱），所以需要 pre-commit 4.4.0 以上；CLI 同時確保頂層的 `minimum_pre_commit_version` 至少為 `"4.4.0"`：沒有就加上，較低就調高，較高就保留。版本不夠時，pre-commit 會自己回報需要的最低版本，而不是只說不認得 `unsupported`。
   - husky：`.husky/pre-commit` 中加一行
   - lefthook：加一個 job（YAML、TOML、JSON / JSONC 設定檔都支援）
+  - pre-commit 的項目要等 `pre-commit install --hook-type pre-commit --hook-type pre-push` 把 hook 寫進 hooks 目錄才會執行。`install` 結束時（預覽與套用都一樣）用與「已安裝」環境檢查相同的判斷確認；還沒寫入時印出這條指令作為下一步。`install` 不自己執行它，這則提示也不影響 exit code。
 - **找不到 CLI**：擋下 commit。錯誤訊息附上安裝指令，並提示可用 `--no-verify` 暫時略過。
 - **部分 staged 的檔案**：不做 stash，也不還原任何檔案。
   - formatter 與單檔 linter 改用 `git show :<path>` 取出 **staged 版本**，再以 stdin 交給工具檢查，例如 `ruff check|format --stdin-filename`、`eslint --stdin --stdin-filename`、`prettier --stdin-filepath`、`biome lint|format --stdin-file-path`，以及 Go 的格式檢查 `golangci-lint fmt --stdin`（套用設定中的 gofumpt、goimports）。這可以避免最常見的誤判：工作目錄已經格式化，但 commit 進去的版本沒有。
@@ -480,7 +487,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 - **pre-push 的完整測試由開發者開啟**：`install` 照常安裝 pre-push hook，但 hook 只在環境變數 `DEVGUARD_PRE_PUSH` 為 `full` 時，才執行 `check --full` 中的測試、覆蓋率與弱點掃描；未設定或其他值時直接放行，什麼都不印。開關放在開發者的環境而不是專案宣告，所以不改變 §4 的格式，切換時也不需要重新執行 `install`。
 - **「已安裝」的環境檢查**
   1. 讀取 `core.hooksPath` 及其設定來源。
-  2. 若使用既有框架，確認其設定中有呼叫 CLI 的項目；使用 pre-commit 框架時，另外確認 `pre-commit install --hook-type pre-commit --hook-type pre-push` 已執行（hooks 目錄中有 pre-commit 產生的 hook）。沒有使用框架時，確認 hook 檔存在、有 CLI 標記，且 checksum 正確。
+  2. 若使用既有框架，確認其設定中有呼叫 CLI 的項目；使用 pre-commit 框架時，另外確認 `pre-commit install --hook-type pre-commit --hook-type pre-push` 已執行（hooks 目錄中有 pre-commit 產生的 hook），且設定的 `minimum_pre_commit_version` 至少為 `"4.4.0"`（缺少或較低都是錯誤，`devguard install` 會修正）。沒有使用框架時，確認 hook 檔存在、有 CLI 標記，且 checksum 正確。
   3. `core.hooksPath` 指向 `/dev/null` 或不存在的目錄時，回報錯誤。
 
   步驟 2 中 pre-push 的問題（hook 不存在或被修改、框架設定缺項目、尚未以 `--hook-type pre-push` 執行 `pre-commit install`），在沒有設定 `DEVGUARD_PRE_PUSH=full` 時只列為**提示**，因為這時 pre-push 本來就不跑任何檢查；設定之後才算錯誤。
@@ -520,7 +527,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 | 類別 | 範例 | 做法 |
 |---|---|---|
 | CLI 全權產生 | `checkstyle.xml`、PMD ruleset、`.claude/rules/*`、`/standards-doctor` skill、git hook、Dependency-Check suppression 檔、`.mvn/settings.xml`、`.mvn/maven.config` | 整份重新產生，檔頭標示「由 CLI 產生」 |
-| 結構化的共用檔 | `pyproject.toml` 的 `[tool.*]`、`.golangci.yml`、`tsconfig.json`、`.prettierrc`、`.npmrc`、`.vscode/*`、`.claude/settings.json` | 只修改 CLI 管理的 key，並保留註解與順序（YAML 用 `yaml`，JSONC 用 `jsonc-parser`，TOML 用 `@decimalturn/toml-patch`；`@shopify/toml-patch` 需要在執行時載入 wasm，可能無法打包進 Bun exe） |
+| 結構化的共用檔 | `pyproject.toml` 的 `[tool.*]`、`.golangci.yml`、`tsconfig.json`、`.prettierrc`、`.npmrc`（只有帳密引用，不寫 `registry=`）、`.vscode/*`、`.claude/settings.json` | 只修改 CLI 管理的 key，並保留註解與順序（YAML 用 `yaml`，JSONC 用 `jsonc-parser`，TOML 用 `@decimalturn/toml-patch`；`@shopify/toml-patch` 需要在執行時載入 wasm，可能無法打包進 Bun exe） |
 | 建置檔與程式碼形式的設定檔 | `pom.xml`、`build.gradle`、`settings.gradle`、`vitest.config.ts`、`eslint.config.js` | 不自動修改，只印出要套用的片段或 diff |
 
 ### 9.3 互動方式
@@ -557,7 +564,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 |---|---|---|
 | uv | `pyproject.toml` 的 `[[tool.uv.index]]`（`name = "nexus"`、`default = true`；需要登入時再加 `authenticate = "always"`） | 專案，提交 |
 | Poetry（最近的 Python lockfile 是 `poetry.lock`） | `pyproject.toml` 的 `[[tool.poetry.source]]`（`name = "nexus"`、`url = <mirrors.pypi>`、`priority = "primary"`）；檢查並取代 uv 的 `[[tool.uv.index]]` | 專案，提交 |
-| npm / pnpm / yarn | 專案的 `.npmrc`（`registry=`） | 專案，提交 |
+| npm / pnpm / yarn | 套件來源由使用者層級的 npm 設定決定；CLI 不檢查也不寫入專案 `.npmrc` 的 `registry=` 與 scope 的 `:registry`（寫死在專案中會覆蓋使用者的企業鏡像設定）。專案 `.npmrc` 只檢查帳密（§10.3） | 使用者；專案 `.npmrc` 只放帳密引用 |
 | Maven | `.mvn/maven.config`（`--settings .mvn/settings.xml`）+ `.mvn/settings.xml`（mirror） | 專案，提交 |
 | Gradle | `settings.gradle` 的 `dependencyResolutionManagement.repositories` | 專案；CLI 只印出片段 |
 | Go | `go env -w GOPROXY=…`、`GOSUMDB` | 使用者；doctor 印出指令；CLI 自己執行 Go 工具時直接帶入 |

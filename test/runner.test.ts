@@ -23,6 +23,7 @@ function fakeRunner(files: Record<string, string>, extra: Partial<ToolRunnerDeps
     exists: (p) => p in files,
     readText: (p) => files[p],
     pathEnv: "C:\\bin;C:\\scoop\\shims",
+    processEnv: {},
     ...extra,
   });
   return { runner, started, unset };
@@ -65,10 +66,97 @@ describe("tool runner: Python", () => {
   it("reports a missing uv itself", async () => {
     const enoent: Exec = () => Promise.reject(Object.assign(new Error("spawn uv ENOENT"), { code: "ENOENT" }));
     const { runner } = fakeRunner({ "C:\\repo\\.venv\\Scripts\\ruff.exe": "" }, { exec: enoent });
-    expect(await missing(runner.run(req({ language: "python", tool: "ruff" })))).toEqual({
-      message: "找不到 uv",
-      install: "scoop install uv",
-    });
+    const m = await missing(runner.run(req({ language: "python", tool: "ruff" })));
+    expect(m.message).toBe("找不到 uv");
+    expect(m.install).toContain("curl -LsSf https://astral.sh/uv/install.sh | sh");
+    expect(m.install).toContain('powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"');
+    expect(m.install).toContain("pipx install uv");
+    expect(m.install).toContain("pip install uv");
+    expect(m.install).toContain("scoop install uv");
+  });
+
+  it("tells a pip-installed uv that is not on PATH how to reach it (#67)", async () => {
+    const enoent: Exec = () => Promise.reject(Object.assign(new Error("spawn uv ENOENT"), { code: "ENOENT" }));
+    const { runner } = fakeRunner({ "C:\\repo\\.venv\\Scripts\\ruff.exe": "" }, { exec: enoent });
+    const m = await missing(runner.run(req({ language: "python", tool: "ruff" })));
+    expect(m.install).toContain("Scripts");
+    expect(m.install).toContain("~/.local/bin");
+    expect(m.install).toContain("PATH");
+    expect(m.install).toContain("uv --version");
+  });
+
+  it("indents every line of a multi-line install hint in the report (#67)", async () => {
+    const enoent: Exec = () => Promise.reject(Object.assign(new Error("spawn uv ENOENT"), { code: "ENOENT" }));
+    const { runner } = fakeRunner({ "C:\\repo\\.venv\\Scripts\\ruff.exe": "" }, { exec: enoent });
+    const run = runner.run(req({ language: "python", tool: "ruff" }));
+    const report = await run.then(
+      () => "",
+      (e: unknown) => (e instanceof ToolMissingError ? e.report() : ""),
+    );
+    const lines = report.trimEnd().split("\n");
+    expect(lines[0]).toBe("找不到 uv");
+    expect(lines[1]).toMatch(/^ {2}安裝：/);
+    expect(lines.length).toBeGreaterThan(3);
+    for (const line of lines.slice(2)) expect(line).toMatch(/^ {4}\S/);
+  });
+});
+
+describe("tool runner: Python with UV_PROJECT_ENVIRONMENT (#66)", () => {
+  it("finds the tool in a relative project environment, resolved against the project directory", async () => {
+    const { runner, started } = fakeRunner(
+      { "C:\\repo\\api\\venv\\Scripts\\ruff.exe": "" },
+      { processEnv: { UV_PROJECT_ENVIRONMENT: "venv" } },
+    );
+    await runner.run(req({ language: "python", tool: "ruff", dir: "api/", args: ["check", "."] }));
+    expect(started).toEqual([{ file: "uv", args: ["run", "--no-sync", "ruff", "check", "."], cwd: "C:\\repo\\api" }]);
+  });
+
+  it("finds the tool in an absolute project environment", async () => {
+    const { runner, started } = fakeRunner(
+      { "D:\\envs\\api\\Scripts\\ruff.exe": "" },
+      { processEnv: { UV_PROJECT_ENVIRONMENT: "D:\\envs\\api" } },
+    );
+    await runner.run(req({ language: "python", tool: "ruff", dir: "api/" }));
+    expect(started[0]?.file).toBe("uv");
+  });
+
+  it("uses bin/ of an absolute project environment outside Windows", async () => {
+    const { runner, started } = fakeRunner(
+      { "/opt/envs/api/bin/ruff": "" },
+      { cwd: "/repo", platform: "linux", processEnv: { UV_PROJECT_ENVIRONMENT: "/opt/envs/api" } },
+    );
+    await runner.run(req({ language: "python", tool: "ruff", dir: "api/" }));
+    expect(started[0]?.cwd).toBe("/repo/api");
+  });
+
+  it("no longer looks in .venv when the variable points elsewhere", async () => {
+    const { runner } = fakeRunner(
+      { "C:\\repo\\.venv\\Scripts\\ruff.exe": "" },
+      { processEnv: { UV_PROJECT_ENVIRONMENT: "venv" } },
+    );
+    await missing(runner.run(req({ language: "python", tool: "ruff" })));
+  });
+
+  it("names the project environments it looked in when the tool is missing", async () => {
+    const { runner } = fakeRunner({}, { processEnv: { UV_PROJECT_ENVIRONMENT: "venv" } });
+    const m = await missing(runner.run(req({ language: "python", tool: "ruff", dir: "api/" })));
+    expect(m.message).toBe("找不到 ruff：專案環境（C:\\repo\\api\\venv、C:\\repo\\venv）中沒有安裝");
+    expect(m.install).toBe("cd api && uv sync");
+  });
+
+  it("names the .venv directories it looked in when the variable is unset", async () => {
+    const { runner } = fakeRunner({});
+    const m = await missing(runner.run(req({ language: "python", tool: "ruff", dir: "api/" })));
+    expect(m.message).toBe("找不到 ruff：專案環境（C:\\repo\\api\\.venv、C:\\repo\\.venv）中沒有安裝");
+  });
+
+  it("does not apply to Poetry projects, which keep the in-project .venv", async () => {
+    const { runner, started } = fakeRunner(
+      { "C:\\repo\\poetry.lock": "", "C:\\repo\\.venv\\Scripts\\ruff.exe": "" },
+      { processEnv: { UV_PROJECT_ENVIRONMENT: "venv" } },
+    );
+    await runner.run(req({ language: "python", tool: "ruff" }));
+    expect(started[0]?.file).toBe("C:\\repo\\.venv\\Scripts\\ruff.exe");
   });
 });
 
@@ -98,6 +186,57 @@ describe("tool runner: Python with Poetry (#44)", () => {
     });
     await runner.run(req({ language: "python", tool: "ruff", dir: "api/" }));
     expect(started[0]?.file).toBe("uv");
+  });
+});
+
+describe("tool runner: a Python tool missing from the dev dependencies (#68)", () => {
+  const based = { language: "python", tool: "basedpyright", dir: "api/", range: ">=1.40,<2" } as const;
+  const PYPROJECT = "C:\\repo\\api\\pyproject.toml";
+
+  it("asks to add it with uv add --dev and the standard's range", async () => {
+    const { runner } = fakeRunner({ [PYPROJECT]: '[project]\nname = "api"\n' });
+    const m = await missing(runner.run(req(based)));
+    expect(m.install).toBe('cd api && uv add --dev "basedpyright>=1.40,<2"');
+  });
+
+  it("asks to add it with poetry add --group dev, in-project so devguard finds it, in a Poetry project", async () => {
+    const { runner } = fakeRunner({ [PYPROJECT]: '[project]\nname = "api"\n', "C:\\repo\\api\\poetry.lock": "" });
+    const m = await missing(runner.run(req(based)));
+    expect(m.install).toBe(
+      'cd api && poetry config virtualenvs.in-project true && poetry add --group dev "basedpyright>=1.40,<2"',
+    );
+  });
+
+  it("still asks for uv sync when a dependency group lists it", async () => {
+    const toml = '[project]\nname = "api"\n\n[dependency-groups]\ndev = ["basedpyright>=1.40"]\n';
+    const { runner } = fakeRunner({ [PYPROJECT]: toml });
+    expect((await missing(runner.run(req(based)))).install).toBe("cd api && uv sync");
+  });
+
+  it("still asks for uv sync when uv's legacy [tool.uv] dev-dependencies lists it", async () => {
+    const toml = '[project]\nname = "api"\n\n[tool.uv]\ndev-dependencies = ["basedpyright>=1.40"]\n';
+    const { runner } = fakeRunner({ [PYPROJECT]: toml });
+    expect((await missing(runner.run(req(based)))).install).toBe("cd api && uv sync");
+  });
+
+  it("still asks for poetry install when a Poetry group lists it, under any spelling of its name", async () => {
+    const toml = '[tool.poetry.group.dev.dependencies]\nBasedPyright = ">=1.40"\n';
+    const { runner } = fakeRunner({ [PYPROJECT]: toml, "C:\\repo\\api\\poetry.lock": "" });
+    const m = await missing(runner.run(req(based)));
+    expect(m.install).toBe("cd api && poetry config virtualenvs.in-project true && poetry install");
+  });
+
+  it("counts a workspace root's pyproject.toml that lists it", async () => {
+    const root = '[project]\nname = "ws"\n\n[dependency-groups]\ndev = ["basedpyright"]\n';
+    const { runner } = fakeRunner({ [PYPROJECT]: '[project]\nname = "api"\n', "C:\\repo\\pyproject.toml": root });
+    expect((await missing(runner.run(req(based)))).install).toBe("cd api && uv sync");
+  });
+
+  it("keeps uv sync without a pyproject.toml or without a range to add", async () => {
+    expect((await missing(fakeRunner({}).runner.run(req(based)))).install).toBe("cd api && uv sync");
+    const { runner } = fakeRunner({ [PYPROJECT]: '[project]\nname = "api"\n' });
+    const noRange = { language: "python", tool: "basedpyright", dir: "api/" } as const;
+    expect((await missing(runner.run(req(noRange)))).install).toBe("cd api && uv sync");
   });
 });
 
@@ -213,7 +352,10 @@ describe("tool runner: Go", () => {
   it("reports a missing go itself", async () => {
     const enoent: Exec = () => Promise.reject(Object.assign(new Error("spawn go ENOENT"), { code: "ENOENT" }));
     const { runner } = fakeRunner({ "C:\\repo\\go.mod": GO_MOD }, { exec: enoent });
-    expect((await missing(runner.run(req({ language: "go", tool: "stringer" })))).message).toBe("找不到 go");
+    expect(await missing(runner.run(req({ language: "go", tool: "stringer" })))).toEqual({
+      message: "找不到 go",
+      install: "scoop install go",
+    });
   });
 
   it("runs go itself for module commands, offline and with the local toolchain", async () => {

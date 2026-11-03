@@ -31,9 +31,11 @@ devguard install [--yes] [--cwd <dir>]
 
       | 框架 | 加入的內容 |
       |---|---|
-      | pre-commit | `repos` 中加一個 `repo: local`，hook id 為 `devguard`（pre-commit 階段）與 `devguard-pre-push`，`language: unsupported`、`always_run: true` |
+      | pre-commit | `repos` 中加一個 `repo: local`，hook id 為 `devguard`（pre-commit 階段）與 `devguard-pre-push`，`language: unsupported`、`always_run: true`；並把頂層的 `minimum_pre_commit_version` 設為至少 `"4.4.0"`（沒有就加在檔尾，較低就只改寫這個值，較高就保留；檔案其餘部分維持原樣） |
       | lefthook | `pre-commit.jobs` / `pre-push.jobs` 各加一個 `name: devguard`（原本用 `commands` 寫法的則加在 `commands.devguard`） |
       | husky | 在 `.husky/pre-commit`、`.husky/pre-push` 結尾加一行呼叫 devguard 的指令 |
+
+      用 pre-commit 框架需要 **pre-commit 4.4.0 以上**：`language: unsupported` 是 4.4.0 才加入的值（`system` 的新名稱）。設定了 `minimum_pre_commit_version` 後，版本太舊時 pre-commit 會直接說明需要的版本。
 
    3. **沒有框架**：寫入 git 實際讀取的 hook 檔（`git rev-parse --git-path hooks/<名稱>`，通常是 `.git/hooks/`；有設定 `core.hooksPath` 時就是那個目錄）。
       - 檔案不存在，或是 devguard 產生的：寫入或更新。
@@ -41,7 +43,23 @@ devguard install [--yes] [--cwd <dir>]
       - `core.hooksPath` 指向 `/dev/null` 或 `nul`（停用所有 hook）：不寫 hook 檔，只印出衝突。
    4. 檢查 `core.hooksPath` 有沒有衝突，有的話印出來。例如用 pre-commit 框架時設了 `core.hooksPath`（pre-commit 會拒絕安裝），或用 husky 時沒有指向 `.husky/_`。
 2. **規劃設定**：與 `fix` 相同的可修正檢查層，差別是 Claude Code 層會**建立**整套 `.claude/` 設定（`fix` 只更新已存在的）。
-3. 合併兩份計畫，依互動規則預覽並套用。
+3. **檢查既有的型別檢查器設定**：Python 元件已有另一個型別檢查器的設定，而且宣告的 `typecheck.tool` 不讀它時，預覽多一段警告。看的是元件目錄的 `pyproject.toml` 的 `[tool.mypy]`、`[tool.pyright]`、`[tool.basedpyright]`，以及 `mypy.ini`、`.mypy.ini`、`pyrightconfig.json`（pyright 與 basedpyright 都讀它）。警告說明可以在 `.devguard.yaml` 宣告 `typecheck.tool` 改用既有的工具；目前宣告的標準不允許那個工具時（例如 `team@1.1.0` 的 `basedpyright`），一併說明要先升級標準。`install` 不會修改宣告，計畫中的其他變更（例如新增 `[tool.mypy] strict = true`）照常列出。
+
+   ```text
+   pyproject.toml：警告：已有宣告以外的型別檢查器設定，不會修改宣告；請自行決定
+       ./ (Python) 宣告的 typecheck.tool 是 mypy，但 [tool.basedpyright] 是 basedpyright 的設定
+       要改用既有的工具，請在 .devguard.yaml 這個元件的 overrides 宣告：
+         typecheck.tool: basedpyright
+   ```
+
+4. 合併計畫，依互動規則預覽並套用。
+5. **提示下一步**：用 pre-commit 框架時，pre-commit 的 hook 要等 `pre-commit install` 才會寫進 hooks 目錄，`install` 只把項目加進設定。所以結束時（預覽與套用都一樣），`install` 用與 [`doctor`](Command-doctor.md) 的 `framework-not-installed` 相同的判斷檢查；`pre-commit` 或 `pre-push` 的 hook 還不是 pre-commit 產生的，就印出：
+
+   ```text
+   下一步：執行 pre-commit install --hook-type pre-commit --hook-type pre-push，hook 框架才會把 hook 寫進 hooks 目錄（install 不會自動執行）。
+   ```
+
+   `install` 不會自己執行這條指令，這則提示也不改變 exit code。hook 已經安裝、或不使用 hook 框架時，不會印出。設定了 `core.hooksPath` 時也不會印出：pre-commit 這時拒絕安裝，`install` 改為列出這個衝突（與 `doctor` 回報 `hooks-path-conflict` 而非 `framework-not-installed` 一致）。
 
 ### 產生的 hook 檔
 
@@ -78,6 +96,8 @@ command -v devguard >/dev/null 2>&1 || { echo 'devguard：找不到 CLI（devgua
 | `0` | 已套用，或沒有需要寫入的檔案 |
 | `1` | 有需要寫入的檔案但沒有套用（拒絕、非互動環境沒有 `--yes`） |
 | `2` | 沒有 hook 框架且不是 git repo：`<dir> 不是 git repo，無法安裝 git hook`；或其他 CLI 失敗 |
+
+「下一步」的提示不影響 exit code。
 
 ---
 
@@ -123,7 +143,8 @@ $ devguard install --yes
 | `這個 hook 不是 devguard 產生的，不會覆寫；請在其中加上：…` | 已經有手寫或其他工具的 hook 檔。把印出的那一行加進去，或改用 hook 框架 |
 | `core.hooksPath = … ：pre-commit 在 core.hooksPath 有設定時拒絕安裝 hook` | 照訊息移除 `core.hooksPath`，再執行 `pre-commit install` 與 `pre-commit install --hook-type pre-push` |
 | `core.hooksPath 未設定，husky 的 hook 沒有安裝；請執行 npx husky` | husky 的 hook 要靠 `core.hooksPath` 生效。執行 `npx husky` |
-| 用 pre-commit 框架，`doctor` 仍說 hook 沒有安裝 | 框架設定中有項目還不夠，要執行 `pre-commit install`（以及 `--hook-type pre-push`）把 hook 寫進 hooks 目錄 |
+| `下一步：執行 pre-commit install --hook-type pre-commit --hook-type pre-push…`，或 `doctor` 說 pre-commit 的 hook 沒有安裝 | 框架設定中有項目還不夠，要執行這條指令把 hook 寫進 hooks 目錄 |
+| commit 時 pre-commit 說需要較新的版本（`minimum_pre_commit_version`），或說不認得 `unsupported` | 本機的 pre-commit 低於 4.4.0。升級 pre-commit（例如 `pip install -U pre-commit`）；後者表示設定還沒有 `minimum_pre_commit_version`，再執行一次 `devguard install` |
 | commit 時出現 `devguard：找不到 CLI（devguard），已擋下這次 git commit` | `devguard.exe` 不在 PATH 上。照訊息安裝；緊急時可用 `git commit --no-verify` 暫時略過 |
 
 ---

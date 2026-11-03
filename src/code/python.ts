@@ -1,5 +1,6 @@
 import type { Finding } from "../report/finding.ts";
-import type { ToolResult } from "../tools/runner.ts";
+import { isPyrightTool, type PyrightTool } from "../settings/type-checkers.ts";
+import { pythonToolRequest, type ToolResult } from "../tools/runner.ts";
 import { codeFinding, firstDifferentLine, runBatched, splitStaged, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
 
@@ -36,7 +37,7 @@ function ruffFindings(target: CodeTarget, ctx: CodeCheckContext, result: ToolRes
 
 /** `--force-exclude` keeps Ruff's configured excludes in force for explicitly passed files. */
 async function lint(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
-  const request = { language: "python", tool: "ruff", dir: target.dir } as const;
+  const request = pythonToolRequest(target, "ruff");
   const args = ["check", "--output-format", "json", "--no-fix", "--force-exclude"];
   const { staged, onDisk } = await splitStaged(target, ctx);
   const results = await runBatched(ctx.tools, request, args, onDisk);
@@ -49,7 +50,7 @@ async function lint(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[
 /** `ruff format --stdin-filename` prints the staged version formatted; any difference is a format finding. */
 async function formatStaged(target: CodeTarget, ctx: CodeCheckContext, file: string, text: string): Promise<Finding[]> {
   const args = ["format", "--force-exclude", "--stdin-filename", file, "-"];
-  const result = await ctx.tools.run({ language: "python", tool: "ruff", dir: target.dir, args, stdin: text });
+  const result = await ctx.tools.run({ ...pythonToolRequest(target, "ruff"), args, stdin: text });
   if (result.code !== 0) return [toolFailed(target, "ruff format", result)];
   if (result.stdout === text) return [];
   const at = { file: toRepoPath(ctx.cwd, target.dir, file), line: firstDifferentLine(text, result.stdout) };
@@ -86,7 +87,7 @@ function firstChangedLines(diff: string): Map<string, number> {
 
 /** `ruff format --diff` checks without writing; the diff locates the first line each file would change. */
 async function format(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
-  const request = { language: "python", tool: "ruff", dir: target.dir } as const;
+  const request = pythonToolRequest(target, "ruff");
   const { staged, onDisk } = await splitStaged(target, ctx);
   const findings: Finding[] = [];
   for (const { file, text } of staged) findings.push(...(await formatStaged(target, ctx, file, text)));
@@ -127,7 +128,7 @@ function mypyFinding(target: CodeTarget, ctx: CodeCheckContext, text: string): F
 /** mypy checks the whole component ("."), honouring its configured excludes (SPEC §7.1). */
 async function mypy(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
   const args = ["--no-pretty", "--no-error-summary", "--show-error-codes", "--no-color-output", "."];
-  const result = await ctx.tools.run({ language: "python", tool: "mypy", dir: target.dir, args });
+  const result = await ctx.tools.run({ ...pythonToolRequest(target, "mypy"), args });
   if (result.code === 0) return [];
   const findings = result.stdout.split(/\r?\n/).flatMap((text) => mypyFinding(target, ctx, text) ?? []);
   return findings.length > 0 ? findings : [toolFailed(target, "mypy", result)];
@@ -141,19 +142,18 @@ interface PyrightDiagnostic {
   range?: { start: { line: number } };
 }
 
-/** pyright with no file arguments checks the project its configuration describes. */
-async function pyright(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
-  const request = { language: "python", tool: "pyright", dir: target.dir, args: ["--outputjson"] } as const;
-  const result = await ctx.tools.run(request);
+/** pyright (or basedpyright) with no file arguments checks the project its configuration describes. */
+async function pyright(target: CodeTarget, ctx: CodeCheckContext, tool: PyrightTool): Promise<Finding[]> {
+  const result = await ctx.tools.run({ ...pythonToolRequest(target, tool), args: ["--outputjson"] });
   const output = result.code <= 1 ? parseJson(result.stdout) : undefined;
   const diagnostics = (output as { generalDiagnostics?: unknown } | undefined)?.generalDiagnostics;
-  if (!Array.isArray(diagnostics)) return [toolFailed(target, "pyright", result)];
+  if (!Array.isArray(diagnostics)) return [toolFailed(target, tool, result)];
   return (diagnostics as PyrightDiagnostic[])
     .filter((d) => d.severity !== "information")
     .map((d) =>
       codeFinding(target, {
         level: d.severity === "error" ? "error" : "hint",
-        rule: `pyright/${d.rule ?? d.severity}`,
+        rule: `${tool}/${d.rule ?? d.severity}`,
         message: d.message,
         file: d.file === undefined ? undefined : toRepoPath(ctx.cwd, target.dir, d.file),
         line: d.range === undefined ? undefined : d.range.start.line + 1,
@@ -162,21 +162,27 @@ async function pyright(target: CodeTarget, ctx: CodeCheckContext): Promise<Findi
     );
 }
 
-/** Ruff lint and format, and mypy or pyright, all run through `uv run` (SPEC §6.1, §5.2). */
+/** The declared type checker; mypy unless `typecheck.tool` names a pyright-based one. */
+function typeChecker(target: CodeTarget): "mypy" | PyrightTool {
+  const tool = target.effective["typecheck.tool"];
+  return isPyrightTool(tool) ? tool : "mypy";
+}
+
+/** Ruff lint and format, and mypy, pyright or basedpyright, all run through `uv run` (SPEC §6.1, §5.2). */
 export const pythonChecker: CodeChecker = {
   language: "python",
   // Ruff reads stdin; the type checkers read the whole project from disk.
   workingTreeTools(target) {
     if (!target.categories.has("typecheck")) return [];
-    return [target.effective["typecheck.tool"] === "pyright" ? "pyright" : "mypy"];
+    return [typeChecker(target)];
   },
   async check(target, ctx) {
     const findings: Finding[] = [];
     if (target.categories.has("lint")) findings.push(...(await lint(target, ctx)));
     if (target.categories.has("format")) findings.push(...(await format(target, ctx)));
     if (target.categories.has("typecheck")) {
-      const usePyright = target.effective["typecheck.tool"] === "pyright";
-      findings.push(...(await (usePyright ? pyright(target, ctx) : mypy(target, ctx))));
+      const tool = typeChecker(target);
+      findings.push(...(await (tool === "mypy" ? mypy(target, ctx) : pyright(target, ctx, tool))));
     }
     return findings;
   },

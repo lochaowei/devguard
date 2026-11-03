@@ -7,6 +7,7 @@ import { judgeConfigValue, setAt } from "./judge.ts";
 import type { ItemDef } from "../standard/types.ts";
 import { isRecord } from "../shared/guards.ts";
 import { coverageGateOff } from "../testing/coverage.ts";
+import { isPyrightTool, type PyrightTool } from "./type-checkers.ts";
 
 type Table = Record<string, unknown>;
 
@@ -290,7 +291,19 @@ function checkRuffVersion(r: Report, ruff: ToolSection, floor: string | undefine
   }
 }
 
-function checkPythonVersion(r: Report, doc: Table, ruff?: ToolSection, pyright?: ToolSection): void {
+/** The declared type checker when it is pyright-based; undefined for mypy. */
+function pyrightTool(r: Report): PyrightTool | undefined {
+  const tool = r.want("typecheck.tool");
+  return isPyrightTool(tool) ? tool : undefined;
+}
+
+function checkPythonVersion(
+  r: Report,
+  doc: Table,
+  ruff?: ToolSection,
+  pyright?: ToolSection,
+  pyrightName: PyrightTool = "pyright",
+): void {
   const { floor, bar } = checkRequiresPython(r, doc);
   if (ruff) checkRuffVersion(r, ruff, floor, bar);
   const mypy = at(doc, "tool", "mypy")?.python_version;
@@ -301,19 +314,19 @@ function checkPythonVersion(r: Report, doc: Table, ruff?: ToolSection, pyright?:
   if (pyright && pyrightVersion !== undefined) {
     const path = [...pyright.prefix, "pythonVersion"];
     r.forFile(pyright.file).compare(
-      { name: "pyright pythonVersion", key: MIN_VERSION, value: pyrightVersion, path },
+      { name: `${pyrightName} pythonVersion`, key: MIN_VERSION, value: pyrightVersion, path },
       bar,
     );
   }
 }
 
 /**
- * mypy's `strict = true`, or pyright's `typeCheckingMode = "strict"`, whichever the declaration picks. `found` is
- * the chosen tool's settings, which for pyright may be pyrightconfig.json instead of [tool.pyright].
+ * mypy's `strict = true`, or pyright's / basedpyright's `typeCheckingMode = "strict"`, whichever the declaration picks.
+ * `found` is the chosen tool's settings, which for the pyright-based ones may be pyrightconfig.json instead of
+ * [tool.pyright] / [tool.basedpyright].
  */
-function checkTypecheck(r: Report, doc: Table, found: ToolSection | undefined): void {
-  const pyright = r.want("typecheck.tool") === "pyright";
-  const section = pyright ? "pyright" : "mypy";
+function checkTypecheck(r: Report, doc: Table, pyright: PyrightTool | undefined, found?: ToolSection): void {
+  const section = pyright ?? "mypy";
   const option = pyright ? "typeCheckingMode" : "strict";
   const strictValue = pyright ? "strict" : true;
   if (!found) {
@@ -332,7 +345,7 @@ function checkTypecheck(r: Report, doc: Table, found: ToolSection | undefined): 
   }
   const { table } = found;
   const strict = pyright ? table.typeCheckingMode === "strict" : table.strict === true;
-  const name = pyright ? `pyright typeCheckingMode ${fmt(table.typeCheckingMode ?? null)}` : "mypy strict";
+  const name = pyright ? `${section} typeCheckingMode ${fmt(table.typeCheckingMode ?? null)}` : "mypy strict";
   const path = [...found.prefix, option];
   r.forFile(found.file).compare({ name, key: "typecheck.strict", value: strict, path, toFile: () => strictValue });
 }
@@ -398,12 +411,15 @@ function newRuff(r: Report, doc: Table): Repair[] {
   ];
 }
 
-/** [tool.ruff], [tool.mypy] and [tool.pyright] of pyproject.toml, or else Ruff's / pyright's settings in another file. */
+/**
+ * [tool.ruff], [tool.mypy], [tool.pyright] and [tool.basedpyright] of pyproject.toml, or else Ruff's settings in
+ * another file and pyrightconfig.json, which pyright and basedpyright both read.
+ */
 function resolveSections(
   doc: Table,
   file: string,
   extra: PythonExtraConfigs = {},
-): { ruff?: ToolSection; mypy?: ToolSection; pyright?: ToolSection } {
+): Partial<Record<"ruff" | "mypy" | PyrightTool, ToolSection>> {
   const own = (prefix: string[]): ToolSection | undefined => {
     const table = at(doc, ...prefix);
     return table && { file, prefix, table };
@@ -414,6 +430,7 @@ function resolveSections(
     ruff: own(["tool", "ruff"]) ?? other(extra.ruff),
     mypy: own(["tool", "mypy"]),
     pyright: own(["tool", "pyright"]) ?? other(extra.pyright),
+    basedpyright: own(["tool", "basedpyright"]) ?? other(extra.pyright),
   };
 }
 
@@ -430,11 +447,15 @@ export function checkPyproject(
   extra?: PythonExtraConfigs,
 ): Finding[] {
   const r = new Report(component, defs, file);
-  const { ruff, mypy, pyright } = resolveSections(doc, file, extra);
+  const sections = resolveSections(doc, file, extra);
+  const { ruff } = sections;
   if (ruff) checkRuff(r, ruff);
   else r.fixable("ruff-missing", "pyproject.toml 沒有 [tool.ruff] 設定", "新增 [tool.ruff]", newRuff(r, doc));
-  checkPythonVersion(r, doc, ruff, pyright);
-  checkTypecheck(r, doc, r.want("typecheck.tool") === "pyright" ? pyright : mypy);
+  // pyright's pythonVersion is checked whichever type checker is declared; basedpyright's only when it is declared.
+  const pyright = pyrightTool(r);
+  const pyrightName = pyright ?? "pyright";
+  checkPythonVersion(r, doc, ruff, sections[pyrightName], pyrightName);
+  checkTypecheck(r, doc, pyright, sections[pyright ?? "mypy"]);
   checkCoverage(r, doc);
   return r.findings;
 }

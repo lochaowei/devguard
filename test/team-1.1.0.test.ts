@@ -15,18 +15,19 @@ const TS_ON_1_0_0 =
   "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: typescript\n    overrides:\n" +
   '      tools.eslint-plugin-sonarjs:\n        value: ">=3,<5"\n        reason: "peer dependency"\n';
 
-describe("team@1.1.0 is the newest bundled standard (#39)", () => {
-  it("doctor suggests upgrading team@1.0.0 to team@1.1.0", async () => {
+// team@1.2.0 is newer (#68): upgrades to team@1.1.0 name it as their target.
+describe("standard upgrade from team@1.0.0 to team@1.1.0 (#39)", () => {
+  it("doctor suggests upgrading team@1.0.0 to the newest team, past team@1.1.0", async () => {
     const dir = repo({ ".devguard.yaml": "standard: team@1.0.0\ncomponents: []\n" });
     const { findings } = await runDoctor({ cwd: dir, today: TODAY, checks: [createStandardUpgradeCheck()] });
     expect(findings).toContainEqual(
-      expect.objectContaining({ rule: "standard/upgrade-available", fix: "devguard standard upgrade team@1.1.0" }),
+      expect.objectContaining({ rule: "standard/upgrade-available", fix: "devguard standard upgrade team@1.2.0" }),
     );
   });
 
   it("standard upgrade previews dropping eslint-plugin-sonarjs and the override it makes pointless", async () => {
     const dir = repo({ ".devguard.yaml": TS_ON_1_0_0 });
-    const { code, out } = await upgrade(dir);
+    const { code, out } = await upgrade(dir, { target: "team@1.1.0" });
     expect(code).toBe(1);
     expect(out).toContain("team@1.0.0 → team@1.1.0");
     expect(out).toContain('TypeScript｜eslint-plugin-sonarjs 版本範圍：">=3,<4"（移除）');
@@ -36,7 +37,7 @@ describe("team@1.1.0 is the newest bundled standard (#39)", () => {
 
   it("standard upgrade --apply moves the declaration to team@1.1.0 and drops the sonarjs override", async () => {
     const dir = repo({ ".devguard.yaml": TS_ON_1_0_0 });
-    expect((await upgrade(dir, { apply: true })).code).toBe(0);
+    expect((await upgrade(dir, { apply: true, target: "team@1.1.0" })).code).toBe(0);
     const decl = read(dir, ".devguard.yaml");
     expect(decl).toContain("standard: team@1.1.0");
     expect(decl).not.toContain("eslint-plugin-sonarjs");
@@ -165,7 +166,7 @@ describe("standard upgrade to team@1.1.0 shows the widened items (#36)", () => {
 
   it("previews the new ranges and the overrides they make pointless, but not java.minVersion", async () => {
     const dir = repo({ ".devguard.yaml": JAVA_ON_1_0_0 });
-    const { out } = await upgrade(dir);
+    const { out } = await upgrade(dir, { target: "team@1.1.0" });
     expect(out).not.toContain("Java 最低版本");
     expect(out).not.toContain("java.minVersion（與新預設相同）");
     expect(out).toContain('Java｜checkstyle 版本範圍：">=10.21,<11" → ">=10.21,<15"');
@@ -175,7 +176,7 @@ describe("standard upgrade to team@1.1.0 shows the widened items (#36)", () => {
 
   it("--apply drops the Checkstyle override and keeps the java.minVersion deviation", async () => {
     const dir = repo({ ".devguard.yaml": JAVA_ON_1_0_0 });
-    expect((await upgrade(dir, { apply: true })).code).toBe(0);
+    expect((await upgrade(dir, { apply: true, target: "team@1.1.0" })).code).toBe(0);
     expect(read(dir, ".devguard.yaml")).toBe(
       "standard: team@1.1.0\ncomponents:\n  - path: ./\n    language: java\n    overrides:\n" +
         '      java.minVersion:\n        value: "8"\n        reason: "legacy customers"\n',

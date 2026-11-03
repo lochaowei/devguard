@@ -46,6 +46,7 @@ $ devguard draft
    |---|---|---|
    | Python | `deps.manager: poetry` | 有 `poetry.lock`（比 `uv.lock` 近） |
    | Python | `typecheck.tool: pyright` | 有 `pyrightconfig.json` |
+   | Python | `typecheck.tool: basedpyright` | 元件的 `pyproject.toml` 有 `[tool.basedpyright]`（優先於 `pyrightconfig.json`） |
    | TypeScript | `lint.tool: biome` | 有 `biome.json(c)`（比 `eslint.config.*` 近） |
    | TypeScript | `test.tool: jest` | 有 `jest.config.*`（比 `vitest.config.*` 近） |
    | TypeScript | `deps.manager: pnpm` / `yarn` | 有 `pnpm-lock.yaml` / `yarn.lock`（比 `package-lock.json` 近） |
@@ -83,7 +84,7 @@ $ devguard draft
 ```yaml
 # 由 devguard draft 依既有的工具設定產生的草稿（SPEC §4.3）。
 # 與預設標準相同的項目已省略；比預設寬鬆的項目附有 TODO 理由，填寫理由之前 devguard check 不會通過。
-standard: team@1.1.0
+standard: team@1.2.0
 components:
   - path: ./
     language: python
@@ -121,7 +122,8 @@ components:
 | repo 根目錄出現一個意外的元件 | 有程式檔往上找不到標記檔，例如零散的腳本。可以保留、移到某個元件中，或從宣告中刪除（刪除後 `check` 會以 `uncovered-files` 提示） |
 | 範例、第三方原始碼或自動產生的檔案變成元件 | 刪掉草稿，以 `--ignore examples/ --ignore third_party/` 重新產生；或直接把這些路徑寫進宣告的 `ignore` |
 | 想重新產生 | 先刪除或改名 `.devguard.yaml` 再執行 |
-| Poetry 專案的 `check` 提示 `找不到 ruff：專案環境（.venv）中沒有安裝` | devguard 從專案內的 `.venv` 執行工具。照提示執行 `poetry config virtualenvs.in-project true && poetry install`，讓 Poetry 把虛擬環境建在專案裡 |
+| Poetry 專案的 `check` 提示 `找不到 ruff：專案環境（<專案>/.venv）中沒有安裝` | devguard 從專案內的 `.venv` 執行工具。照提示執行 `poetry config virtualenvs.in-project true && poetry install`，讓 Poetry 把虛擬環境建在專案裡 |
+| uv 專案的 `check` 提示 `找不到 ruff：專案環境（…）中沒有安裝`，但工具其實已安裝 | 括號內是 devguard 找過的專案環境路徑。專案環境不在 `.venv` 時，以 `UV_PROJECT_ENVIRONMENT` 指定它（與 `uv run` 讀同一個變數），再執行 `devguard check` |
 
 ---
 

@@ -54,11 +54,15 @@ export interface PythonManagerDef {
   checkMirror: MirrorChecker;
   /** The variables it reads mirror credentials from, and what they are for (SPEC §10.3). */
   auth: { variables: readonly string[]; purpose: string };
+  /** What must run first for the project environment to be the `.venv` devguard runs tools from; none for uv. */
+  inProject?: string;
   /** Installs the project environment into `.venv` (SPEC §5.2). */
   install: string;
   /** Runs `tool`, installed at `bin` in the project's `.venv` (SPEC §5.2). */
   runTool(bin: string, tool: string, args: readonly string[]): { file: string; args: string[] };
 }
+
+const POETRY_IN_PROJECT = "poetry config virtualenvs.in-project true";
 
 export const PYTHON_MANAGERS: Readonly<Record<PythonManager, PythonManagerDef>> = {
   uv: {
@@ -77,7 +81,8 @@ export const PYTHON_MANAGERS: Readonly<Record<PythonManager, PythonManagerDef>> 
     checkMirror: checkPoetry,
     auth: { variables: POETRY_AUTH_VARIABLES, purpose: "Poetry 登入 nexus source" },
     // Running the .venv's executables directly needs Poetry's environment inside the project.
-    install: "poetry config virtualenvs.in-project true && poetry install",
+    inProject: POETRY_IN_PROJECT,
+    install: `${POETRY_IN_PROJECT} && poetry install`,
     runTool: (bin, _tool, args) => ({ file: bin, args: [...args] }),
   },
 };

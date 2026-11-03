@@ -1,10 +1,11 @@
 import { legacy_1_0_0 } from "./legacy-1.0.0.ts";
 import { team_1_0_0 } from "./team-1.0.0.ts";
 import { team_1_1_0 } from "./team-1.1.0.ts";
+import { team_1_2_0 } from "./team-1.2.0.ts";
 import type { Standard } from "./types.ts";
 
 /** All standard versions bundled with this CLI release (SPEC §5.5), oldest first within each standard. */
-export const BUNDLED_STANDARDS: readonly Standard[] = [team_1_0_0, team_1_1_0, legacy_1_0_0];
+export const BUNDLED_STANDARDS: readonly Standard[] = [team_1_0_0, team_1_1_0, team_1_2_0, legacy_1_0_0];
 
 /** The standard `draft` writes and the code checks fall back to without a declaration. legacy is opt-in. */
 const DEFAULT_STANDARD_NAME = "team";

@@ -34,7 +34,7 @@ devguard standard upgrade [目標版本] [--apply] [--cwd <dir>]
 
    | 段落 | 內容 |
    |---|---|
-   | 標準項目的差異 | 兩個版本中預設值不同、新增、移除的項目 |
+   | 標準項目的差異 | 兩個版本中預設值不同、新增、移除的項目，以及可選值（`allowed`）改變的選項項目，例如 `team@1.1.0 → team@1.2.0` 的 `Python｜型別檢查工具："mypy"（可選值新增 "basedpyright"）` |
    | 多餘的覆寫 | 宣告中的覆寫在新標準下已經等於預設值，或項目已被移除；`--apply` 會從宣告中刪除 |
    | 新的錯誤或偏離 | 專案在新標準下才會出現的錯誤與偏離；可以自動修正的會標示 `（--apply 會修正）` |
    | 需要調整的工具版本 | lockfile 鎖定的版本不在新範圍內，或 PATH 上工具（例如 `golangci-lint`）的範圍改變 |
@@ -71,11 +71,11 @@ devguard standard upgrade [目標版本] [--apply] [--cwd <dir>]
 
 ## 範例
 
-目前 CLI 內建 `team@1.0.0`、`team@1.1.0` 與 `legacy@1.0.0`。宣告 `team@1.0.0` 的 TypeScript 專案升級時（`doctor` 也會以 `standard/upgrade-available` 提示建議這個指令）：
+目前 CLI 內建 `team@1.0.0`、`team@1.1.0`、`team@1.2.0` 與 `legacy@1.0.0`。宣告 `team@1.0.0` 的 TypeScript 專案升級時（`doctor` 也會以 `standard/upgrade-available` 提示建議這個指令）：
 
 ```text
 $ devguard standard upgrade
-標準升級預覽：team@1.0.0 → team@1.1.0
+標準升級預覽：team@1.0.0 → team@1.2.0
 
 標準項目的差異：
   TypeScript｜eslint-plugin-sonarjs 版本範圍：">=3,<4"（移除）
@@ -87,7 +87,7 @@ $ devguard standard upgrade
 …
 要修改的檔案：
 .devguard.yaml：修改 CLI 管理的設定
-+standard: team@1.1.0
++standard: team@1.2.0
 -standard: team@1.0.0
 …
 只預覽，沒有套用。加上 --apply 才會套用。
@@ -99,7 +99,7 @@ $ echo $?
 
 ```text
 $ devguard standard upgrade
-已經是這個 devguard 內建的最新標準 team@1.1.0
+已經是這個 devguard 內建的最新標準 team@1.2.0
 
 $ devguard standard upgrade team@9.0.0
 這個 devguard 沒有內建「team@9.0.0」
@@ -130,7 +130,7 @@ $ devguard standard upgrade
 …
 
 $ devguard standard upgrade team@1.0.0
-無法從 legacy@1.0.0 升級到 team@1.0.0；可以升級到 team@1.1.0
+無法從 legacy@1.0.0 升級到 team@1.0.0；可以升級到 team@1.1.0、team@1.2.0
 $ echo $?
 2
 ```
@@ -138,7 +138,7 @@ $ echo $?
 預覽的格式（各段落的標題，內容依專案而定）：
 
 ```text
-標準升級預覽：team@1.0.0 → team@1.1.0
+標準升級預覽：team@1.0.0 → team@1.2.0
 
 標準項目的差異：
   …

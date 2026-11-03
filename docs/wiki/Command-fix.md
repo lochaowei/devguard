@@ -90,9 +90,6 @@ tsconfig.json：修改 CLI 管理的設定
 .gitattributes：新增，修改 CLI 管理的設定
 +* text=auto eol=lf
 
-.npmrc：新增，修改 CLI 管理的設定
-+registry=https://nexus.example.internal/repository/npm-proxy/
-
 .vscode/settings.json：新增，修改 CLI 管理的設定
 …
 非互動環境：只預覽，沒有套用。加上 --yes 才會套用。
@@ -160,7 +157,7 @@ $ devguard fix --code src/mul.ts --yes
 | 現象 | 原因與處理 |
 |---|---|
 | 在 Claude Code 或 CI 中執行 `fix`，exit `1` 且沒有寫入 | 非互動環境需要 `--yes` |
-| `fix` 之後 `npm install` 連不上 `nexus.example.internal` | `fix` 依標準寫入 `.npmrc` 的內部鏡像網址。標準中的網址是範例值，正式導入前要換成公司的鏡像，或在宣告的 `mirrors.*` 覆寫 |
+| `npm install` 連不上 `nexus.example.internal` | 舊版 devguard 的 `fix` 會在專案 `.npmrc` 寫入 `registry=https://nexus.example.internal/…`（標準中的範例網址）。現在 `fix` 不再寫入 `registry=`，套件來源交給使用者層級的 npm 設定；請自行刪除專案 `.npmrc` 中這一行 |
 | `fix` 之後 `check` 仍報 `settings/missing-file`（`eslint.config.js`、`vitest.config.ts`） | 程式碼形式的設定檔屬於 `snippet`，`fix` 只印出片段，要自己建立或修改 |
 | 改了 `.devguard.yaml` 之後 `check` 報 `.claude/rules/…` 不一致 | rules 檔會列出元件的標準與偏離，宣告改了就要重新產生。執行 `devguard fix --yes` |
 
