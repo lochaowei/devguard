@@ -176,7 +176,7 @@ describe("devguard standard upgrade (SPEC §5.5)", () => {
     expect(out).toContain('整體｜說明網址：（新增）"https://example.internal"');
     expect(out).toMatch(/多餘的覆寫.*\n.*coverage\.lines/);
     expect(out).toContain("ruff 0.17.2 不在新的版本範圍 >=0.18,<0.19 內");
-    expect(out).toContain('uv add --dev "ruff>=0.18,<0.19"（鏡像：https://');
+    expect(out).toContain('  uv add --dev "ruff>=0.18,<0.19"\n');
     expect(read(dir, ".devguard.yaml")).toBe(before.decl);
     expect(read(dir, "pyproject.toml")).toBe(before.py);
     expect(managed).toEqual([]);
@@ -202,7 +202,7 @@ describe("devguard standard upgrade (SPEC §5.5)", () => {
     expect(out).not.toContain("非互動環境");
   });
 
-  it("--apply updates the declaration and config files, then runs the commands through the mirror", async () => {
+  it("--apply updates the declaration and config files, then runs the commands", async () => {
     const dir = await pythonRepo(OVERRIDES);
     const { tools, managed } = fakeTools();
     const { code } = await upgrade(dir, { target: "team@1.1.0", apply: true, tools });
@@ -218,7 +218,6 @@ describe("devguard standard upgrade (SPEC §5.5)", () => {
         manager: "uv",
         dir: "",
         args: ["add", "--dev", "ruff>=0.18,<0.19"],
-        mirror: team_1_0_0.global["mirrors.pypi"]?.value,
       },
     ]);
   });
@@ -270,10 +269,8 @@ describe("devguard standard upgrade (SPEC §5.5)", () => {
       tools: fakeTools().tools,
       write: (t) => (out += t),
     });
-    expect(out).toContain(
-      "cd web && npm install --save-dev eslint@>=11 <12（鏡像：https://nexus.example.internal/repository/npm-proxy/）",
-    );
-    expect(out).toContain("cd svc && go get -tool mvdan.cc/gofumpt@v0.10.0（");
+    expect(out).toContain("  cd web && npm install --save-dev eslint@>=11 <12\n");
+    expect(out).toContain("  cd svc && go get -tool mvdan.cc/gofumpt@v0.10.0\n");
     expect(out).toMatch(/把版本在 \S+ 內的 golangci-lint binary 放進 PATH（請自行執行）/);
     expect(out).toContain("請在 api/pom.xml 把 maven-pmd-plugin 改成 >=3.27,<4 內的版本");
   });
@@ -299,15 +296,13 @@ describe("devguard standard upgrade of a Poetry component (#53)", () => {
     return dir;
   }
 
-  it("previews the poetry add command, quoted for the shell, and where Poetry's mirror comes from", async () => {
+  it("previews the poetry add command, quoted for the shell", async () => {
     const { out } = await upgrade(await poetryRepo(), { target: "team@1.1.0" });
-    expect(out).toContain(
-      'cd api && poetry add --group dev "ruff>=0.18,<0.19"（鏡像：api/pyproject.toml 的 [[tool.poetry.source]] nexus）',
-    );
+    expect(out).toContain('  cd api && poetry add --group dev "ruff>=0.18,<0.19"\n');
     expect(out).not.toContain("uv add");
   });
 
-  it("--apply runs poetry add --group dev with a PEP 508 requirement, never uv, and passes no mirror", async () => {
+  it("--apply runs poetry add --group dev with a PEP 508 requirement, never uv", async () => {
     const dir = await poetryRepo();
     const { tools, managed } = fakeTools();
     expect((await upgrade(dir, { target: "team@1.1.0", apply: true, tools })).code).toBe(0);

@@ -276,7 +276,7 @@ describe("devguard fix --code (SPEC §9.1, §9.3)", () => {
       expect(result.code).toBe(0);
     });
 
-    it("Go: golangci-lint run --fix (gofumpt and the other formatters included) with the Go mirrors", async () => {
+    it("Go: golangci-lint run --fix (gofumpt and the other formatters included)", async () => {
       const files = { ".devguard.yaml": decl("svc", "go") };
       const result = await fixWith(files, ["svc/main.go"], (req, cwd, fixed) => {
         const issue = {
@@ -292,7 +292,6 @@ describe("devguard fix --code (SPEC §9.1, §9.3)", () => {
           tool: "golangci-lint",
           dir: "svc/",
           args: ["run", "--fix", "--show-stats=false", "./..."],
-          env: expect.objectContaining({ GOTOOLCHAIN: "local" }) as unknown,
         },
       ]);
       expect(result.code).toBe(0);

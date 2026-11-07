@@ -50,7 +50,7 @@ export interface ToolChange {
   file?: string;
 }
 
-/** A package-manager command: run through the mirror on --apply, or only printed (`request` absent). */
+/** A package-manager command: run on --apply, or only printed (`request` absent). */
 export interface PlannedCommand {
   display: string;
   request?: PackageRequest;
@@ -130,6 +130,19 @@ function redundantIn(
   });
 }
 
+/**
+ * Where each redundant override is deleted: its own key, or the whole block (`block`) when none of the block's
+ * `total` overrides is left, so no empty `overrides:` or `mirrors:` stays behind.
+ */
+function deletionPaths(
+  gone: readonly { key: string; why: RedundantOverride["why"] }[],
+  total: number,
+  block: KeyPath,
+  key: (k: string) => string,
+): { key: string; why: RedundantOverride["why"]; path: KeyPath }[] {
+  return gone.map((r) => ({ ...r, path: gone.length === total ? block : [...block, key(r.key)] }));
+}
+
 function redundantOverrides(t: Target, before: CheckResult, after: CheckResult): RedundantOverride[] {
   const found: RedundantOverride[] = [];
   const components = after.resolution?.components ?? [];
@@ -137,17 +150,22 @@ function redundantOverrides(t: Target, before: CheckResult, after: CheckResult):
     const now = components.find((r) => sameComponent(r)(declared));
     if (!now) return;
     const was = before.resolution?.components.find((r) => sameComponent(r)(declared));
-    for (const r of redundantIn(declared.overrides, t.to.languages[now.language], was?.effective, now.effective))
-      found.push({ component: now.name, ...r, path: ["components", i, "overrides", r.key] });
+    const gone = redundantIn(declared.overrides, t.to.languages[now.language], was?.effective, now.effective);
+    for (const r of deletionPaths(gone, declared.overrides.length, ["components", i, "overrides"], (k) => k))
+      found.push({ component: now.name, ...r });
   });
-  const global = redundantIn(
-    t.declaration.globalOverrides,
-    t.to.global,
-    before.resolution?.global,
-    after.resolution?.global,
-  );
-  for (const r of global) found.push({ component: "整體", ...r, path: ["mirrors", r.key.replace(/^mirrors\./, "")] });
+  const { globalOverrides } = t.declaration;
+  const global = redundantIn(globalOverrides, t.to.global, before.resolution?.global, after.resolution?.global);
+  const mirrorKey = (k: string) => k.replace(/^mirrors\./, "");
+  for (const r of deletionPaths(global, globalOverrides.length, ["mirrors"], mirrorKey))
+    found.push({ component: "整體", ...r });
   return found;
+}
+
+/** The paths to delete, each once: a whole block is named by every override in it. */
+function uniquePaths(redundant: readonly RedundantOverride[]): KeyPath[] {
+  const seen = new Map(redundant.map((r) => [JSON.stringify(r.path), r.path]));
+  return [...seen.values()];
 }
 
 /** One versionRange item of one component: what has to change for it. */
@@ -195,31 +213,26 @@ const quoted = (arg: string) => (/[<>,\s]/.test(arg) ? `"${arg}"` : arg);
 
 interface ManagerDef {
   command: readonly string[];
-  /** Where it downloads from: a `mirrors.*` key, or the project setting `where` names for a component directory. */
-  mirror: { key: string } | { where: (dir: string) => string };
   spec(c: ToolChange): string;
   /** Quote the printed arguments (`quoted`). */
   quote?: true;
 }
 
 function pythonDef(name: PythonManager): ManagerDef {
-  const { program, addDev, mirror } = PYTHON_MANAGERS[name];
-  const from = mirror.from === "env" ? { key: "mirrors.pypi" } : { where: mirror.where };
-  return { command: [program, ...addDev], mirror: from, spec: pep508, quote: true };
+  const { program, addDev } = PYTHON_MANAGERS[name];
+  return { command: [program, ...addDev], spec: pep508, quote: true };
 }
 
-/** How each package manager installs a version in a range, and which mirror it downloads from. */
+/** How each package manager installs a version in a range. */
 const MANAGERS: Readonly<Record<Manager, ManagerDef>> = {
   uv: pythonDef("uv"),
   poetry: pythonDef("poetry"),
   npm: {
     command: ["npm", "install", "--save-dev"],
-    mirror: { key: "mirrors.npm" },
     spec: (c) => `${c.name}@${c.range.replaceAll(",", " ")}`,
   },
   go: {
     command: ["go", "get", "-tool"],
-    mirror: { key: "mirrors.go" },
     // go get takes one version, not a range: the range's lower bound.
     spec: (c) => `${c.name}@v${semver(parseRange(c.range)?.lower?.version ?? [])}`,
   },
@@ -234,51 +247,34 @@ function manualCommand(change: ToolChange): PlannedCommand {
   return { display: `${how}（請自行執行）` };
 }
 
-interface CommandContext {
-  mirrorOf: (key: string) => string;
-  /** The lockfiles that tell uv from Poetry. */
-  exists: FileExists;
-}
-
-/** The command as printed: run from the component's directory, and where its packages come from. */
+/** The command as printed: run from the component's directory. */
 function displayOf(manager: ManagerDef, request: PackageRequest): string {
   const where = request.dir === "" ? "" : `cd ${request.dir.replace(/\/$/, "")} && `;
   const shown = [manager.command[0] ?? "", ...request.args].map((a) => (manager.quote ? quoted(a) : a)).join(" ");
-  const from = "where" in manager.mirror ? manager.mirror.where(request.dir) : (request.mirror ?? "");
-  return `${where}${shown}（鏡像：${from}）`;
+  return `${where}${shown}`;
 }
 
-function managerCommand(group: readonly ToolChange[], language: Managed, ctx: CommandContext) {
+/** `exists` tells uv from Poetry by the component's lockfiles. */
+function managerCommand(group: readonly ToolChange[], language: Managed, exists: FileExists) {
   const dir = group[0]?.dir ?? "";
-  const python = language === "python" ? pythonManager(dir, ctx.exists) : undefined;
+  const python = language === "python" ? pythonManager(dir, exists) : undefined;
   const manager = MANAGERS[python ?? (language === "typescript" ? "npm" : "go")];
   const args = [...manager.command.slice(1), ...group.map((c) => manager.spec(c))];
   const request: PackageRequest = { language, ...(python ? { manager: python } : {}), dir, args };
-  if ("key" in manager.mirror) request.mirror = ctx.mirrorOf(manager.mirror.key);
-  const sumdb = language === "go" ? ctx.mirrorOf("mirrors.gosumdb") : "";
-  if (sumdb !== "") request.sumdb = sumdb;
   return { display: displayOf(manager, request), request };
 }
 
 const isManaged = (c: ToolChange): c is ToolChange & { language: Managed } =>
   c.version !== undefined && c.language !== "java";
 
-function commandsFor(
-  changes: readonly ToolChange[],
-  global: Record<string, EffectiveItem>,
-  exists: FileExists,
-): PlannedCommand[] {
-  const mirrorOf = (key: string) => {
-    const value = global[key]?.value;
-    return typeof value === "string" ? value : "";
-  };
+function commandsFor(changes: readonly ToolChange[], exists: FileExists): PlannedCommand[] {
   const groups = new Map<string, (ToolChange & { language: Managed })[]>();
   for (const change of changes.filter(isManaged)) {
     const id = `${change.language}|${change.dir}`;
     groups.set(id, [...(groups.get(id) ?? []), change]);
   }
   const managed = [...groups.values()].flatMap((group) =>
-    group[0] ? [managerCommand(group, group[0].language, { mirrorOf, exists })] : [],
+    group[0] ? [managerCommand(group, group[0].language, exists)] : [],
   );
   return [...managed, ...changes.filter((c) => !isManaged(c)).map(manualCommand)];
 }
@@ -304,7 +300,7 @@ export async function planStandardUpgrade(options: UpgradeOptions): Promise<Upgr
   const redundant = redundantOverrides(t, before, after);
   const declarationEdits: Repair[] = [
     { op: "set", file: DECLARATION_FILE, path: ["standard"], value: t.to.id },
-    ...redundant.map((r): Repair => ({ op: "delete", file: DECLARATION_FILE, path: r.path })),
+    ...uniquePaths(redundant).map((path): Repair => ({ op: "delete", file: DECLARATION_FILE, path })),
   ];
   const configRepairs = after.findings.flatMap((f) => f.repairs ?? []);
   const tools = toolChanges(options.cwd, t, after);
@@ -316,7 +312,7 @@ export async function planStandardUpgrade(options: UpgradeOptions): Promise<Upgr
     redundant,
     newFindings,
     tools,
-    commands: commandsFor(tools, after.resolution?.global ?? {}, (file) => existsSync(join(options.cwd, file))),
+    commands: commandsFor(tools, (file) => existsSync(join(options.cwd, file))),
     changes: await planChanges(options.cwd, [...declarationEdits, ...configRepairs]),
   };
 }
@@ -378,7 +374,7 @@ export function renderUpgrade(plan: UpgradePlan): string {
     ...section("新的錯誤或偏離：", plan.newFindings.map(findingLine), "無"),
     ...section("需要調整的工具版本：", plan.tools.map(toolLine), "無"),
     ...section(
-      "需要執行的套件管理指令（--apply 會透過內部鏡像執行）：",
+      "需要執行的套件管理指令（--apply 會執行）：",
       plan.commands.map((c) => c.display),
       "無",
     ),
@@ -399,7 +395,7 @@ async function runCommands(tools: ToolRunner, commands: readonly PlannedCommand[
 
 /**
  * `devguard standard upgrade [目標版本] [--apply]` (SPEC §5.5): previews by default; `--apply` writes the declaration
- * and config files, then runs the package-manager commands through the internal mirror. Never asks: a preview with
+ * and config files, then runs the package-manager commands. Never asks: a preview with
  * changes pending exits 1, so CI can tell an upgrade is due (SPEC §11). Returns the exit code.
  */
 export async function runStandardUpgrade(options: UpgradeOptions): Promise<number> {

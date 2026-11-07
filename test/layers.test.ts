@@ -36,7 +36,6 @@ describe("fix layers (SPEC §9)", () => {
       "settings-java",
       "settings-typescript",
       "gitattributes",
-      "mirrors",
       "claude-code",
       "vscode",
     ]);
@@ -61,12 +60,11 @@ describe("runCheck", () => {
       "settings-typescript",
       "tool-versions",
       "gitattributes",
-      "mirrors",
+      "credentials",
       "claude-code",
       "vscode",
       "code",
       "tests",
-      "vuln",
     ]);
   });
 

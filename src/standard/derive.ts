@@ -14,6 +14,8 @@ export interface Derivation {
   set?: PerLanguage<Readonly<Record<string, ItemValue>>>;
   /** Items a language no longer has. */
   drop?: PerLanguage<readonly string[]>;
+  /** Repo-wide items the standard no longer has. */
+  dropGlobal?: readonly string[];
   /** Alternatives added to a `choice` item's `allowed`, e.g. a new type checker. */
   allow?: PerLanguage<Readonly<Record<string, readonly string[]>>>;
   /** Items the base's language does not have yet, appended after its own. */
@@ -33,9 +35,16 @@ export function deriveStandard(base: Standard, derivation: Derivation): Standard
   return {
     id: derivation.id,
     ...(derivation.upgradesTo === undefined ? {} : { upgradesTo: derivation.upgradesTo }),
-    global: base.global,
+    global: deriveGlobal(base, derivation.dropGlobal ?? []),
     languages,
   };
+}
+
+function deriveGlobal(base: Standard, drop: readonly string[]): Standard["global"] {
+  for (const key of drop) {
+    if (!Object.hasOwn(base.global, key)) throw new Error(`${base.id} has no global item ${key}`);
+  }
+  return Object.fromEntries(Object.entries(base.global).filter(([key]) => !drop.includes(key)));
 }
 
 /** The new values `derivation` gives the language's items: `everyLanguage` (less the optional ones it lacks), then `set`. */

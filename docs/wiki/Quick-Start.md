@@ -45,29 +45,22 @@ devguard draft          # 掃描既有專案自動產生草稿；新專案亦可
 
 # 2. 安裝並鎖定該語言的開發工具（詳見下方各語言章節）
 
-# 3. 產生三道防線與工具設定檔（.vscode/、.claude/、工具設定、鏡像設定、git hooks）
+# 3. 產生三道防線與工具設定檔（.vscode/、.claude/、工具設定、git hooks）
 devguard install        # 互動式預覽 diff，確認後寫入；非互動環境可加 --yes
 
 # 4. 執行檢查與修正
 devguard check          # 執行宣告、設定、依賴、工具版本與程式碼檢查（lint / format / typecheck）
 devguard fix            # 自動修正設定檔（保留註解與順序）
 devguard fix --code     # 自動修正程式碼排版與可自動修復的 lint 問題
-devguard check --full   # 加上完整測試、行/分支覆蓋率門檻與（開啟時的）弱點掃描
+devguard check --full   # 加上完整測試與行/分支覆蓋率門檻
 
 # 5. 檢查本機開發環境
-devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code 版本、Go 鏡像、帳密環境變數
+devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code 版本、Java 執行環境
 ```
 
 > **重要提醒**：
 > - **先設定 `.gitignore`**：`devguard` 會透過 `git ls-files` 取得專案檔案清單。執行 `devguard draft` 或 `check` 前，請確保 `.gitignore` 已忽略 `.venv/`、`node_modules/`、`target/`、`build/`、`dist/`、`coverage/` 等目錄，避免第三方套件被當成專案元件。
-> - **公司網路外開發（無內部 Nexus 鏡像）**：預設標準 `team@1.0.0` 要求套件鏡像指向內部 Nexus。若在外部環境測試或開發，請在 `.devguard.yaml` 的 `mirrors` 區塊覆寫為公開來源並寫明 `reason`（會記錄為「偏離」，不會阻擋 `check`）：
->   ```yaml
->   mirrors:
->     pypi:
->       value: https://pypi.org/simple
->       reason: "公司網路外開發，沒有內部 Nexus 可用"
->   ```
->   npm 不需要覆寫：devguard 不檢查專案 `.npmrc` 的 `registry=`，套件來源由使用者層級的 npm 設定決定。
+> - **套件來源（鏡像）**：devguard 不檢查也不寫入任何套件來源設定。在企業內網使用內部鏡像時，請在使用者層級設定（例如 `npm config set registry`、uv 的 `UV_DEFAULT_INDEX`、`go env -w GOPROXY`、`~/.m2/settings.xml`），不要寫進專案的設定檔。
 
 ---
 
@@ -90,7 +83,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.2.0
+standard: team@1.3.0
 components:
   - path: ./
     language: python
@@ -124,13 +117,7 @@ python_version = "3.11"
 
 [tool.coverage.run]
 branch = true
-
-[[tool.uv.index]]
-name = "nexus"
-url = "https://nexus.example.internal/repository/pypi-proxy/simple"
-default = true
 ```
-Poetry 專案（最近的 lockfile 是 `poetry.lock`）改為寫入 `[[tool.poetry.source]]`（`name = "nexus"`、同一個 `url`、`priority = "primary"`），不寫 `[[tool.uv.index]]`。
 同時建立 `.gitattributes`（`* text=auto eol=lf`）、`.vscode/`（設定 Ruff 為預設 formatter、存檔執行 `fixAll` 與 `organizeImports`、指定 `.venv` 直譯器）、`.claude/` 與 git hooks。
 
 #### 檢查與修正指令
@@ -151,21 +138,16 @@ Poetry 專案（最近的 lockfile 是 `poetry.lock`）改為寫入 `[[tool.poet
   ```bash
   golangci-lint --version   # 確認在 >=2.12,<3 範圍內
   ```
-- 在 `go.mod` 以 `tool` directive 鎖定 `gofumpt`、`goimports`、`govulncheck`，並確保 `go.mod` / `go.sum` 已提交且 `go mod tidy -diff` 乾淨：
+- 在 `go.mod` 以 `tool` directive 鎖定 `gofumpt`、`goimports`，並確保 `go.mod` / `go.sum` 已提交且 `go mod tidy -diff` 乾淨：
   ```bash
   go mod init example.com/my-service
-  go get -tool mvdan.cc/gofumpt@latest golang.org/x/tools/cmd/goimports@latest golang.org/x/vuln/cmd/govulncheck@latest
+  go get -tool mvdan.cc/gofumpt@latest golang.org/x/tools/cmd/goimports@latest
   go mod tidy
-  ```
-- 設定本機 Go 鏡像環境變數（使用者層級設定，CLI 不自動修改，`devguard doctor` 會檢查）：
-  ```bash
-  go env -w GOPROXY=https://nexus.example.internal/repository/go-proxy/
-  go env -w GOSUMDB="sum.golang.org https://nexus.example.internal/repository/go-sumdb-proxy/"
   ```
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.2.0
+standard: team@1.3.0
 components:
   - path: ./
     language: go
@@ -241,7 +223,7 @@ formatters:
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.2.0
+standard: team@1.3.0
 components:
   - path: ./
     language: typescript
@@ -256,7 +238,6 @@ components:
 1. 執行 `devguard install` 會**自動建立或修補（`managed`）**：
    - `tsconfig.json`：設定 `strict: true`、`noUncheckedIndexedAccess: true`、`noImplicitOverride: true`、`noFallthroughCasesInSwitch: true`
    - `.prettierrc`：`{ "printWidth": 120, "endOfLine": "lf" }`（若選用 Biome 則修補 `biome.json`）
-   - `.npmrc`：不寫入 `registry=`，套件來源交給使用者層級的 npm 設定；只在 `mirrors.auth: env` 時寫入 `:_auth=${NEXUS_NPM_AUTH}` 的帳密引用
    - `.vscode/`：設定 Prettier / Biome 為預設 formatter、存檔執行 `source.fixAll.eslint`、指定 `js/ts.tsdk.path` 為 `node_modules/typescript/lib`
 2. **手動建立程式碼設定檔（`snippet`）**：`eslint.config.js` 與 `vitest.config.ts` 是 JavaScript/TypeScript 程式碼，CLI 只會印出應套用的片段，不會自動改寫檔案。建議範本如下：
    ```js
@@ -333,7 +314,6 @@ components:
 1. 執行 `devguard install` 會**自動產生或修補**：
    - `checkstyle.xml`（`generated`）：由 CLI 全權產生，內含 `CyclomaticComplexity`（上限 10）與 `IllegalImport`（禁用 `sun.*`）
    - `pmd-ruleset.xml`（`generated`）：由 CLI 全權產生，引用 `rulesets/java/quickstart.xml` 並設定 `CognitiveComplexity`（`reportLevel = 15`）
-   - `.mvn/maven.config` 與 `.mvn/settings.xml`（`generated`，Maven 專案）：設定內部 Maven 鏡像與 `${env.NEXUS_USERNAME}` / `${env.NEXUS_PASSWORD}`
    - `lombok.config`（`managed`，當專案使用 Lombok 時）：自動加上 `lombok.addLombokGeneratedAnnotation = true`，讓 JaCoCo 排除 Lombok 產生的程式碼
    - `.vscode/`（`managed`）：關閉 `[java].editor.formatOnSave`（避免 IDE 格式化與 Spotless Palantir 衝突）、將 `java.checkstyle.configuration` 與 `java.checkstyle.version` 同步至建置設定，並在 `tasks.json` 加入 `standards: format (Spotless)`
 2. **手動加入建置檔（`snippet`）**：`pom.xml` 與 `build.gradle(.kts)` 為建置檔，CLI 不會自動修改，只會印出提示片段。以 Maven `pom.xml` 為例，需設定：

@@ -57,14 +57,12 @@ describe("VS Code extensions installed (SPEC §7.2 環境檢查)", () => {
     expect(code.calls[0]?.file).toBe("code");
   });
 
-  it("a missing recommended extension is a hint pointing at the internal marketplace", async () => {
+  it("a missing recommended extension is a hint with the command that installs it", async () => {
     const findings = await doctor(repo(PYTHON), fakeCode(["ms-python.python", "charliermarsh.ruff"]));
     expect(rules(findings)).toEqual(["hint:environment/vscode-extension-missing"]);
     expect(findings[0]?.message).toContain("ms-python.mypy-type-checker");
     expect(findings[0]?.message).toContain("若已安裝但被停用，請在 VS Code 中啟用");
-    expect(findings[0]?.fix).toContain(
-      "https://vsmarketplace.example.internal/items?itemName=ms-python.mypy-type-checker",
-    );
+    expect(findings[0]?.fix).toBe("code --install-extension ms-python.mypy-type-checker");
   });
 
   it("an installed extension the standard does not recommend is a hint", async () => {

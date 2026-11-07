@@ -21,7 +21,7 @@ export interface EffectiveItem {
 /**
  * The value an item holds the component to: the declared one, unless it is invalid or a widening without a valid
  * reason (the declaration layer reports those), in which case the standard's own value. The one rule for every layer
- * that acts on a declared value (coverage threshold, tool version range, vulnerability threshold).
+ * that acts on a declared value (coverage threshold, tool version range).
  */
 export function valueInForce(standardValue: unknown, item: EffectiveItem | undefined): unknown {
   if (!item || item.status === "invalid") return standardValue;
@@ -47,6 +47,13 @@ export interface Resolution {
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Items a newer standard dropped because devguard no longer checks them (#64): the internal mirrors and the
+ * vulnerability scans. Declaring one under a standard without it is pointless rather than wrong, so it is a hint.
+ */
+const RETIRED =
+  /^(mirrors\.(auth|pypi|npm|go|gosumdb|govulndb|osv|maven|nvd|tools|vscode)|deps\.(vulnScan|vulnFailOn|ignoredVulns)|tools\.govulncheck)$/;
 
 const fmt = (v: unknown): string => (Array.isArray(v) ? `[${v.map(fmt).join(", ")}]` : JSON.stringify(v));
 
@@ -165,6 +172,11 @@ class Resolver {
     for (const override of overrides) {
       const at: Partial<Finding> = { component, line: override.line };
       const item = defs[override.key];
+      if (!item && RETIRED.test(override.key)) {
+        const message = `「${override.key}」已不在${where}標準中：devguard 不再檢查內部鏡像與弱點掃描`;
+        this.add("hint", "declaration/retired-item", message, { ...at, fix: `從 ${this.file} 刪除這一項` });
+        continue;
+      }
       if (!item) {
         this.add("error", "declaration/unknown-item", `「${override.key}」不是${where}標準中的項目`, at);
         continue;
@@ -215,7 +227,7 @@ function isLanguage(v: string): v is Language {
 }
 
 /**
- * `ignore:` leaves a component's files out of the file-based checks but never its tests or vulnerability scan (#35).
+ * `ignore:` leaves a component's files out of the file-based checks but never its tests (#35).
  * An entry covering the component's whole directory therefore skips all its file checks, which is worth saying.
  */
 function hintIgnoredComponent(
@@ -230,7 +242,7 @@ function hintIgnoredComponent(
   r.add(
     "hint",
     "declaration/ignored-component",
-    `${name}：ignore 的「${entry}」涵蓋整個元件目錄，這個元件的檔案檢查都會略過；測試與弱點掃描仍會執行`,
+    `${name}：ignore 的「${entry}」涵蓋整個元件目錄，這個元件的檔案檢查都會略過；測試仍會執行`,
     { line, component: name },
   );
 }

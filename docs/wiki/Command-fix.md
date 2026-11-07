@@ -46,7 +46,7 @@ devguard fix --code [檔案…] [--yes] [--cwd <dir>]
 
 ### 執行流程
 
-1. 執行可修正的檢查層（`FIX_LAYERS`）：`declaration`、`settings-python`、`settings-go`、`settings-java`、`settings-typescript`、`gitattributes`、`mirrors`、`claude-code`、`vscode`。
+1. 執行可修正的檢查層（`FIX_LAYERS`）：`declaration`、`settings-python`、`settings-go`、`settings-java`、`settings-typescript`、`gitattributes`、`claude-code`、`vscode`。
 2. 宣告不存在或無法解析時，印出宣告的錯誤並以 exit `1` 結束。沒有宣告就無法判斷要修成什麼樣子，請先執行 [`draft`](Command-draft.md)。
 3. 收集每筆 finding 附帶的修補（repair），依**檔案類別**決定怎麼處理（見下表）。
 4. 檢查 devguard 自己的 git hook（`pre-commit`、`pre-push`）：被改過的才重新產生，並保留原本呼叫 CLI 的指令。從未安裝的 hook 交給 `install`；別人寫的 hook 不碰。
@@ -54,7 +54,7 @@ devguard fix --code [檔案…] [--yes] [--cwd <dir>]
 
 | 檔案類別 | 對象 | `fix` 的處理 |
 |---|---|---|
-| `generated`：CLI 全權產生 | `checkstyle.xml`、`pmd-ruleset.xml`（與 `pmd.xml`、`config/pmd/*.xml`）、`dependency-check-suppressions.xml`、`.mvn/settings.xml`、`.mvn/maven.config`、`.claude/rules/*`、`.claude/skills/standards-doctor/*`、`.githooks/*`、git hook 檔 | 整份重新產生，檔頭加上 `由 CLI 產生（devguard），請勿手動修改` |
+| `generated`：CLI 全權產生 | `checkstyle.xml`、`pmd-ruleset.xml`（與 `pmd.xml`、`config/pmd/*.xml`）、`.claude/rules/*`、`.claude/skills/standards-doctor/*`、`.githooks/*`、git hook 檔 | 整份重新產生，檔頭加上 `由 CLI 產生（devguard），請勿手動修改` |
 | `managed`：結構化的共用檔 | `pyproject.toml`、`.golangci.yml`、`tsconfig.json`、`.prettierrc`、`biome.json`、`package.json`、`.gitattributes`、`.npmrc`、`.vscode/*.json`、`.claude/settings.json` 等 | 只改 CLI 管理的 key，保留註解、空行與欄位順序 |
 | `snippet`：建置檔與程式碼形式的設定 | `pom.xml`、`build.gradle(.kts)`、`eslint.config.js`、`vitest.config.ts` 等 | **不寫入**，只印出要手動套用的片段 |
 | `user`：使用者層級設定 | repo 以外的路徑，例如 `~/.m2/settings.xml` | **不寫入**，只印出修改說明 |
@@ -157,7 +157,7 @@ $ devguard fix --code src/mul.ts --yes
 | 現象 | 原因與處理 |
 |---|---|
 | 在 Claude Code 或 CI 中執行 `fix`，exit `1` 且沒有寫入 | 非互動環境需要 `--yes` |
-| `npm install` 連不上 `nexus.example.internal` | 舊版 devguard 的 `fix` 會在專案 `.npmrc` 寫入 `registry=https://nexus.example.internal/…`（標準中的範例網址）。現在 `fix` 不再寫入 `registry=`，套件來源交給使用者層級的 npm 設定；請自行刪除專案 `.npmrc` 中這一行 |
+| 安裝套件時連不上 `nexus.example.internal` | 舊版 devguard 的 `fix` 會把標準中的範例鏡像網址寫進專案：`.npmrc` 的 `registry=`、`pyproject.toml` 的 `[[tool.uv.index]]` / `[[tool.poetry.source]]`（`name = "nexus"`）、`.mvn/settings.xml` 與 `.mvn/maven.config`。現在 devguard 不再寫入任何套件來源（#65、#64），套件來源交給使用者層級的設定；請自行刪除這些設定 |
 | `fix` 之後 `check` 仍報 `settings/missing-file`（`eslint.config.js`、`vitest.config.ts`） | 程式碼形式的設定檔屬於 `snippet`，`fix` 只印出片段，要自己建立或修改 |
 | 改了 `.devguard.yaml` 之後 `check` 報 `.claude/rules/…` 不一致 | rules 檔會列出元件的標準與偏離，宣告改了就要重新產生。執行 `devguard fix --yes` |
 

@@ -25,8 +25,6 @@ components:                     # 元件清單（目錄 + 語言）
         value: 60
         reason: "舊程式碼補測試中，2027 Q1 回到 80"
         until: 2027-03-31
-mirrors:
-  auth: env                     # none（預設）| env
 ignore:                         # 選填：排除的目錄、檔案或 glob
   - examples/
   - third_party/
@@ -64,7 +62,7 @@ ignore:                         # 選填：排除的目錄、檔案或 glob
 
 `ignore` 不影響的範圍：
 
-- 測試與弱點掃描以元件為單位：每個宣告的元件照常執行，`check --full` 仍是完整的檢查。`ignore` 的某一項涵蓋整個元件目錄時，`check` 發出 `declaration/ignored-component` **提示**，說明這個元件的檔案檢查都會略過。
+- 測試以元件為單位：每個宣告的元件照常執行，`check --full` 仍是完整的檢查。`ignore` 的某一項涵蓋整個元件目錄時，`check` 發出 `declaration/ignored-component` **提示**，說明這個元件的檔案檢查都會略過。
 - 以整個目錄為單位執行的工具（元件的 `eslint .`、`tsc`、`mypy` 等）與覆蓋率工具（Vitest / Jest 的 `coverage.include`、coverage.py、JaCoCo）依各自的設定決定範圍；元件目錄內要排除的檔案，也要在該工具的設定中排除。
 
 `ignore` 不是非空字串的清單時（例如寫成單一字串、對應表，或含有數字、空字串），回報 `declaration/invalid` **錯誤**，整份清單不生效。
@@ -80,15 +78,17 @@ ignore:                         # 選填：排除的目錄、檔案或 glob
 | `max`（上限） | 數值越小越嚴格；放大算放寬 | `complexity.cyclomatic`、`complexity.cognitive` |
 | `min`（下限） | 數值越大越嚴格；縮小算放寬 | `coverage.lines` |
 | `minVersion`（最低版本） | 版本號越高越嚴格；降低算放寬 | `python.minVersion`、`go.minVersion`、`node.minVersion`、`java.minVersion`、`claude.minVersion` |
-| `bool`（布林） | `true` 比 `false` 嚴格；把預設 `true` 改為 `false` 算放寬 | `typecheck.strict`、`deps.lockfile`、`deps.vulnScan` |
-| `severity`（嚴重度門檻） | `any` < `low` < `moderate` < `high` < `critical`；門檻拉高算放寬 | `deps.vulnFailOn` |
+| `bool`（布林） | `true` 比 `false` 嚴格；把預設 `true` 改為 `false` 算放寬 | `typecheck.strict`、`deps.lockfile` |
+| `severity`（嚴重度門檻） | `any` < `low` < `moderate` < `high` < `critical`；門檻拉高算放寬 | `deps.vulnFailOn`（`team@1.2.0` 以前） |
 | `list`（規則集 / 禁用清單） | 新增項目算收緊；移除預設項目算放寬 | `lint.rules`、`deps.banned`、`deps.bannedApis`、`typecheck.options` |
 | `choice`（工具選擇） | 改用 `allowed` 清單內的工具算合法替代；改用清單外的工具算放寬 | `lint.tool`、`typecheck.tool`、`test.tool`、`deps.manager`、`build.tool` |
 | `versionRange`（版本範圍） | 範圍落在預設範圍內算收緊或相同；超出預設上下界算放寬 | `tools.ruff`、`tools.eslint`、`tools.golangci-lint` 等 |
-| `style`（風格項目） | 無嚴格或寬鬆之分，可直接寫值，不算偏離 | `format.*`、`mirrors.auth` |
-| 鏡像網址 | 改成預設鏡像同一台主機上的其他 repository 視同風格；改成其他主機算放寬（必須寫理由） | `mirrors.pypi` / `npm` / `go` / `maven` 等 |
+| `style`（風格項目） | 無嚴格或寬鬆之分，可直接寫值，不算偏離 | `format.*` |
+| 鏡像網址（`team@1.2.0` 以前） | 改成預設鏡像同一台主機上的其他 repository 視同風格；改成其他主機算放寬（必須寫理由） | 頂層 `mirrors:` 的 `pypi` / `npm` / `go` / `maven` 等 |
 
-此外，`ignoredVulns`（`deps.ignoredVulns`）中的每一筆忽略弱點都必須寫明 `{ id, reason, until }`，比照偏離與到期日規則檢查。
+此外，`team@1.2.0` 以前的 `ignoredVulns`（`deps.ignoredVulns`）中的每一筆忽略弱點都必須寫明 `{ id, reason, until }`，比照偏離與到期日規則檢查。
+
+`team@1.3.0` 移除了頂層 `mirrors:` 與弱點掃描項目（#64）；宣告中仍寫著它們時，`check` 只發出 `declaration/retired-item` **提示**，`devguard standard upgrade` 會把它們刪除。
 
 ### 偏離（Deviation）與錯誤判定
 

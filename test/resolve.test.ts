@@ -147,7 +147,7 @@ describe("resolveDeclaration — ignore and declared components (#35)", () => {
     expect(hints("['**']")).toHaveLength(3);
     const [finding] = resolveText(decl("[web/api]")).findings;
     expect(finding?.message).toContain("web/api");
-    expect(finding?.message).toContain("測試與弱點掃描仍會執行");
+    expect(finding?.message).toContain("測試仍會執行");
   });
 
   it("does not hint for entries that cover only part of a component", () => {

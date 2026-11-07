@@ -10,7 +10,7 @@ export interface CheckScope {
   files?: readonly string[];
   /** Run only this category. */
   only?: CodeCategory;
-  /** Run every check, including slow ones a layer may otherwise skip (tests, coverage, vulnerability scans). */
+  /** Run every check, including slow ones a layer may otherwise skip (tests, coverage). */
   full: boolean;
 }
 
@@ -31,8 +31,8 @@ export interface LayerContext {
 
 /**
  * The files in scope before `ignore:` applies: those given on the command line, otherwise every file in the repo.
- * The component-wide layers (tests, vulnerability scans) pick components from these, so `ignore:` never removes a
- * declared component's tests or scan (#35).
+ * The component-wide layer (tests) picks components from these, so `ignore:` never removes a declared component's
+ * tests (#35).
  */
 export async function filesInScope(ctx: LayerContext): Promise<readonly string[]> {
   return ctx.scope.files ?? (await ctx.files());

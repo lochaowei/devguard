@@ -9,14 +9,14 @@
 
 指令：
   check [檔案…]  檢查專案宣告（.devguard.yaml）與程式碼；指定檔案時只檢查這些檔案
-  doctor         check 加上環境檢查（工具、git hook、VS Code、Claude Code、鏡像帳密、標準更新）；只回報並附上修正指令
+  doctor         check 加上環境檢查（工具、git hook、VS Code、Claude Code、Java 執行環境、標準更新）；只回報並附上修正指令
   fix            修正設定（工具設定檔、.vscode/、.claude/、git hook）：先預覽，確認後套用；--yes 直接套用
   fix --code [檔案…]  修正程式碼（格式化與可自動修正的 lint），修正後回報剩餘問題
   install        產生各防線的設定並安裝 git pre-commit 與 pre-push hook：先預覽，確認後套用；--yes 直接套用
   hook <名稱>    給 hook 呼叫：git-pre-commit|git-pre-push|claude-session-start|claude-post-edit|claude-stop
   draft          沒有 .devguard.yaml 時，依偵測到的元件與工具設定產生宣告草稿（不覆寫既有檔案）
   standard upgrade [目標版本]
-                 預覽標準升級；--apply 才修改宣告與設定檔，並透過內部鏡像執行套件管理指令
+                 預覽標準升級；--apply 才修改宣告與設定檔，並執行套件管理指令
 ```
 
 依導入與使用的順序：

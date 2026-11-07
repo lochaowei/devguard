@@ -13,11 +13,9 @@ export type FileCategory = "generated" | "managed" | "snippet" | "user";
 const GENERATED: readonly RegExp[] = [
   /(^|\/)checkstyle\.xml$/,
   /(^|\/)(pmd-ruleset\.xml|pmd\.xml|config\/pmd\/ruleset\.xml|config\/pmd\/pmd\.xml)$/,
-  /(^|\/)dependency-check-suppressions\.xml$/,
   /^\.claude\/rules\//,
   /^\.claude\/skills\/standards-doctor\//,
   /^\.githooks\//,
-  /(^|\/)\.mvn\/(settings\.xml|maven\.config)$/,
 ];
 
 const outsideRepo = (file: string): boolean => /^([A-Za-z]:|[\\/]|~)/.test(file) || file.split(/[\\/]/).includes("..");

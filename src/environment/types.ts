@@ -6,7 +6,7 @@ import type { Finding } from "../report/finding.ts";
 export interface EnvironmentContext extends LayerContext {
   /** Runs git, `code`, `claude`...; tests pass a fake. */
   exec: Exec;
-  /** The process environment (mirror credentials, SPEC §10.3); tests pass their own. */
+  /** The process environment (e.g. the git hooks check reads it); tests pass their own. */
   env: EnvVars;
 }
 

@@ -1,12 +1,12 @@
 import type { Resolution } from "./declaration/resolve.ts";
 import { claudeCodeLayer } from "./layers/claude-code.ts";
 import { codeLayer } from "./layers/code.ts";
+import { credentialsLayer } from "./layers/credentials.ts";
 import { declarationLayer } from "./layers/declaration.ts";
 import { depsLayer } from "./layers/deps.ts";
 import { gitattributesLayer } from "./layers/gitattributes.ts";
 import { pythonSettingsLayer } from "./layers/settings-python.ts";
 import { goSettingsLayer } from "./layers/settings-go.ts";
-import { mirrorsLayer } from "./layers/mirrors.ts";
 import { javaSettingsLayer } from "./layers/settings-java.ts";
 import { testsLayer } from "./layers/tests.ts";
 import { typescriptSettingsLayer } from "./layers/settings-typescript.ts";
@@ -14,7 +14,6 @@ import { toolVersionsLayer } from "./layers/tool-versions.ts";
 import { fixLayers, type CheckLayer, type CheckScope, type LayerContext, type LayerResult } from "./layers/types.ts";
 import { uncoveredFilesLayer } from "./layers/uncovered.ts";
 import { vscodeLayer } from "./layers/vscode.ts";
-import { vulnLayer } from "./layers/vuln.ts";
 import type { Finding } from "./report/finding.ts";
 import type { ReportInput } from "./report/render.ts";
 import { listRepoFiles } from "./repo/files.ts";
@@ -37,14 +36,13 @@ export const CHECK_LAYERS: readonly CheckLayer[] = [
   typescriptSettingsLayer,
   toolVersionsLayer,
   gitattributesLayer,
-  mirrorsLayer,
+  credentialsLayer,
   claudeCodeLayer,
   vscodeLayer,
   // Layers above check the setup; code checks run last.
   codeLayer,
-  // Tests, coverage and vulnerability scans run only with --full.
+  // Tests and coverage run only with --full.
   testsLayer,
-  vulnLayer,
 ];
 
 /** The layers `devguard fix` runs to find what to repair: the fixable ones of CHECK_LAYERS (`CheckLayer.fixable`). */
@@ -126,12 +124,11 @@ export function checkDeclaration(cwd: string, today: string): Promise<CheckResul
 }
 
 /**
- * Tests, coverage and vulnerability scans alone, as `check --full` runs them (SPEC §7.1, for the pre-push hook): the
- * declaration layer, then each component's tests, then the scans of components with `deps.vulnScan` on. Test failures
- * and coverage below the declared threshold are separate errors.
+ * Tests and coverage alone, as `check --full` runs them (SPEC §7.1, for the pre-push hook): the declaration layer, then
+ * each component's tests. Test failures and coverage below the declared threshold are separate errors.
  */
 export function checkTestsAndCoverage(options: Omit<CheckOptions, "scope">): Promise<CheckResult> {
-  return runCheck({ ...options, scope: { full: true } }, [declarationLayer, testsLayer, vulnLayer]);
+  return runCheck({ ...options, scope: { full: true } }, [declarationLayer, testsLayer]);
 }
 
 export function localDate(now = new Date()): string {

@@ -64,13 +64,13 @@ function addNonSource(groups: Group[], components: readonly ResolvedComponent[],
 const values = (items: Readonly<Record<string, { value: unknown }>>) =>
   Object.fromEntries(Object.entries(items).map(([k, item]) => [k, item.value]));
 
-/** The language's items plus the repo-wide ones (`mirrors.*`), as resolved from the declaration. */
-function effectiveValues(group: Group, standard: Standard, global: Record<string, unknown>): Record<string, unknown> {
+/** The language's items, as resolved from the declaration. */
+function effectiveValues(group: Group, standard: Standard): Record<string, unknown> {
   const own = group.owner.kind === "component" ? group.owner.component.effective : standard.languages[group.language];
-  return { ...global, ...values(own) };
+  return values(own);
 }
 
-function toTarget(group: Group, scope: CheckScope, standard: Standard, global: Record<string, unknown>): CodeTarget {
+function toTarget(group: Group, scope: CheckScope, standard: Standard): CodeTarget {
   // A whole component is checked as a directory; a file list is passed only when it was asked for, or when the
   // files are scattered outside any component.
   const listFiles = scope.files !== undefined || group.owner.kind !== "component";
@@ -82,7 +82,7 @@ function toTarget(group: Group, scope: CheckScope, standard: Standard, global: R
     ...(group.owner.kind === "component" ? { component: group.owner.component.name } : {}),
     dir: group.dir,
     language: group.language,
-    effective: effectiveValues(group, standard, global),
+    effective: effectiveValues(group, standard),
     ...(listFiles ? { files: relative([...group.files, ...(group.nonSource ?? [])]) } : {}),
     categories: new Set(categories),
   };
@@ -99,14 +99,13 @@ export interface PlannedTarget {
 export async function codeTargets(ctx: LayerContext): Promise<PlannedTarget[]> {
   const standard = ctx.resolution?.standard ?? defaultStandard();
   if (!standard) return [];
-  const global = values(ctx.resolution?.standard ? ctx.resolution.global : standard.global);
   const components = ctx.resolution?.components ?? [];
   const files = await scopedFiles(ctx);
   const grouped = groupFiles(assignFiles(components, files));
   const groups = ctx.scope.files === undefined ? grouped : addNonSource(grouped, components, files);
   return groups.flatMap((group) => {
     const checker: CodeChecker | undefined = CODE_CHECKERS[group.language];
-    const target = toTarget(group, ctx.scope, standard, global);
+    const target = toTarget(group, ctx.scope, standard);
     if (!checker || target.categories.size === 0) return [];
     return [{ checker, target, owned: [...group.files, ...(group.nonSource ?? [])] }];
   });
