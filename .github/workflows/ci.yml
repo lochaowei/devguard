@@ -1,5 +1,5 @@
 # Runs the project's own checks on every pull request and on main, so nothing merges unchecked.
-# On Windows, like release.yml: devguard ships as a Windows exe (SPEC §3.1).
+# On every OS devguard is released for (SPEC §3.1).
 name: ci
 
 on:
@@ -15,8 +15,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    runs-on: windows-latest
+  os:
+    name: check (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -34,3 +39,12 @@ jobs:
       # Dogfood: devguard checks its own declaration and code against team@1.0.0.
       - name: devguard check
         run: npm run devguard -- check
+
+  # Branch protection requires a check named "check"; it passes only when every OS passed.
+  check:
+    needs: os
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every OS passed
+        run: test "${{ needs.os.result }}" = success

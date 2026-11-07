@@ -3,7 +3,7 @@
 ## 本機開發環境需求
 
 - **Node.js**：`>= 22.18`（直接執行 `src/cli.ts` 依賴 Node 22.18+ 預設啟用的內建 TypeScript type stripping）
-- **Bun**（選用，僅打包 `.exe` 時需要）：`>= 1.2.23`。PATH 上是 `bun.exe` 或 `npm i -g bun` 安裝的 `bun.cmd` 都可以
+- **Bun**（選用，僅打包執行檔時需要）：`>= 1.2.23`。Windows 上 PATH 中是 `bun.exe` 或 `npm i -g bun` 安裝的 `bun.cmd` 都可以
 
 ## 常用開發指令
 
@@ -15,8 +15,8 @@
 | `npm run lint` | 執行 ESLint（`typescript-eslint/strictTypeChecked`，循環複雜度上限 10） |
 | `npm run format` / `npm run format:check` | 使用 Prettier 格式化或檢查（`printWidth: 120`、`endOfLine: "lf"`） |
 | `npm run devguard -- check` | 用 devguard 檢查 devguard 自身的設定、依賴、工具版本與程式碼 |
-| `npm run build:exe [-- x64\|arm64]` | 使用 Bun `--compile` 打包成單一 `dist/devguard-windows-<arch>.exe` |
-| `npm run smoke:exe [-- <exe>]` | 將 Node 從 `PATH` 移除後，對打包出的 `.exe` 執行 `--version` 與範例專案 `check` |
+| `npm run build:exe [-- <arch>\|<os>-<arch> …]` | 使用 Bun `--compile` 打包成單一 `dist/devguard-<os>-<arch>`（Windows 加 `.exe`）。不帶參數時打包這台機器作業系統的 x64 與 arm64；`<os>` 是 `windows`、`linux` 或 `macos` |
+| `npm run smoke:exe [-- <執行檔>]` | 將 Node 從 `PATH` 移除後，對打包出的執行檔（預設是這台機器對應的那個）執行 `--version` 與範例專案 `check` |
 | `npm run t2:probe` / `npm run build:t2-probe` | SPEC §13 T2：Windows 子程序行為探測（測試 `.cmd` shim、stdin 管線、大量 stdout、中文路徑等） |
 
 ---
@@ -82,17 +82,19 @@ src/
 
 ---
 
-## 打包單一 `.exe` 與發佈流程（GitHub Releases）
+## 打包單一執行檔與發佈流程（GitHub Releases）
 
 1. **本機打包與驗證**：
    ```bash
-   npm run build:exe          # 以 Bun 打包 dist/devguard-windows-x64.exe 與 arm64
-   npm run smoke:exe          # 將 Node 從 PATH 移除後，驗證 exe 可獨立執行 --version 與 check
+   npm run build:exe          # 以 Bun 打包這台機器作業系統的 x64 與 arm64，例如 dist/devguard-linux-x64
+   npm run build:exe -- macos-arm64   # 交叉編譯其他平台（Windows 目標交叉編譯時沒有圖示與版本資訊）
+   npm run smoke:exe          # 將 Node 從 PATH 移除後，驗證這台機器的執行檔可獨立執行 --version 與 check
    ```
 2. **正式發佈新版本**：
    - 執行 `npm version <x.y.z> --no-git-tag-version`（同時更新 `package.json` 與 `package-lock.json`；`devguard --version` 直接讀 `package.json`），提交並合併至 `main`。
    - 建立並推送相同版本的 Git tag（`git tag v<x.y.z> && git push origin v<x.y.z>`）。
-   - GitHub Actions 的 [release workflow](../../.github/workflows/release.yml) 會在 Windows runner 上執行完整測試、建置 `devguard-windows-x64.exe` 與 `devguard-windows-arm64.exe`、執行 smoke test，並自動建立 GitHub Release 附上兩個 `.exe` 與 `SHA256SUMS.txt`（若 tag 與 `package.json` 版本不一致則會中止失敗）。
+   - GitHub Actions 的 [release workflow](../../.github/workflows/release.yml) 會在 Windows、Linux（x64 與 arm64）、macOS runner 上執行完整測試、建置執行檔、對 runner 架構的執行檔執行 smoke test，並自動建立 GitHub Release 附上六個執行檔（`devguard-<windows|linux|macos>-<x64|arm64>`，Windows 加 `.exe`）與 `SHA256SUMS.txt`（若 tag 與 `package.json` 版本不一致則會中止失敗）。macOS x64 與 Windows arm64 是交叉編譯，不跑 smoke test。
+   - 修改建置方式（release workflow、`scripts/build-exe.ts`、`scripts/smoke-exe.ts`、`src/distribution.ts`）的 PR 也會跑這些建置 job，但不發佈。CI 在 Windows、Linux、macOS 上都跑完整檢查（[ADR 0001](../../docs/adr/0001-release-for-linux-and-macos.md)）。
 
 ---
 
@@ -130,3 +132,4 @@ src/
 | #26 | `devguard standard upgrade` 與棄用版本 | §5.5 | ✅ 已完成（已合併至 `main`） |
 | #27 | Bun 打包單一 `.exe`、smoke test 與 T2 探測腳本 | §3.1、§13 | ✅ Bun 1.4.4 實機建置；smoke test、T1、T2 通過（已合併至 `main`） |
 | #28 | 以 GitHub Release 發佈 `.exe`（取代原簽章與內部 Scoop bucket） | §3.1、§12 | ✅ 已完成（`.github/workflows/release.yml`，已合併至 `main`） |
+| #80 | 發佈 Linux 與 macOS 執行檔，CI 在三種作業系統上執行 | §3.1 | ✅ 已完成 |

@@ -8,21 +8,29 @@
 
 ### 一般開發者與 CI：下載單一執行檔
 
-1. 前往 [GitHub Releases](https://github.com/lochaowei/devguard/releases/latest) 下載對應架構的執行檔：
-   - x64 Windows：`devguard-windows-x64.exe`
-   - ARM64 Windows：`devguard-windows-arm64.exe`
+1. 前往 [GitHub Releases](https://github.com/lochaowei/devguard/releases/latest) 下載對應平台與架構的執行檔：
+   - Windows：`devguard-windows-x64.exe`、`devguard-windows-arm64.exe`
+   - Linux（glibc）：`devguard-linux-x64`、`devguard-linux-arm64`
+   - macOS：`devguard-macos-arm64`（Apple silicon）、`devguard-macos-x64`（Intel）
 2. （選用）使用同一 Release 附帶的 `SHA256SUMS.txt` 驗證雜湊值：
    ```powershell
    Get-FileHash .\devguard-windows-x64.exe -Algorithm SHA256
    ```
-3. 將檔案重新命名為 `devguard.exe`，並放入系統 `PATH` 中的目錄。
+   ```bash
+   sha256sum -c --ignore-missing SHA256SUMS.txt     # Linux
+   shasum -a 256 -c --ignore-missing SHA256SUMS.txt # macOS
+   ```
+3. 將檔案重新命名並放入系統 `PATH` 中的目錄：
+   - Windows：改名為 `devguard.exe`。
+   - Linux 與 macOS：改名為 `devguard`，再執行 `chmod +x devguard`。
+   - macOS：執行檔沒有簽章與公證，從瀏覽器下載的檔案會被 Gatekeeper 擋下，先執行 `xattr -d com.apple.quarantine devguard`。
 4. 確認安裝成功：
    ```bash
    devguard --version
    devguard --help
    ```
 
-> **備註**：`devguard.exe` 由 Bun 打包為獨立執行檔，**不需要安裝 Node.js**，也沒有程式碼簽章（SPEC §3.1）。更新版本時直接下載新檔覆蓋即可。
+> **備註**：`devguard` 由 Bun 打包為獨立執行檔，**不需要安裝 Node.js**，也沒有程式碼簽章（SPEC §3.1）。更新版本時直接下載新檔覆蓋即可。
 
 ### 開發 `devguard` 本身：從原始碼執行
 
