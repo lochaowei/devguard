@@ -15,7 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
+  os:
+    name: check (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -38,3 +39,12 @@ jobs:
       # Dogfood: devguard checks its own declaration and code against team@1.0.0.
       - name: devguard check
         run: npm run devguard -- check
+
+  # Branch protection requires a check named "check"; it passes only when every OS passed.
+  check:
+    needs: os
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every OS passed
+        run: test "${{ needs.os.result }}" = success
