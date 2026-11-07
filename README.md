@@ -12,7 +12,7 @@
 
 ## 目前狀態
 
-**SPEC 的指令都已實作**（`check`、`doctor`、`fix`、`install`、`hook`、`draft`、`standard upgrade`）。以 Bun 打包成單一 exe，透過 GitHub Release 發佈（見[安裝](#安裝)）。見下方[路線圖](#路線圖)與[已知限制](#已知限制)。
+**SPEC 的指令都已實作**（`check`、`doctor`、`fix`、`install`、`hook`、`draft`、`standard upgrade`）。以 Bun 打包成 Windows、Linux、macOS 的單一執行檔，透過 GitHub Release 發佈（見[安裝](#安裝)）。見下方[路線圖](#路線圖)與[已知限制](#已知限制)。
 
 - **專案宣告與草稿**：解析並檢查 `.devguard.yaml`（9 種標準項目類型、覆寫與偏離規則、到期日檢查、未涵蓋程式檔提示），以及依既有設定產生宣告草稿（`devguard draft`，含 Gradle、pnpm、yarn、Poetry、Biome、Jest、pyright、basedpyright 等工具選擇）。
 - **四語言設定檢查與一致性檢查**：Python（`pyproject.toml`、`ruff.toml`、`pyrightconfig.json`）、Go（`.golangci.yml` / `.golangci.yaml`、`go.mod`）、TypeScript（`tsconfig.json`、ESLint、Prettier、Biome、Vitest / Jest、`package.json`）、Java（`pom.xml`、`build.gradle(.kts)`、`checkstyle.xml`、PMD ruleset、`lombok.config`）與共通 `.gitattributes`（`* text=auto eol=lf`）。monorepo 的子元件沿用上層目錄的共用設定檔。
@@ -26,7 +26,12 @@
 
 ### 1. 安裝 devguard
 
-- **下載執行檔（一般開發者／CI）**：從 [GitHub Releases](https://github.com/lochaowei/devguard/releases/latest) 下載 `devguard-windows-x64.exe`（arm64 機器用 `devguard-windows-arm64.exe`），改名為 `devguard.exe` 並放進 `PATH`。可用同一個 release 中的 `SHA256SUMS.txt` 核對雜湊值。更新時下載新版取代即可。`devguard.exe` 內建執行環境，不需要安裝 Node.js，也沒有程式碼簽章（SPEC §3.1）。
+- **下載執行檔（一般開發者／CI）**：從 [GitHub Releases](https://github.com/lochaowei/devguard/releases/latest) 下載對應平台的執行檔：
+  - Windows：`devguard-windows-x64.exe`（arm64 機器用 `devguard-windows-arm64.exe`），改名為 `devguard.exe` 並放進 `PATH`。
+  - Linux：`devguard-linux-x64` 或 `devguard-linux-arm64`（glibc），改名為 `devguard`、`chmod +x devguard` 並放進 `PATH`。
+  - macOS：`devguard-macos-arm64`（Apple silicon）或 `devguard-macos-x64`（Intel），改名為 `devguard`、`chmod +x devguard` 並放進 `PATH`。執行檔沒有簽章與公證，從瀏覽器下載時先執行 `xattr -d com.apple.quarantine devguard`，否則 Gatekeeper 會擋下。
+
+  可用同一個 release 中的 `SHA256SUMS.txt` 核對雜湊值。更新時下載新版取代即可。執行檔內建執行環境，不需要安裝 Node.js，也沒有程式碼簽章（SPEC §3.1）。
 - **從原始碼執行（開發 devguard 本身）**：需要 Node.js **22.18 以上**（使用 Node 內建的 TypeScript type stripping）：
   ```bash
   npm ci
@@ -256,9 +261,9 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 
 1. 執行 `npm version <x.y.z> --no-git-tag-version`（同時更新 `package.json` 與 `package-lock.json`；`devguard --version` 直接讀 `package.json`，不必改其他檔案），提交並合併到 `main`。
 2. 推送相同版本的 tag：`git tag v<x.y.z> && git push origin v<x.y.z>`。
-3. [release workflow](.github/workflows/release.yml) 會在 Windows runner 上執行測試、建置兩個 exe、跑 smoke test，再建立 GitHub Release 並附上 exe 與 `SHA256SUMS.txt`。tag 與 `package.json` 版本不同時會失敗。
+3. [release workflow](.github/workflows/release.yml) 會在 Windows、Linux（x64 與 arm64）、macOS runner 上執行測試、建置執行檔、跑 smoke test，再建立 GitHub Release 並附上六個執行檔與 `SHA256SUMS.txt`。tag 與 `package.json` 版本不同時會失敗。修改建置方式的 PR 也會跑這些建置 job，但不發佈。
 
-本機建置：`npm run build:exe`（需要 Bun ≥1.2.23，`bun.exe` 或 npm 安裝的 `bun.cmd` 皆可），產物在 `dist/`；`npm run smoke:exe` 在 PATH 中沒有 Node 的情況下驗證 exe。
+本機建置：`npm run build:exe`（需要 Bun ≥1.2.23，Windows 上 `bun.exe` 或 npm 安裝的 `bun.cmd` 皆可），產物在 `dist/`；`npm run smoke:exe` 在 PATH 中沒有 Node 的情況下驗證這台機器對應的執行檔。
 
 ## 專案宣告 `.devguard.yaml`
 
@@ -456,9 +461,9 @@ web/ (TypeScript)
 | `npm run lint` | ESLint（typescript-eslint `strictTypeChecked`，循環複雜度上限 10） |
 | `npm run format` / `format:check` | Prettier（行寬 120、LF） |
 | `npm run devguard -- <指令>` | 從原始碼執行 CLI，例如 `npm run devguard -- check` |
-| `npm run build:exe [-- x64\|arm64]` | 用 Bun（≥ 1.2.23）打包成 `dist/devguard-windows-<arch>.exe`，含圖示與版本資訊。交叉編譯的目標沒有圖示與版本資訊（Bun 的限制） |
-| `npm run smoke:exe [-- <exe>]` | 從 PATH 移除 Node 後，對 exe 執行 `--version` 與 `check`（範例專案） |
-| `npm run t2:probe` / `build:t2-probe` | SPEC §13 T2：子程序行為探測，先在 Node 下跑基準，再打包成 `dist/t2-probe-windows-<arch>.exe` 執行比對 |
+| `npm run build:exe [-- <arch>\|<os>-<arch> …]` | 用 Bun（≥ 1.2.23）打包成 `dist/devguard-<os>-<arch>`（Windows 加 `.exe`）。不帶參數時打包這台機器作業系統的 x64 與 arm64；`<os>` 是 `windows`、`linux` 或 `macos`。Windows 執行檔含圖示與版本資訊，但交叉編譯時沒有（Bun 的限制） |
+| `npm run smoke:exe [-- <執行檔>]` | 從 PATH 移除 Node 後，對執行檔跑 `--version` 與 `check`（範例專案）；預設是這台機器對應的 `dist/devguard-<os>-<arch>` |
+| `npm run t2:probe` / `build:t2-probe` | SPEC §13 T2：子程序行為探測，先在 Node 下跑基準，再打包成 `dist/t2-probe-<os>-<arch>` 執行比對 |
 
 devguard 本身也遵守 SPEC §6.3 的 TypeScript 預設標準，並以 [.devguard.yaml](.devguard.yaml) 宣告自己（`team@1.1.0`）。`team@1.1.0` 不要求 `eslint-plugin-sonarjs`（LGPL-3.0-only，SPEC §12 第 8 項），所以 ESLint 只檢查循環複雜度，認知複雜度不檢查。
 
@@ -522,9 +527,11 @@ GLOSSARY.md              用語定義
 - [x] 實際專案測試（KEI-6、KEI-7）
 - [x] Bun 打包單一 exe、smoke test 與 T1 / T2 實機測試（§3.1、§13，#27）
 - [x] 以 GitHub Release 發佈 exe（§3.1；原本規劃的簽章與內部 Scoop bucket 已取消，#28）
+- [x] 發佈 Linux 與 macOS 執行檔，CI 在三種作業系統上執行（§3.1，#80）
 
 ### 已知限制
 
 - 多數 checker 與 fixer 只以工具的範例輸出與實際專案的設定檔測試過（ESLint、Prettier、tsc、Vitest、Ruff、mypy、pytest、`go test` 有真實執行）。
+- Linux 只發佈 glibc 執行檔，Alpine 等 musl 系統無法直接執行；macOS x64 與 Windows arm64 執行檔是交叉編譯，發佈前沒有跑 smoke test。
 
 導入前需要團隊或 IT 確認的事項見 SPEC §12，實作初期要實機測試的項目見 SPEC §13。

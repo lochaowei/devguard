@@ -1,18 +1,39 @@
-# Builds devguard.exe and publishes it as a GitHub Release when a version tag is pushed (SPEC §3.1).
+# Builds the devguard executables and publishes them as a GitHub Release when a version tag is pushed (SPEC §3.1).
 #   git tag v0.1.0 && git push origin v0.1.0
+# A pull request that changes how the executables are built runs the build jobs too, without publishing.
 name: release
 
 on:
   push:
     tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/build-exe.ts
+      - scripts/smoke-exe.ts
+      - src/distribution.ts
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
-    # Built on Windows: icon and version info can only be set when compiling for the host (SPEC §3.1).
-    runs-on: windows-latest
+  # Each OS builds on its own runner, tests there and smoke-tests the executable for the runner's architecture. The
+  # other architecture is cross-compiled without a smoke test. Windows must build on Windows: icon and version info
+  # can only be set when compiling for the host.
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - runner: windows-latest
+            targets: windows-x64 windows-arm64
+          - runner: ubuntu-latest
+            targets: linux-x64
+          - runner: ubuntu-24.04-arm
+            targets: linux-arm64
+          - runner: macos-latest
+            targets: macos-arm64 macos-x64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
@@ -26,6 +47,7 @@ jobs:
           bun-version: "1.4.4"
 
       - name: Tag matches package.json version
+        if: github.event_name == 'push'
         shell: bash
         run: |
           version="$(node -p "require('./package.json').version")"
@@ -39,19 +61,41 @@ jobs:
       - run: npm run lint
       - run: npm run test:coverage
 
-      - name: Build exe
-        run: npm run build:exe
+      - name: Build executables
+        run: npm run build:exe -- ${{ matrix.targets }}
 
-      - name: Smoke test the exe without Node
+      - name: Smoke test the host executable without Node
         run: npm run smoke:exe
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: devguard-${{ matrix.runner }}
+          path: dist/devguard-*
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: devguard-*
+          merge-multiple: true
+
       - name: Publish release
-        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd dist
-          sha256sum devguard-windows-x64.exe devguard-windows-arm64.exe > SHA256SUMS.txt
-          gh release create "${GITHUB_REF_NAME}" \
-            devguard-windows-x64.exe devguard-windows-arm64.exe SHA256SUMS.txt \
-            --title "devguard ${GITHUB_REF_NAME}" --generate-notes
+          assets=(
+            devguard-windows-x64.exe devguard-windows-arm64.exe
+            devguard-linux-x64 devguard-linux-arm64
+            devguard-macos-x64 devguard-macos-arm64
+          )
+          sha256sum "${assets[@]}" > SHA256SUMS.txt
+          gh release create "${GITHUB_REF_NAME}" "${assets[@]}" SHA256SUMS.txt \
+            --repo "${GITHUB_REPOSITORY}" --title "devguard ${GITHUB_REF_NAME}" --generate-notes

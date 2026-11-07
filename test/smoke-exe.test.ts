@@ -32,9 +32,14 @@ describe("runSmoke", { timeout: 30_000 }, () => {
 describe("pathWithoutNode", () => {
   it("removes every PATH entry that contains node.exe", () => {
     const hasNode = (dir: string) => dir === "C:\\nodejs" || dir === "C:\\Users\\me\\.volta\\bin";
-    expect(pathWithoutNode("C:\\Windows;C:\\nodejs;C:\\tools;C:\\Users\\me\\.volta\\bin", hasNode)).toBe(
+    expect(pathWithoutNode("C:\\Windows;C:\\nodejs;C:\\tools;C:\\Users\\me\\.volta\\bin", hasNode, ";")).toBe(
       "C:\\Windows;C:\\tools",
     );
+  });
+
+  it("splits a POSIX PATH on colons", () => {
+    const hasNode = (dir: string) => dir === "/opt/node/bin";
+    expect(pathWithoutNode("/usr/bin:/opt/node/bin:/bin", hasNode, ":")).toBe("/usr/bin:/bin");
   });
 });
 

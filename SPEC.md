@@ -23,7 +23,7 @@
 - 先檢查，再修正。修正一定先預覽，或由開發者明確下指令才執行。
 - 三道防線共用同一套底層工具與設定檔，差別只在觸發時機。
 - 檢查分三層：**設定檢查**（設定檔是否符合標準）、**環境檢查**（本機是否真的生效）、**一致性檢查**（三道防線用的工具與版本是否相同）。
-- 開發者主要使用 **Windows**。
+- 開發者主要使用 **Windows**，但 devguard 也支援 Linux 與 macOS（§3.1）。
 - **套件來源交給使用者**：企業環境常限制下載外部檔案，但各企業的限制不同，使用者最清楚。devguard 不檢查也不寫入套件、工具與 VS Code 擴充套件從哪裡下載（內部鏡像、registry、index），這些設定在開發者使用者層級的設定中（§10）。CLI 本身不連外網。
 
 **範圍外**
@@ -64,14 +64,14 @@
 ### 3.1 實作與分發
 
 - **語言**：TypeScript。CLI 本身也遵守 §6.3 的 TypeScript 預設標準。
-- **打包**：用 Bun `--compile` 打包成單一 `.exe`（windows-x64、windows-arm64），這是唯一的發佈形式。
+- **打包**：用 Bun `--compile` 打包成單一執行檔，這是唯一的發佈形式。發佈 Windows、Linux、macOS 各自的 x64 與 arm64，共六個（[ADR 0001](docs/adr/0001-release-for-linux-and-macos.md)、#80），名稱是 `devguard-<windows|linux|macos>-<x64|arm64>`，Windows 加上 `.exe`。Linux 只發佈 glibc 版本。
   - Bun 必須 **≥1.2.23**（已在 1.4.4 驗證，見 §13 T1、T2）。
-  - 在 **Windows runner 上建置**，因為交叉編譯時無法設定 `--windows-icon` 與版本資訊。windows-arm64 在 x64 主機上交叉編譯時，Bun 會從外網下載 arm64 runtime，所以在無法連外的環境必須改在 arm64 的 Windows 上建置。
-  - 建置後執行 smoke test：在 PATH 中沒有 Node 的情況下跑 `devguard --version` 與 `devguard check`。
-  - exe **不簽章**（原本規劃的 signtool 簽章已取消，見 #28）。
-- **分發**：以 **GitHub Release** 發佈建置好的 exe。推送 `v<版本>` tag 時，`.github/workflows/release.yml` 在 Windows runner 上執行測試、建置兩個 exe、跑 smoke test，並把 `devguard-windows-x64.exe`、`devguard-windows-arm64.exe` 與 `SHA256SUMS.txt` 附加到 release。tag 必須和 `package.json` 的版本相同。
-  - 開發者下載 exe、改名為 `devguard.exe` 並放進 PATH；更新時用新版取代。CLI 找不到或版本過舊時，訊息會指向 release 頁面。
-  - 放在 PATH 上的是真正的 `.exe`，Claude Code 的 exec form hook 可以直接呼叫。
+  - 每個作業系統在自己的 runner 上建置。Windows 必須如此，因為交叉編譯時無法設定 `--windows-icon` 與版本資訊。交叉編譯時 Bun 會從外網下載目標平台的 runtime，所以在無法連外的環境必須在目標平台上建置。
+  - 建置後對 runner 架構的執行檔跑 smoke test：在 PATH 中沒有 Node 的情況下跑 `devguard --version` 與 `devguard check`。另一個架構交叉編譯，不跑 smoke test。
+  - 執行檔**不簽章**（原本規劃的 signtool 簽章已取消，見 #28），macOS 執行檔也不公證（notarization）。
+- **分發**：以 **GitHub Release** 發佈建置好的執行檔。推送 `v<版本>` tag 時，`.github/workflows/release.yml` 在 Windows、Linux（x64 與 arm64）、macOS runner 上執行測試、建置執行檔、跑 smoke test，再把六個執行檔與 `SHA256SUMS.txt` 附加到 release。tag 必須和 `package.json` 的版本相同。
+  - 開發者下載對應平台的執行檔，改名為 `devguard`（Windows 為 `devguard.exe`；Linux 與 macOS 要 `chmod +x`）並放進 PATH；更新時用新版取代。macOS 從瀏覽器下載的檔案要先移除 quarantine 屬性（`xattr -d com.apple.quarantine devguard`），否則 Gatekeeper 會擋下。CLI 找不到或版本過舊時，訊息會指向 release 頁面與這台機器對應的執行檔；寫進 git hook 的提示則不分平台，因為注入 husky、lefthook 的那一行由所有開發者共用。
+  - 放在 PATH 上的是真正的執行檔，Claude Code 的 exec form hook 可以直接呼叫。
   - 原本規劃的內部 Scoop bucket 與 Nexus raw repository 已取消（#28）。
 - **golangci-lint** 仍是 §5.2 的例外：使用預設標準指定版本的 binary，由開發者放到 PATH，CLI 從 PATH 呼叫並核對版本。
 - **預設標準內建在 CLI 中**（見 §5.5），所以 CLI 不需要連網就能解析專案宣告。
@@ -453,7 +453,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 ### 7.4 第三道：git hook
 
 - **安裝方式**
-  - `devguard install` 安裝 `pre-commit` 與 `pre-push` 兩個 hook，內容都是一行 POSIX sh，例如 `exec devguard hook git-pre-commit`，由 Git for Windows 附帶的 sh 執行。
+  - `devguard install` 安裝 `pre-commit` 與 `pre-push` 兩個 hook，內容都是一行 POSIX sh，例如 `exec devguard hook git-pre-commit`，由 git 呼叫的 sh 執行（Windows 上是 Git for Windows 附帶的 sh）。
   - 檔案內含 CLI 標記與 checksum。
   - 不使用 pre-commit、lefthook 或 husky 等框架。
 - **既有 hook 框架**：專案已經在用這類框架時，CLI 不覆寫它的 hook，而是在它的設定中注入一條呼叫 `devguard` 的項目：
@@ -580,10 +580,10 @@ devguard 不檢查也不寫入套件從哪裡下載（#64；npm 的部分先於 
 
 1. 開發者使用者層級的套件來源設定（§10）能取得專案的依賴。（原本是以真實的 Nexus 網址取代 dummy 網址，#64 移除。）
 2. §7.2 推薦的 VS Code 擴充套件，開發者都能取得（從哪裡安裝由 VS Code 的設定決定）。
-3. 開發者能從 GitHub Release 下載 devguard 的 exe（§3.1），並取得預設標準指定版本的 golangci-lint binary。
+3. 開發者能從 GitHub Release 下載 devguard 的執行檔（§3.1），並取得預設標準指定版本的 golangci-lint binary。
 4. 已移除（#64）：原本是在 Nexus 上建立 `mirrors.gosumdb` raw proxy。
 5. `team@1.1.0` 的工具版本範圍（含 golangci-lint）已在 #36 審視並訂定（2026-10-27）。只有 `team@1.0.0` 保留原本的佔位範圍：它已發佈，不再修改（§5.5）。
-6. 開發者的機器上有 Git for Windows（git hook 的 sh 依賴它）。
+6. Windows 開發者的機器上有 Git for Windows（git hook 的 sh 依賴它）。Linux 與 macOS 使用系統的 sh。
 7. 已移除（#64）：原本是確認公司內部 marketplace 的類型。
 8. **法務確認**：`eslint-plugin-sonarjs` 的授權是 LGPL-3.0-only。`team@1.1.0` 已不再要求它（§6）：使用 ESLint 的 TypeScript 專案只檢查循環複雜度，認知複雜度不檢查，devguard 自己也宣告 `team@1.1.0`。仍宣告 `team@1.0.0` 的專案照舊要求這個 plugin。
 9. 已移除（#64）：原本是開啟弱點掃描所需的 NVD 鏡像、`mirrors.govulndb` 與 Sonatype Repository Firewall 授權。

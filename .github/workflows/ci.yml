@@ -1,5 +1,5 @@
 # Runs the project's own checks on every pull request and on main, so nothing merges unchecked.
-# On Windows, like release.yml: devguard ships as a Windows exe (SPEC §3.1).
+# On every OS devguard is released for (SPEC §3.1).
 name: ci
 
 on:
@@ -16,7 +16,11 @@ concurrency:
 
 jobs:
   check:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 

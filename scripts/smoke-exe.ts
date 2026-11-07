@@ -2,7 +2,7 @@
  * Smoke test for a compiled devguard exe (SPEC §3.1): `--version` and `check` on a sample project,
  * run with every Node installation removed from PATH to show the exe does not need Node.
  *
- *   node scripts/smoke-exe.ts                          # dist/devguard-windows-<host arch>.exe
+ *   node scripts/smoke-exe.ts                          # dist/devguard-<host os>-<host arch>[.exe]
  *   node scripts/smoke-exe.ts dist/devguard-windows-arm64.exe
  */
 import { spawnSync } from "node:child_process";
@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { releaseAssetName, releaseOs, type ReleaseArch } from "../src/distribution.ts";
 
 export interface SmokeResult {
   name: string;
@@ -74,27 +75,40 @@ export function runSmoke(command: readonly string[], expectedVersion: string, en
   }
 }
 
-/** PATH with every directory that holds `node.exe` removed. */
-export function pathWithoutNode(path: string, hasNode = (dir: string) => existsSync(join(dir, "node.exe"))): string {
+const holdsNode = (dir: string) => existsSync(join(dir, "node.exe")) || existsSync(join(dir, "node"));
+
+/** PATH with every directory that holds `node.exe` (Windows) or `node` removed. */
+export function pathWithoutNode(path: string, hasNode = holdsNode, separator = delimiter): string {
   return path
-    .split(delimiter)
+    .split(separator)
     .filter((dir) => dir !== "" && !hasNode(dir))
-    .join(delimiter);
+    .join(separator);
+}
+
+/** `dist/<release asset>` for this machine's OS and architecture. */
+function hostExe(root: string): string {
+  const os = releaseOs(process.platform);
+  if (os === undefined) {
+    process.stderr.write(`這台機器（${process.platform}）沒有對應的發佈目標，請指定執行檔路徑\n`);
+    process.exit(1);
+  }
+  return join(root, "dist", releaseAssetName(os, process.arch as ReleaseArch));
 }
 
 function main(): void {
   const root = join(import.meta.dirname, "..");
-  const exe = resolve(process.argv[2] ?? join(root, "dist", `devguard-windows-${process.arch}.exe`));
+  const exe = resolve(process.argv[2] ?? hostExe(root));
   if (!existsSync(exe)) {
     process.stderr.write(`找不到 ${exe}，請先執行 npm run build:exe\n`);
     process.exit(1);
   }
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { version: string };
-  // A spread copy of process.env is case-sensitive, so drop every spelling of PATH before setting it.
+  // A spread copy of process.env is case-sensitive, so drop every spelling of PATH before setting it. Windows reads
+  // any spelling; elsewhere only PATH counts.
   const env: NodeJS.ProcessEnv = Object.fromEntries(
     Object.entries(process.env).filter(([k]) => k.toUpperCase() !== "PATH"),
   );
-  env.Path = pathWithoutNode(process.env.PATH ?? "");
+  env[process.platform === "win32" ? "Path" : "PATH"] = pathWithoutNode(process.env.PATH ?? "");
 
   const results = runSmoke([exe], pkg.version, env);
   for (const r of results) {

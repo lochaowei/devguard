@@ -1,4 +1,4 @@
-import { CLI_INSTALL_HINT } from "../distribution.ts";
+import { cliInstallHint } from "../distribution.ts";
 import type { Finding, Level } from "../report/finding.ts";
 import { BUNDLED_STANDARDS, findStandard } from "../standard/registry.ts";
 import { isRetired } from "../standard/retired.ts";
@@ -177,7 +177,7 @@ function checkStandardVersion(
     const fixes = {
       malformed: undefined,
       "unknown-name": undefined,
-      "newer-than-cli": `更新 devguard：${CLI_INSTALL_HINT}`,
+      "newer-than-cli": `更新 devguard：${cliInstallHint()}`,
       "no-longer-bundled": "devguard standard upgrade",
     };
     r.add("error", `standard/${found.reason}`, messages[found.reason], { ...at, fix: fixes[found.reason] });

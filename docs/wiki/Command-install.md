@@ -70,7 +70,7 @@ devguard install [--yes] [--cwd <dir>]
 command -v devguard >/dev/null 2>&1 || { echo 'devguard：找不到 CLI（devguard），已擋下這次 git commit。安裝：…；要暫時略過檢查可加上 --no-verify' >&2; exit 1; }; exec devguard hook git-pre-commit "$@"
 ```
 
-- 由 Git for Windows 的 `sh` 執行，只有一行 POSIX sh。
+- 只有一行 POSIX sh，由 git 呼叫的 `sh` 執行（Windows 上是 Git for Windows 附帶的 `sh`）。
 - 第三行的 `sha256` 是檔案其餘內容的 checksum。[`doctor`](Command-doctor.md) 用它判斷 hook 有沒有被改過，`fix` 用它決定要不要重新產生。
 - PATH 上找不到 `devguard` 時會**擋下** commit / push 並印出安裝方式，不會默默放行。
 - `pre-push` hook 一律安裝，但預設不跑任何檢查：完整測試與覆蓋率只在開發者設定 `DEVGUARD_PRE_PUSH=full` 時執行，否則交給 CI 的 `check --full`。切換時不需要重新執行 `install`。見 [`hook git-pre-push`](Command-hook.md#git-pre-push)。
@@ -145,7 +145,7 @@ $ devguard install --yes
 | `core.hooksPath 未設定，husky 的 hook 沒有安裝；請執行 npx husky` | husky 的 hook 要靠 `core.hooksPath` 生效。執行 `npx husky` |
 | `下一步：執行 pre-commit install --hook-type pre-commit --hook-type pre-push…`，或 `doctor` 說 pre-commit 的 hook 沒有安裝 | 框架設定中有項目還不夠，要執行這條指令把 hook 寫進 hooks 目錄 |
 | commit 時 pre-commit 說需要較新的版本（`minimum_pre_commit_version`），或說不認得 `unsupported` | 本機的 pre-commit 低於 4.4.0。升級 pre-commit（例如 `pip install -U pre-commit`）；後者表示設定還沒有 `minimum_pre_commit_version`，再執行一次 `devguard install` |
-| commit 時出現 `devguard：找不到 CLI（devguard），已擋下這次 git commit` | `devguard.exe` 不在 PATH 上。照訊息安裝；緊急時可用 `git commit --no-verify` 暫時略過 |
+| commit 時出現 `devguard：找不到 CLI（devguard），已擋下這次 git commit` | `devguard`（Windows 為 `devguard.exe`）不在 PATH 上。照訊息安裝；緊急時可用 `git commit --no-verify` 暫時略過 |
 
 ---
 
