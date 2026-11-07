@@ -91,8 +91,8 @@ src/
    npm run smoke:exe          # 將 Node 從 PATH 移除後，驗證 exe 可獨立執行 --version 與 check
    ```
 2. **正式發佈新版本**：
-   - 更新 `package.json` 中的 `version`，提交並合併至 `main`。
-   - 建立並推送相同版本的 Git tag（例如 `git tag v0.2.0 && git push origin v0.2.0`）。
+   - 執行 `npm version <x.y.z> --no-git-tag-version`（同時更新 `package.json` 與 `package-lock.json`；`devguard --version` 直接讀 `package.json`），提交並合併至 `main`。
+   - 建立並推送相同版本的 Git tag（`git tag v<x.y.z> && git push origin v<x.y.z>`）。
    - GitHub Actions 的 [release workflow](../../.github/workflows/release.yml) 會在 Windows runner 上執行完整測試、建置 `devguard-windows-x64.exe` 與 `devguard-windows-arm64.exe`、執行 smoke test，並自動建立 GitHub Release 附上兩個 `.exe` 與 `SHA256SUMS.txt`（若 tag 與 `package.json` 版本不一致則會中止失敗）。
 
 ---

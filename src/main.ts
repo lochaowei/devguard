@@ -18,8 +18,10 @@ import { renderVscode } from "./report/vscode.ts";
 import { checkScope } from "./scope.ts";
 import { runStandardUpgrade } from "./standard/upgrade-run.ts";
 import type { ToolRunner } from "./tools/runner.ts";
+import pkg from "../package.json" with { type: "json" };
 
-export const VERSION = "0.3.0";
+/** package.json is the only place the version is written; Bun inlines it into the exe. */
+export const VERSION: string = pkg.version;
 
 export const USAGE = `用法：devguard <指令> [選項]
 

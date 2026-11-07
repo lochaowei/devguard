@@ -12,7 +12,7 @@
 
 ## 目前狀態
 
-**v0.3.0：SPEC 的指令都已實作**（`check`、`doctor`、`fix`、`install`、`hook`、`draft`、`standard upgrade`）。以 Bun 打包成單一 exe，透過 GitHub Release 發佈（見[安裝](#安裝)）。見下方[路線圖](#路線圖)與[已知限制](#已知限制)。
+**SPEC 的指令都已實作**（`check`、`doctor`、`fix`、`install`、`hook`、`draft`、`standard upgrade`）。以 Bun 打包成單一 exe，透過 GitHub Release 發佈（見[安裝](#安裝)）。見下方[路線圖](#路線圖)與[已知限制](#已知限制)。
 
 - **專案宣告與草稿**：解析並檢查 `.devguard.yaml`（9 種標準項目類型、覆寫與偏離規則、到期日檢查、未涵蓋程式檔提示），以及依既有設定產生宣告草稿（`devguard draft`，含 Gradle、pnpm、yarn、Poetry、Biome、Jest、pyright、basedpyright 等工具選擇）。
 - **四語言設定檢查與一致性檢查**：Python（`pyproject.toml`、`ruff.toml`、`pyrightconfig.json`）、Go（`.golangci.yml` / `.golangci.yaml`、`go.mod`）、TypeScript（`tsconfig.json`、ESLint、Prettier、Biome、Vitest / Jest、`package.json`）、Java（`pom.xml`、`build.gradle(.kts)`、`checkstyle.xml`、PMD ruleset、`lombok.config`）與共通 `.gitattributes`（`* text=auto eol=lf`）。monorepo 的子元件沿用上層目錄的共用設定檔。
@@ -262,8 +262,8 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 
 ### 發佈新版本
 
-1. 修改 `package.json` 的 `version`，提交並合併到 `main`。
-2. 推送相同版本的 tag：`git tag v0.3.0 && git push origin v0.3.0`。
+1. 執行 `npm version <x.y.z> --no-git-tag-version`（同時更新 `package.json` 與 `package-lock.json`；`devguard --version` 直接讀 `package.json`，不必改其他檔案），提交並合併到 `main`。
+2. 推送相同版本的 tag：`git tag v<x.y.z> && git push origin v<x.y.z>`。
 3. [release workflow](.github/workflows/release.yml) 會在 Windows runner 上執行測試、建置兩個 exe、跑 smoke test，再建立 GitHub Release 並附上 exe 與 `SHA256SUMS.txt`。tag 與 `package.json` 版本不同時會失敗。
 
 本機建置：`npm run build:exe`（需要 Bun ≥1.2.23，`bun.exe` 或 npm 安裝的 `bun.cmd` 皆可），產物在 `dist/`；`npm run smoke:exe` 在 PATH 中沒有 Node 的情況下驗證 exe。
