@@ -52,7 +52,7 @@ devguard check [檔案…] [--staged] [--only lint|format|typecheck] [--full]
 | 7 | `settings-typescript` | `config` | `package.json`、`tsconfig.json`、ESLint flat config、Prettier、Biome、Vitest / Jest 覆蓋率門檻 |
 | 8 | `tool-versions` | `consistency` | lockfile / 建置檔鎖定的工具版本（與 PATH 上的 `golangci-lint`）是否在標準的 `tools.*` 範圍內 |
 | 9 | `gitattributes` | `config` | repo 根目錄 `.gitattributes` 有 `* text=auto eol=lf` |
-| 10 | `credentials` | `config` | 提交進 repo 的專案設定檔中沒有明碼帳密（`credentials/plaintext`）：`.npmrc` 的 `_auth`、`_authToken`、`_password` 必須引用環境變數（`${NAME}`）；`pyproject.toml` 中 uv 的 index 與 Poetry 的 source 網址不得內含 `user:password@`；`.mvn/settings.xml` 的 `<password>` 等必須是 `${env.*}`。只回報、不印出值，`fix` 也不會改寫。套件從哪裡下載（registry、index、鏡像）不檢查，交給使用者層級的設定 |
+| 10 | `credentials` | `config` | 提交進 repo 的專案設定檔中沒有明碼帳密（`credentials/plaintext`）：`.npmrc` 的 `_auth`、`_authToken`、`_password` 必須引用環境變數（`${NAME}`，可加引號）；`pyproject.toml` 中任何網址（index、source、`[tool.uv.sources]`、`pkg @ https://…` 依賴）不得內含密碼或 token（只有帳號不算）；`.mvn/settings.xml` 的 `<password>`、`<passphrase>` 必須是屬性引用（`${…}`）、Maven 加密的 `{…}` 或空值。各檔案也在元件的上層目錄中查找（workspace 根目錄的 `.npmrc` 等），共用的檔案只回報一次。只回報、不印出值，`fix` 也不會改寫。套件從哪裡下載（registry、index、鏡像）不檢查，交給使用者層級的設定 |
 | 11 | `claude-code` | `config` | `.claude/` 的 rules、hooks、`/standards-doctor` 與標準一致 |
 | 12 | `vscode` | `config` | `.vscode/` 的 extensions、settings、tasks |
 | 13 | `code` | `code` | 用各元件的工具跑 lint、format、typecheck |

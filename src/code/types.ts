@@ -68,7 +68,6 @@ export interface FixStep {
   args: readonly string[];
   /** File arguments, appended in batches short enough for cmd.exe; absent means none. */
   files?: readonly string[];
-  env?: Readonly<Record<string, string>>;
   /** The highest exit code that still means the tool ran (1 for a tool that exits 1 when problems are left). */
   okUpTo: number;
 }

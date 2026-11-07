@@ -305,9 +305,9 @@ components:                     # 元件 = 目錄 + 語言
 
 devguard 不檢查也不寫入套件從哪裡下載（#64）：各企業的限制不同，使用者最清楚。在企業內網使用內部鏡像時，請設定在使用者層級，不要寫進專案的設定檔，例如 `npm config set registry …`、uv 的 `UV_DEFAULT_INDEX`、Poetry 的 `poetry source`／環境變數、`go env -w GOPROXY=…`、`~/.m2/settings.xml`。`standard upgrade --apply` 執行的套件管理指令也照這些設定下載。
 
-devguard 只檢查提交進 repo 的設定檔沒有明碼帳密（`credentials/plaintext`）：`.npmrc` 的 `_auth`、`_authToken`、`_password` 要引用環境變數，`pyproject.toml` 的 index／source 網址不得內含 `user:password@`，`.mvn/settings.xml` 的 `<password>` 要寫成 `${env.*}`。
+devguard 只檢查提交進 repo 的設定檔沒有明碼帳密（`credentials/plaintext`）：`.npmrc` 的 `_auth`、`_authToken`、`_password` 要引用環境變數，`pyproject.toml` 中的網址不得內含密碼或 token，`.mvn/settings.xml` 的 `<password>` 要寫成 `${…}` 引用或 Maven 加密的 `{…}`。元件上層目錄的這些檔案（例如 workspace 根目錄的 `.npmrc`）也會檢查。
 
-`team@1.2.0` 以前的標準仍有 `mirrors.*` 項目，宣告中的頂層 `mirrors:` 也仍然合法，但 devguard 不再依它們做任何檢查；`devguard standard upgrade` 升到 `team@1.3.0` 時會把它們刪除。
+`team@1.2.0` 以前的標準仍有 `mirrors.*` 與弱點掃描項目，但 devguard 不再依它們做任何檢查：不論宣告哪個版本，宣告中寫著它們只會得到 `declaration/retired-item` 提示；`devguard standard upgrade` 升到 `team@1.3.0` 時會把它們刪除。
 
 ### 還沒有宣告：`devguard draft`
 

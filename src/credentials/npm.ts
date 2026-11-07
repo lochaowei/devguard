@@ -3,6 +3,9 @@ import type { CredentialProblem } from "./types.ts";
 /** A value that only references an environment variable (`${NAME}`, `${NAME?}`), never the credential itself. */
 const ENV_REFERENCE = /^\$\{[A-Za-z_][A-Za-z0-9_]*\??\}$/;
 
+/** An ini value without the quotes npm strips: `"${NPM_TOKEN}"` is the same reference as `${NPM_TOKEN}`. */
+const unquoted = (value: string): string => (/^(["']).*\1$/.test(value) ? value.slice(1, -1) : value);
+
 /** npm's credential keys (`_auth`, `_authToken`, `_password`), bare or registry-scoped (`//host/path/:_auth`). */
 const NPM_CREDENTIAL = /(^|:)(_auth|_authToken|_password)$/;
 
@@ -25,7 +28,7 @@ export function iniEntries(text: string): IniEntry[] {
 /** `.npmrc`: every credential key only references an environment variable. */
 export function npmrcProblems(file: string, text: string): CredentialProblem[] {
   return iniEntries(text)
-    .filter((e) => NPM_CREDENTIAL.test(e.key) && !ENV_REFERENCE.test(e.value))
+    .filter((e) => NPM_CREDENTIAL.test(e.key) && !ENV_REFERENCE.test(unquoted(e.value)))
     .map((e) => ({
       file,
       line: e.line,

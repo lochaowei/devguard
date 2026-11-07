@@ -72,12 +72,6 @@ describe("go checker: golangci-lint", () => {
       expect.objectContaining({ level: "hint", rule: "golangci-lint/revive", file: "svc/pkg/a.go", line: 3 }),
     ]);
   });
-
-  it("sets no GOPROXY / GOSUMDB of its own: modules come from the developer's Go configuration (#64)", async () => {
-    const { tools, calls } = fakeTools();
-    await check(target(), tools);
-    expect(calls[0]?.env).toBeUndefined();
-  });
 });
 
 describe("go checker: file arguments", () => {

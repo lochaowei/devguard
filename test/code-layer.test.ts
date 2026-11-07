@@ -263,6 +263,5 @@ describe("Go code checks in devguard check", () => {
     const r = await runCheck({ cwd: project(declaration), today: TODAY, tools, listFiles }, LAYERS);
     expect(r.findings).toEqual([]);
     expect(calls).toEqual([expect.objectContaining({ tool: "golangci-lint", dir: "svc/" })]);
-    expect(calls[0]?.env).toBeUndefined();
   });
 });

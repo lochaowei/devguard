@@ -147,12 +147,10 @@ ignore:                         # 選填：不歸屬任何元件、不受檢查�
 | 上限 | 值越小越嚴格 | `complexity.cyclomatic` |
 | 下限 | 值越大越嚴格 | `coverage.lines`、`*.minVersion` |
 | 布林 | `true` 較嚴格 | `typecheck.strict`、`deps.lockfile` |
-| 嚴重度 | 等級越低越嚴格（low < moderate < high < critical） | `deps.vulnFailOn`（`team@1.2.0` 以前） |
 | 禁用清單 / 規則集 | 移除項目算放寬，新增項目算收緊 | `deps.banned`、`lint.rules` |
 | 工具選擇 | 改用允許清單內的工具算替代，不算偏離；改用清單外的工具算放寬 | `lint.tool` |
 | 版本範圍 | 超出範圍算放寬 | 各工具的版本範圍 |
 | **風格** | 沒有嚴格或寬鬆之分，可以直接覆寫，不算偏離 | `format.*` |
-| **鏡像**（`team@1.2.0` 以前） | 改成預設鏡像同一台主機上的其他 repository 視同風格；改成其他主機算放寬 | 頂層 `mirrors:` 的 `pypi`、`npm` 等網址 |
 
 - **放寬**時必須寫成 `{value, reason, until?}`。
   - 沒有理由，或理由仍是 `TODO`：**錯誤**。
@@ -160,8 +158,7 @@ ignore:                         # 選填：不歸屬任何元件、不受檢查�
   - 超過 `until`：再變回**錯誤**。
 - 覆寫不存在的項目、值的型別錯誤、重複宣告同一個元件：**錯誤**。
 - 同一個 repo 裡，同語言的元件風格不一致時：**提示**。
-- `deps.ignoredVulns`（`team@1.2.0` 以前）中的每一項都比照偏離處理，必須有 `reason` 與 `until`。
-- 覆寫 `team@1.3.0` 移除的鏡像與弱點掃描項目（頂層 `mirrors:`、`deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`、`tools.govulncheck`）：只是**提示**（`declaration/retired-item`），不是錯誤；`standard upgrade` 會刪除它們。
+- 覆寫鏡像與弱點掃描項目（頂層 `mirrors:`、`deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`、`tools.govulncheck`）：不論宣告哪個標準版本，都只是**提示**（`declaration/retired-item`），不判定收緊或放寬，也不算錯誤，因為 devguard 不再依它們做任何檢查（#64）；`standard upgrade` 到 `team@1.3.0` 會刪除它們。寫錯位置的（例如元件 `overrides` 中的 `mirrors.npm`）仍是不存在的項目，算**錯誤**。
 
 ### 4.3 沒有宣告時
 
@@ -538,13 +535,14 @@ devguard 不檢查也不寫入套件從哪裡下載（#64；npm 的部分先於 
 
 **帳密**
 - 帳密**絕不進 repo**，CLI 也不保存。`check` 的 `credentials` 層把提交進專案的明碼帳密回報為**錯誤**（`credentials/plaintext`），只說明位置，不印出值：
-  - `.npmrc` 的 `_auth`、`_authToken`、`_password`（含 registry 前綴的形式），值不是 `${NAME}` 環境變數引用時
-  - `pyproject.toml` 中 `[[tool.uv.index]]`、`[tool.uv]` 的 `index-url` / `extra-index-url` / `find-links`、`[[tool.poetry.source]]` 的網址內含 `user:password@` 時
-  - `.mvn/settings.xml` 的 `<password>`、`<passphrase>`、`<privateKey>` 不是 `${env.*}` 引用時
+  - `.npmrc` 的 `_auth`、`_authToken`、`_password`（含 registry 前綴的形式），值不是 `${NAME}` 環境變數引用時（npm 會去掉引號，所以 `"${NAME}"` 也是引用）
+  - `pyproject.toml` 中任何位置的網址內含密碼（`user:password@`，密碼只引用變數如 `${PASS}` 的除外）或以 token 當作帳號（`ghp_…@`、`glpat-…@` 等），例如 uv 的 index 與 `[tool.uv.pip]`、`[tool.uv.sources]` 的 git／url、Poetry 的 source、直接以網址指定的依賴（`pkg @ https://…`）。只有帳號（`git@`、`deploy@`）不算帳密
+  - `.mvn/settings.xml` 的 `<password>`、`<passphrase>` 不是屬性引用（`${env.PW}`、`${nexus.password}`）、Maven 加密過的密碼（`{…}`）或空值時。`<privateKey>` 是金鑰檔的路徑，不檢查
+  - 每個元件的這些檔案，在元件目錄與上層各目錄中查找，與工具本身相同（npm workspace 根目錄的 `.npmrc`、uv workspace 根目錄的 `pyproject.toml`、多模組建置的 `.mvn/`）；多個元件共用的檔案只回報一次
 - `fix` 不改寫帳密：帳密已經外洩，必須更換；改由哪個環境變數或使用者層級設定提供，由開發者決定。
 - `fix`、`install` 與 `standard upgrade` 的預覽、印出的片段與報告中，一律遮蔽帳密的值（`.npmrc` 的 `_auth` / `_authToken` / `_password`、Maven 的 `<username>` / `<password>`、網址中的 `user:password@`）；只引用環境變數（`${…}`）的值照常顯示。
 
-原本的設計（內部 Nexus 鏡像網址 `mirrors.*`、專案層級的鏡像設定、`mirrors.auth: env` 與 doctor 的帳密變數檢查）見[內部鏡像設定檢查](.scratch/coding-standards-guard/issues/16-internal-mirror-config.md)；`team@1.2.0` 以前的標準仍有 `mirrors.*` 項目，但 devguard 不再依它們做任何檢查。
+原本的設計（內部 Nexus 鏡像網址 `mirrors.*`、專案層級的鏡像設定、`mirrors.auth: env` 與 doctor 的帳密變數檢查）見[內部鏡像設定檢查](.scratch/coding-standards-guard/issues/16-internal-mirror-config.md)；`team@1.2.0` 以前的標準仍有 `mirrors.*` 項目，但 devguard 不再依它們做任何檢查，宣告中寫著它們只會得到提示（§4.2）。
 
 ---
 

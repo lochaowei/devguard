@@ -1,6 +1,7 @@
 import { CLI_INSTALL_HINT } from "../distribution.ts";
 import type { Finding, Level } from "../report/finding.ts";
 import { BUNDLED_STANDARDS, findStandard } from "../standard/registry.ts";
+import { isRetired } from "../standard/retired.ts";
 import { LANGUAGE_LABEL, LANGUAGES, type ItemDef, type Language, type Standard } from "../standard/types.ts";
 import { compareToDefault, type Status } from "./compare.ts";
 import { coversDirectory } from "./ignore.ts";
@@ -48,13 +49,6 @@ export interface Resolution {
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-/**
- * Items a newer standard dropped because devguard no longer checks them (#64): the internal mirrors and the
- * vulnerability scans. Declaring one under a standard without it is pointless rather than wrong, so it is a hint.
- */
-const RETIRED =
-  /^(mirrors\.(auth|pypi|npm|go|gosumdb|govulndb|osv|maven|nvd|tools|vscode)|deps\.(vulnScan|vulnFailOn|ignoredVulns)|tools\.govulncheck)$/;
-
 const fmt = (v: unknown): string => (Array.isArray(v) ? `[${v.map(fmt).join(", ")}]` : JSON.stringify(v));
 
 interface Unwrapped {
@@ -63,8 +57,8 @@ interface Unwrapped {
   until?: unknown;
 }
 
-function unwrap(raw: unknown, item: ItemDef): Unwrapped {
-  if (item.kind !== "ignoredVulns" && isRecord(raw) && "value" in raw) {
+function unwrap(raw: unknown): Unwrapped {
+  if (isRecord(raw) && "value" in raw) {
     return { value: raw.value, reason: raw.reason, until: raw.until };
   }
   return { value: raw };
@@ -111,7 +105,7 @@ class Resolver {
   }
 
   private judge(item: ItemDef, override: RawOverride, at: Partial<Finding>): EffectiveItem {
-    const { value, reason, until } = unwrap(override.raw, item);
+    const { value, reason, until } = unwrap(override.raw);
     const status = compareToDefault(item, value);
     const what = `${item.label}：${fmt(item.value)} → ${fmt(value)}`;
     const effective: EffectiveItem = {
@@ -123,8 +117,6 @@ class Resolver {
     };
     if (status === "invalid") {
       this.add("error", "declaration/invalid-value", `${what}：值的型別或格式不對`, at);
-    } else if (item.kind === "ignoredVulns") {
-      this.judgeIgnoredVulns(value as unknown[], at);
     } else if (status === "looser") {
       if (this.checkJustification(reason, until, what, at)) {
         effective.accepted = true;
@@ -137,43 +129,23 @@ class Resolver {
     return effective;
   }
 
-  private judgeIgnoredVulns(entries: unknown[], at: Partial<Finding>): void {
-    entries.forEach((entry, i) => {
-      const id = isRecord(entry) && typeof entry.id === "string" ? entry.id : undefined;
-      if (!id || !isRecord(entry)) {
-        this.add(
-          "error",
-          "declaration/invalid-value",
-          `忽略的弱點第 ${String(i + 1)} 項：必須是包含 id、reason、until 的對應表`,
-          at,
-        );
-        return;
-      }
-      const what = `忽略弱點 ${id}`;
-      const { reason, until } = entry;
-      if (until === undefined) {
-        this.add("error", "declaration/ignored-vuln-without-until", `${what}：必須設定 until`, at);
-      } else if (this.checkJustification(reason, until, what, at)) {
-        // checkJustification only passes when both are strings
-        this.add(
-          "deviation",
-          "declaration/deviation",
-          `${what}｜理由：${reason as string}｜到期：${until as string}`,
-          at,
-        );
-      }
-    });
-  }
-
-  applyOverrides(defs: Readonly<Record<string, ItemDef>>, overrides: RawOverride[], where: string, component?: string) {
+  /** `scope` says which retired items (`RETIRED_ITEMS`) these overrides may name: the repo-wide or a language's. */
+  applyOverrides(
+    defs: Readonly<Record<string, ItemDef>>,
+    overrides: RawOverride[],
+    where: string,
+    scope: "global" | "language",
+    component?: string,
+  ) {
     const effective: Record<string, EffectiveItem> = {};
     for (const [key, item] of Object.entries(defs))
       effective[key] = { value: item.value, source: "default", status: "same" };
     for (const override of overrides) {
       const at: Partial<Finding> = { component, line: override.line };
       const item = defs[override.key];
-      if (!item && RETIRED.test(override.key)) {
-        const message = `「${override.key}」已不在${where}標準中：devguard 不再檢查內部鏡像與弱點掃描`;
+      if (isRetired(scope, override.key)) {
+        // Not judged: nothing reads it, so neither a deviation nor an error would mean anything (#64).
+        const message = `「${override.key}」沒有作用：devguard 不再檢查內部鏡像，也不再執行弱點掃描`;
         this.add("hint", "declaration/retired-item", message, { ...at, fix: `從 ${this.file} 刪除這一項` });
         continue;
       }
@@ -296,12 +268,13 @@ export function resolveDeclaration(
       standard.languages[c.language],
       c.overrides,
       ` ${LANGUAGE_LABEL[c.language]} `,
+      "language",
       name,
     );
     components.push({ dir, language: c.language, name, effective });
     hintIgnoredComponent(r, decl.ignore, dir, name, c.line);
   }
   hintStyleDrift(r, standard, components);
-  const global = r.applyOverrides(standard.global, decl.globalOverrides, "整體");
+  const global = r.applyOverrides(standard.global, decl.globalOverrides, "整體", "global");
   return { standard, components, global, ignore: decl.ignore, findings: r.findings };
 }

@@ -79,16 +79,12 @@ ignore:                         # 選填：排除的目錄、檔案或 glob
 | `min`（下限） | 數值越大越嚴格；縮小算放寬 | `coverage.lines` |
 | `minVersion`（最低版本） | 版本號越高越嚴格；降低算放寬 | `python.minVersion`、`go.minVersion`、`node.minVersion`、`java.minVersion`、`claude.minVersion` |
 | `bool`（布林） | `true` 比 `false` 嚴格；把預設 `true` 改為 `false` 算放寬 | `typecheck.strict`、`deps.lockfile` |
-| `severity`（嚴重度門檻） | `any` < `low` < `moderate` < `high` < `critical`；門檻拉高算放寬 | `deps.vulnFailOn`（`team@1.2.0` 以前） |
 | `list`（規則集 / 禁用清單） | 新增項目算收緊；移除預設項目算放寬 | `lint.rules`、`deps.banned`、`deps.bannedApis`、`typecheck.options` |
 | `choice`（工具選擇） | 改用 `allowed` 清單內的工具算合法替代；改用清單外的工具算放寬 | `lint.tool`、`typecheck.tool`、`test.tool`、`deps.manager`、`build.tool` |
 | `versionRange`（版本範圍） | 範圍落在預設範圍內算收緊或相同；超出預設上下界算放寬 | `tools.ruff`、`tools.eslint`、`tools.golangci-lint` 等 |
 | `style`（風格項目） | 無嚴格或寬鬆之分，可直接寫值，不算偏離 | `format.*` |
-| 鏡像網址（`team@1.2.0` 以前） | 改成預設鏡像同一台主機上的其他 repository 視同風格；改成其他主機算放寬（必須寫理由） | 頂層 `mirrors:` 的 `pypi` / `npm` / `go` / `maven` 等 |
 
-此外，`team@1.2.0` 以前的 `ignoredVulns`（`deps.ignoredVulns`）中的每一筆忽略弱點都必須寫明 `{ id, reason, until }`，比照偏離與到期日規則檢查。
-
-`team@1.3.0` 移除了頂層 `mirrors:` 與弱點掃描項目（#64）；宣告中仍寫著它們時，`check` 只發出 `declaration/retired-item` **提示**，`devguard standard upgrade` 會把它們刪除。
+鏡像與弱點掃描項目（頂層 `mirrors:`、`deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`、`tools.govulncheck`）devguard 已不再使用（#64），`team@1.3.0` 移除了它們。不論宣告哪個標準版本，寫著它們只會得到 `declaration/retired-item` **提示**，不判定收緊或放寬；`devguard standard upgrade` 到 `team@1.3.0` 會把它們刪除。寫錯位置的（例如元件 `overrides` 中的 `mirrors.npm`）仍是不存在的項目，算錯誤。
 
 ### 偏離（Deviation）與錯誤判定
 

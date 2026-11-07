@@ -329,16 +329,15 @@ describe("tool runner: Go", () => {
     expect(started).toEqual([{ file: exe, args: ["run"], cwd: ROOT, env: { GOTOOLCHAIN: "local" } }]);
   });
 
-  it("passes the requested mirror environment but always keeps the local toolchain", async () => {
+  it("sets no GOPROXY of its own for golangci-lint; `go` stays offline (#64)", async () => {
     const exe = "C:\\scoop\\shims\\golangci-lint.exe";
     const { runner, started } = fakeRunner({ [exe]: "", "C:\\repo\\go.mod": GO_MOD });
-    const env = { GOTOOLCHAIN: "auto", GOPROXY: "https://mirror/", GOSUMDB: "sum.golang.org https://sumdb/" };
-    await runner.run(req({ language: "go", tool: "golangci-lint", env }));
-    await runner.run(req({ language: "go", tool: "go", args: ["mod", "tidy", "-diff"], env }));
+    await runner.run(req({ language: "go", tool: "golangci-lint" }));
+    await runner.run(req({ language: "go", tool: "go", args: ["mod", "tidy", "-diff"] }));
     expect(started.map((c) => c.env)).toEqual([
-      { GOTOOLCHAIN: "local", GOPROXY: "https://mirror/", GOSUMDB: "sum.golang.org https://sumdb/" },
+      { GOTOOLCHAIN: "local" },
       // `go` and `go tool` stay offline: resolving a tool never downloads it.
-      { GOTOOLCHAIN: "local", GOPROXY: "off", GOSUMDB: "sum.golang.org https://sumdb/" },
+      { GOTOOLCHAIN: "local", GOPROXY: "off" },
     ]);
   });
 

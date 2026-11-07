@@ -49,7 +49,7 @@ async function runSteps(fix: TargetFix, ctx: CodeCheckContext): Promise<Finding[
     const batches = step.files === undefined ? [[]] : fileBatches(step.files);
     for (const batch of batches) {
       const request = { language: target.language, tool: step.tool, dir: target.dir, args: [...step.args, ...batch] };
-      const result = await ctx.tools.run(step.env ? { ...request, env: step.env } : request);
+      const result = await ctx.tools.run(request);
       if (result.code > step.okUpTo) failures.push(toolFailed(target, step.tool, result));
     }
   }

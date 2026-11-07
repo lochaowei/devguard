@@ -175,7 +175,7 @@ describe("editConfigText: line files", () => {
   });
 });
 
-describe("editConfigText: [[tool.uv.index]] and .npmrc (SPEC §10.2)", () => {
+describe("editConfigText: arrays of tables", () => {
   const nexus = { name: "nexus", url: "https://nexus.example.internal/repository/pypi-proxy/simple", default: true };
 
   it("appends a new array of tables as a [[...]] block, also under an existing [tool.uv]", () => {
@@ -184,15 +184,5 @@ describe("editConfigText: [[tool.uv.index]] and .npmrc (SPEC §10.2)", () => {
     expect(editConfigText("pyproject.toml", "", [add])).toBe(expected);
     const text = '[project]\nname = "a"\n\n[tool.uv]\npackage = false\n';
     expect(editConfigText("pyproject.toml", text, [add, add])).toBe(`${text}\n${expected}`);
-  });
-
-  it("sets and deletes .npmrc keys in place and keeps comments", () => {
-    const text = "# registry\nregistry=https://registry.npmjs.org/\r\nsave-exact=true\n";
-    const out = editConfigText(".npmrc", text, [
-      { op: "set", path: ["registry"], value: "https://nexus/" },
-      { op: "delete", path: ["save-exact"] },
-      { op: "set", path: ["//nexus/:_auth"], value: "${NEXUS_NPM_AUTH}" },
-    ]);
-    expect(out).toBe("# registry\nregistry=https://nexus/\n//nexus/:_auth=${NEXUS_NPM_AUTH}\n");
   });
 });

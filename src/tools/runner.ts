@@ -19,11 +19,6 @@ export interface ToolRequest {
   /** Component directory, normalized ("" for the repo root, otherwise ending in "/"). The tool runs there. */
   dir: string;
   args?: readonly string[];
-  /**
-   * Extra environment variables, Go only. The runner forces GOTOOLCHAIN=local (SPEC §3.2), and GOPROXY=off for `go`
-   * / `go tool` so resolving a tool never downloads it.
-   */
-  env?: Readonly<Record<string, string>>;
   /** Fed to the tool's stdin, e.g. the staged version of a file (SPEC §7.4). */
   stdin?: string;
   /**
@@ -253,14 +248,14 @@ function go(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
   const cwd = dirs[0] ?? "";
   const args = req.args ?? [];
   // GOPROXY=off: running a check must never download modules.
-  const offline = { ...req.env, ...goEnv({ offline: true }) };
+  const offline = goEnv({ offline: true });
   // `go` itself, for module commands such as `go mod tidy -diff`.
   if (req.tool === "go") return { ok: true, command: { file: "go", args: [...args], cwd, env: offline } };
   if (req.tool === "golangci-lint") {
     // Exception in SPEC §5.2: not a go.mod tool, but a binary the developer puts on PATH.
     const exe = onPath(req.tool, env);
     if (!exe) return { ok: false, message: "找不到 golangci-lint", install: pathToolHint("golangci-lint") };
-    return { ok: true, command: { file: exe, args: [...args], cwd, env: { ...req.env, ...goEnv() } } };
+    return { ok: true, command: { file: exe, args: [...args], cwd, env: goEnv() } };
   }
   const goMod = env.readText(env.path.join(cwd, "go.mod"));
   const declared = goModTools(goMod ?? "").some((t) => t === req.tool || t.endsWith(`/${req.tool}`));
