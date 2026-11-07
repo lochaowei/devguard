@@ -3,7 +3,7 @@
 ## 本機開發環境需求
 
 - **Node.js**：`>= 22.18`（直接執行 `src/cli.ts` 依賴 Node 22.18+ 預設啟用的內建 TypeScript type stripping）
-- **Bun**（選用，僅打包 `.exe` 時需要）：`>= 1.2.23`
+- **Bun**（選用，僅打包 `.exe` 時需要）：`>= 1.2.23`。PATH 上是 `bun.exe` 或 `npm i -g bun` 安裝的 `bun.cmd` 都可以
 
 ## 常用開發指令
 
