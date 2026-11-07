@@ -12,7 +12,7 @@
 
 ## 目前狀態
 
-**v0.2.0：SPEC 的指令都已實作**（`check`、`doctor`、`fix`、`install`、`hook`、`draft`、`standard upgrade`）。以 Bun 打包成單一 exe，透過 GitHub Release 發佈（見[安裝](#安裝)）。見下方[路線圖](#路線圖)與[已知限制](#已知限制)。
+**v0.3.0：SPEC 的指令都已實作**（`check`、`doctor`、`fix`、`install`、`hook`、`draft`、`standard upgrade`）。以 Bun 打包成單一 exe，透過 GitHub Release 發佈（見[安裝](#安裝)）。見下方[路線圖](#路線圖)與[已知限制](#已知限制)。
 
 - **專案宣告與草稿**：解析並檢查 `.devguard.yaml`（9 種標準項目類型、覆寫與偏離規則、到期日檢查、未涵蓋程式檔提示），以及依既有設定產生宣告草稿（`devguard draft`，含 Gradle、pnpm、yarn、Poetry、Biome、Jest、pyright、basedpyright 等工具選擇）。
 - **四語言設定檢查與一致性檢查**：Python（`pyproject.toml`、`ruff.toml`、`pyrightconfig.json`）、Go（`.golangci.yml` / `.golangci.yaml`、`go.mod`）、TypeScript（`tsconfig.json`、ESLint、Prettier、Biome、Vitest / Jest、`package.json`）、Java（`pom.xml`、`build.gradle(.kts)`、`checkstyle.xml`、PMD ruleset、`lombok.config`）與共通 `.gitattributes`（`* text=auto eol=lf`）。monorepo 的子元件沿用上層目錄的共用設定檔。
@@ -263,7 +263,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 ### 發佈新版本
 
 1. 修改 `package.json` 的 `version`，提交並合併到 `main`。
-2. 推送相同版本的 tag：`git tag v0.2.0 && git push origin v0.2.0`。
+2. 推送相同版本的 tag：`git tag v0.3.0 && git push origin v0.3.0`。
 3. [release workflow](.github/workflows/release.yml) 會在 Windows runner 上執行測試、建置兩個 exe、跑 smoke test，再建立 GitHub Release 並附上 exe 與 `SHA256SUMS.txt`。tag 與 `package.json` 版本不同時會失敗。
 
 本機建置：`npm run build:exe`（需要 Bun ≥1.2.23），產物在 `dist/`；`npm run smoke:exe` 在 PATH 中沒有 Node 的情況下驗證 exe。
@@ -273,7 +273,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 放在 repo 根目錄。最精簡的寫法：
 
 ```yaml
-standard: team@1.1.0
+standard: team@1.2.0
 components:
   - path: ./
     language: typescript
@@ -282,7 +282,7 @@ components:
 monorepo 與覆寫的寫法：
 
 ```yaml
-standard: team@1.1.0            # 必須寫確切版本
+standard: team@1.2.0            # 必須寫確切版本
 components:                     # 元件 = 目錄 + 語言
   - path: backend/
     language: go
@@ -307,7 +307,7 @@ mirrors:
 - 理由仍是 `TODO`、覆寫不存在的項目、值的型別錯誤、重複宣告同一個元件，都是**錯誤**。
 - 每個檔案歸屬於路徑最長且語言相符的元件；沒有元件涵蓋時，依副檔名推定語言並套用預設標準（並發出 `declaration/uncovered-files` 提示）。
 
-可以覆寫的項目與預設值，見 [src/standard/team-1.0.0.ts](src/standard/team-1.0.0.ts)（`team@1.1.0` 與它的差異見 [src/standard/team-1.1.0.ts](src/standard/team-1.1.0.ts)）、SPEC §5–§6 或 [Language-Standards.md](docs/wiki/Language-Standards.md)。
+可以覆寫的項目與預設值，見 [src/standard/team-1.0.0.ts](src/standard/team-1.0.0.ts)（`team@1.1.0`、`team@1.2.0` 與前一版的差異見 [src/standard/team-1.1.0.ts](src/standard/team-1.1.0.ts)、[src/standard/team-1.2.0.ts](src/standard/team-1.2.0.ts)）、SPEC §5–§6 或 [Language-Standards.md](docs/wiki/Language-Standards.md)。
 
 既有專案可以先宣告基線標準 `legacy@1.0.0`（[src/standard/legacy-1.0.0.ts](src/standard/legacy-1.0.0.ts)，SPEC §6.5）：不判定覆蓋率、不要求 strict 型別檢查、放寬複雜度、只禁用有已知弱點的套件，並接受 Java 8；之後以 `devguard standard upgrade` 升級到 `team@1.1.0`。
 
