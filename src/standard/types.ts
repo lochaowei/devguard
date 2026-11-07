@@ -61,7 +61,7 @@ export const EXTENSION_LANGUAGE: Readonly<Record<string, Language>> = {
 export interface Standard {
   /** e.g. "team@1.0.0" */
   id: string;
-  /** Items that apply to the whole repo (mirrors, Claude Code version). */
+  /** Items that apply to the whole repo (Claude Code version; mirrors before team@1.3.0). */
   global: Readonly<Record<string, ItemDef>>;
   languages: Readonly<Record<Language, Readonly<Record<string, ItemDef>>>>;
   /**

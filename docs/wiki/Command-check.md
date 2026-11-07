@@ -2,7 +2,7 @@
 
 檢查專案宣告（`.devguard.yaml`）、各工具設定檔與程式碼是否符合預設標準。只回報，不修改任何檔案。
 
-日常開發、CI 與 VS Code 的 `standards: check` task 都用它；pre-commit hook 跑的就是 `check --staged`，pre-push hook 在開發者設定 `DEVGUARD_PRE_PUSH=full` 時跑 `check --full` 中的測試與覆蓋率部分（預設不跑）。`check --full` 本身不受這個環境變數影響，一律完整執行測試、覆蓋率與弱點掃描，供 CI 與發佈前的本地檢查使用。
+日常開發、CI 與 VS Code 的 `standards: check` task 都用它；pre-commit hook 跑的就是 `check --staged`，pre-push hook 在開發者設定 `DEVGUARD_PRE_PUSH=full` 時跑 `check --full` 中的測試與覆蓋率部分（預設不跑）。`check --full` 本身不受這個環境變數影響，一律完整執行測試與覆蓋率，供 CI 與發佈前的本地檢查使用。
 
 本頁的範例都以[示範專案](CLI-Reference.md#示範專案)實際執行取得。
 
@@ -19,8 +19,8 @@ devguard check [檔案…] [--staged] [--only lint|format|typecheck] [--full]
 |---|---|
 | `[檔案…]` | 只檢查這些檔案的程式碼（設定檢查照常全部執行）。路徑相對於目前目錄，必須在專案目錄內 |
 | `--staged` | 只檢查 staged 的檔案，與 pre-commit hook 相同 |
-| `--only <類別>` | 只跑一類程式碼檢查：`lint`、`format` 或 `typecheck`；同時會跳過測試、覆蓋率與弱點掃描 |
-| `--full` | 加跑測試、覆蓋率與弱點掃描（弱點掃描只在元件的 `deps.vulnScan` 開啟時執行） |
+| `--only <類別>` | 只跑一類程式碼檢查：`lint`、`format` 或 `typecheck`；同時會跳過測試與覆蓋率 |
+| `--full` | 加跑測試與覆蓋率 |
 | `--format <格式>` | 輸出格式，見 [CLI-Reference](CLI-Reference.md#輸出格式--format) |
 | `--strict` | 偏離也算失敗 |
 | `--verbose` | 展開提示（預設只顯示提示的數量） |
@@ -52,19 +52,18 @@ devguard check [檔案…] [--staged] [--only lint|format|typecheck] [--full]
 | 7 | `settings-typescript` | `config` | `package.json`、`tsconfig.json`、ESLint flat config、Prettier、Biome、Vitest / Jest 覆蓋率門檻 |
 | 8 | `tool-versions` | `consistency` | lockfile / 建置檔鎖定的工具版本（與 PATH 上的 `golangci-lint`）是否在標準的 `tools.*` 範圍內 |
 | 9 | `gitattributes` | `config` | repo 根目錄 `.gitattributes` 有 `* text=auto eol=lf` |
-| 10 | `mirrors` | `config` | 專案層級的鏡像設定（uv、Poetry、npm、Maven、Gradle）指向宣告的內部鏡像。Poetry 專案（最近的 lockfile 是 `poetry.lock`）檢查 `[[tool.poetry.source]]`（`name = "nexus"`、`priority = "primary"`），不檢查 `[[tool.uv.index]]` |
+| 10 | `credentials` | `config` | 提交進 repo 的專案設定檔中沒有明碼帳密（`credentials/plaintext`）：`.npmrc` 的 `_auth`、`_authToken`、`_password` 必須引用環境變數（`${NAME}`，可加引號）；`pyproject.toml` 中任何網址（index、source、`[tool.uv.sources]`、`pkg @ https://…` 依賴）不得內含密碼或 token（只有帳號不算）；`.mvn/settings.xml` 的 `<password>`、`<passphrase>` 必須是屬性引用（`${…}`）、Maven 加密的 `{…}` 或空值。各檔案也在元件的上層目錄中查找（workspace 根目錄的 `.npmrc` 等），共用的檔案只回報一次。只回報、不印出值，`fix` 也不會改寫。套件從哪裡下載（registry、index、鏡像）不檢查，交給使用者層級的設定 |
 | 11 | `claude-code` | `config` | `.claude/` 的 rules、hooks、`/standards-doctor` 與標準一致 |
 | 12 | `vscode` | `config` | `.vscode/` 的 extensions、settings、tasks |
 | 13 | `code` | `code` | 用各元件的工具跑 lint、format、typecheck |
 | 14 | `tests` | `code` | **只在 `--full` 且沒有 `--only`**：跑測試並檢查行、分支、函式、陳述式覆蓋率 |
-| 15 | `vuln` | `code` | **只在 `--full` 且沒有 `--only`**，並且元件開啟 `deps.vulnScan`：弱點掃描 |
 
 各種範圍選項的影響：
 
 - **指定檔案**：設定檢查（1–12）照常跑整個專案；`code` 層只檢查這些檔案。`tsc`、`mypy`、`pyright`、`basedpyright` 這類無法只檢查單一檔案的工具，仍會檢查檔案所屬的整個元件。
 - **指定的檔案不是原始碼**：TypeScript 元件內的檔案（`.js`、`.mjs`、`.json`、`.md`、`.prettierrc`、`LICENSE` 等）都交給元件的 linter 與 formatter，由工具決定是否處理（ESLint `--no-warn-ignored`、Prettier `--ignore-unknown`、Biome `--files-ignore-unknown=true`），回報的問題與全專案檢查一致。工具不處理的檔案不產生 finding。只有這類檔案時，不跑型別檢查。
 - **`--staged`**：只跑 `declaration`、`code` 兩層；有依賴檔（`package.json`、lockfile 等）被 staged 時再加上 `deps`。細節見 [hook 頁的 git-pre-commit](Command-hook.md#git-pre-commit)。
-- **宣告的 `ignore`**：符合的檔案從檔案清單中排除，不會觸發 `uncovered-files` 提示，也不會交給 `code`、`tests`、`vuln` 層，即使在命令列上指定或已 staged 也一樣（格式見[專案宣告](Project-Declaration.md#排除路徑ignore)）。以整個目錄為單位執行的工具（元件的 `eslint .`、`prettier .`、`tsc`、`mypy` 等）仍依各自的設定決定範圍；元件目錄內要排除的檔案，也要在該工具的設定中排除。
+- **宣告的 `ignore`**：符合的檔案從檔案清單中排除，不會觸發 `uncovered-files` 提示，也不會交給 `code`、`tests` 層，即使在命令列上指定或已 staged 也一樣（格式見[專案宣告](Project-Declaration.md#排除路徑ignore)）。以整個目錄為單位執行的工具（元件的 `eslint .`、`prettier .`、`tsc`、`mypy` 等）仍依各自的設定決定範圍；元件目錄內要排除的檔案，也要在該工具的設定中排除。
 - **沒有 `.devguard.yaml`**：報告 `declaration/missing` 錯誤，程式碼檢查仍以推定的預設標準執行。
 - **`.vscode/` 完全不存在**：`check` 不會報告；要產生它請執行 [`fix`](Command-fix.md) 或 [`install`](Command-install.md)。已經有部分檔案時，缺少的才算錯誤。
 

@@ -1,6 +1,5 @@
 import { posix } from "node:path";
 import type { Finding } from "../report/finding.ts";
-import { goEnv } from "../tools/go-env.ts";
 import type { ToolResult } from "../tools/runner.ts";
 import { codeFinding, firstDifferentLine, runBatched, splitStaged, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeCategory, CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
@@ -59,12 +58,6 @@ function issueFindings(target: CodeTarget, ctx: CodeCheckContext, result: ToolRe
   );
 }
 
-/** GOTOOLCHAIN=local plus the standard's Go mirrors, for every golangci-lint run (SPEC §3.2, §10.2). */
-function mirrorEnv(target: CodeTarget): Record<string, string> {
-  const text = (v: unknown) => (typeof v === "string" ? v : undefined);
-  return goEnv({ proxy: text(target.effective["mirrors.go"]), sumdb: text(target.effective["mirrors.gosumdb"]) });
-}
-
 /**
  * golangci-lint loads whole packages, so a file list becomes the list of package directories ("." or "./pkg");
  * undefined means the whole component ("./...").
@@ -80,7 +73,7 @@ function packageDirs(files: readonly string[] | undefined): string[] | undefined
  * goimports) and prints the result; any difference is a format finding (SPEC §7.4).
  */
 async function formatStaged(target: CodeTarget, ctx: CodeCheckContext, file: string, text: string): Promise<Finding[]> {
-  const request = { language: "go", tool: "golangci-lint", dir: target.dir, env: mirrorEnv(target) } as const;
+  const request = { language: "go", tool: "golangci-lint", dir: target.dir } as const;
   const result = await ctx.tools.run({ ...request, args: ["fmt", "--stdin"], stdin: text });
   if (result.code !== 0) return [toolFailed(target, "golangci-lint fmt", result)];
   if (result.stdout === text) return [];
@@ -100,7 +93,7 @@ export const goChecker: CodeChecker = {
   async check(target, ctx) {
     const packages = packageDirs(target.files);
     if (packages?.length === 0) return [];
-    const request = { language: "go", tool: "golangci-lint", dir: target.dir, env: mirrorEnv(target) } as const;
+    const request = { language: "go", tool: "golangci-lint", dir: target.dir } as const;
     const args = ["run", "--output.json.path=stdout", "--show-stats=false", "--path-mode=abs"];
     const results = await runBatched(ctx.tools, request, args, packages ?? ["./..."]);
     const findings = results.flatMap((r) => issueFindings(target, ctx, r));
@@ -122,8 +115,6 @@ export const goChecker: CodeChecker = {
     const packages = packageDirs(target.files);
     if (packages?.length === 0) return Promise.resolve([]);
     const args = ["run", "--fix", "--show-stats=false"];
-    return Promise.resolve([
-      { tool: "golangci-lint", args, files: packages ?? ["./..."], env: mirrorEnv(target), okUpTo: 1 },
-    ]);
+    return Promise.resolve([{ tool: "golangci-lint", args, files: packages ?? ["./..."], okUpTo: 1 }]);
   },
 };

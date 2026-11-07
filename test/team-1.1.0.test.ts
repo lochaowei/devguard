@@ -15,13 +15,13 @@ const TS_ON_1_0_0 =
   "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: typescript\n    overrides:\n" +
   '      tools.eslint-plugin-sonarjs:\n        value: ">=3,<5"\n        reason: "peer dependency"\n';
 
-// team@1.2.0 is newer (#68): upgrades to team@1.1.0 name it as their target.
+// team@1.2.0 (#68) and team@1.3.0 (#64) are newer: upgrades to team@1.1.0 name it as their target.
 describe("standard upgrade from team@1.0.0 to team@1.1.0 (#39)", () => {
   it("doctor suggests upgrading team@1.0.0 to the newest team, past team@1.1.0", async () => {
     const dir = repo({ ".devguard.yaml": "standard: team@1.0.0\ncomponents: []\n" });
     const { findings } = await runDoctor({ cwd: dir, today: TODAY, checks: [createStandardUpgradeCheck()] });
     expect(findings).toContainEqual(
-      expect.objectContaining({ rule: "standard/upgrade-available", fix: "devguard standard upgrade team@1.2.0" }),
+      expect.objectContaining({ rule: "standard/upgrade-available", fix: "devguard standard upgrade team@1.3.0" }),
     );
   });
 

@@ -22,7 +22,7 @@ const SECRET_ELEMENT = /<(\w*(?:password|passphrase|username|privatekey|token|se
 
 /** The last word of a key that names a credential: `NEXUS_PASSWORD`, `clientSecret`, `:_authToken`, `username`. */
 const SECRET_WORD = /(password|passwd|passphrase|token|secret|apikey|username|privatekey)$/i;
-/** npm's `_auth` (bare or registry-scoped); a plain `auth` key (`mirrors.auth: env`) is not a credential. */
+/** npm's `_auth` (bare or registry-scoped); a plain `auth` key is not a credential. */
 const NPM_AUTH = /(^|[^a-z0-9])_auth$/i;
 
 /** `key = value`, `key: value`, `"key": "value"` (INI, TOML, YAML, JSON, .env). */

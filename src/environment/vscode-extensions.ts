@@ -1,4 +1,3 @@
-import type { Resolution } from "../declaration/resolve.ts";
 import type { Exec } from "../process/exec.ts";
 import type { Finding } from "../report/finding.ts";
 import { workspaceExtensions } from "../vscode/workspace.ts";
@@ -20,11 +19,6 @@ const installedIds = (stdout: string): Set<string> =>
       )
       .filter((id) => id !== ""),
   );
-
-function marketplace(resolution: Resolution): string {
-  const value = resolution.global["mirrors.vscode"]?.value;
-  return typeof value === "string" ? value.replace(/\/+$/, "") : "";
-}
 
 /** The installed extension ids, or a hint when the `code` command cannot be run. */
 async function listInstalled(exec: Exec, file: string, cwd: string): Promise<Set<string> | Finding> {
@@ -68,7 +62,6 @@ export function createVscodeExtensionsCheck(options: VscodeExtensionsCheckOption
       const { recommended, unwanted } = workspaceExtensions(resolution);
       const installed = await listInstalled(exec, file, cwd);
       if (!(installed instanceof Set)) return [installed];
-      const url = marketplace(resolution);
       const findings: Finding[] = recommended
         .filter((id) => !installed.has(id.toLowerCase()))
         .map((id) => ({
@@ -76,7 +69,7 @@ export function createVscodeExtensionsCheck(options: VscodeExtensionsCheckOption
           layer: "environment",
           rule: "environment/vscode-extension-missing",
           message: `VS Code 沒有安裝推薦的擴充套件 ${id}（若已安裝但被停用，請在 VS Code 中啟用）`,
-          fix: `請從公司內部 marketplace 安裝 ${id}：${url}/items?itemName=${id}`,
+          fix: `code --install-extension ${id}`,
         }));
       for (const id of unwanted.filter((u) => installed.has(u.toLowerCase()))) {
         findings.push({

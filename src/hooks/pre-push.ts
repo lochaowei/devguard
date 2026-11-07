@@ -12,8 +12,8 @@ export function prePushRunsTests(env: EnvVars): boolean {
 }
 
 /**
- * `devguard hook git-pre-push` (SPEC §7.1, §7.4). By default it lets every push through at once: the full tests,
- * coverage and vulnerability scans belong to `devguard check --full` (CI). With `DEVGUARD_PRE_PUSH=full` it runs them
+ * `devguard hook git-pre-push` (SPEC §7.1, §7.4). By default it lets every push through at once: the full tests and
+ * coverage belong to `devguard check --full` (CI). With `DEVGUARD_PRE_PUSH=full` it runs them
  * as `check --full` does, whatever is being pushed: prints nothing when they pass; otherwise prints the findings and
  * returns non-zero, which blocks the push. Git's arguments (remote name, URL) and the refs on stdin are not needed.
  */

@@ -1,6 +1,6 @@
 # `devguard standard upgrade`
 
-把 `.devguard.yaml` 宣告的預設標準升級到這個 CLI 內建的較新版本。預設只預覽升級對專案的影響；加上 `--apply` 才修改宣告與設定檔，並透過內部鏡像執行套件管理指令。
+把 `.devguard.yaml` 宣告的預設標準升級到這個 CLI 內建的較新版本。預設只預覽升級對專案的影響；加上 `--apply` 才修改宣告與設定檔，並執行套件管理指令。
 
 CLI 內建了宣告標準的較新 minor / patch 版本時，[`doctor`](Command-doctor.md) 會提示執行這個指令；`check` 不會提示。從基線標準 `legacy@1.0.0` 升到 `team@1.1.0` 會收緊標準，`doctor` 不會提示，要自行決定時機。
 
@@ -45,15 +45,15 @@ devguard standard upgrade [目標版本] [--apply] [--cwd <dir>]
 
 套件管理指令：
 
-| 語言 | 指令 | 鏡像 |
-|---|---|---|
-| Python（uv） | `uv add --dev "<套件><範圍>"` | `mirrors.pypi`（以 `UV_DEFAULT_INDEX` 帶入） |
-| Python（Poetry，最近的 lockfile 是 `poetry.lock`） | `poetry add --group dev "<套件><範圍>"`（PEP 508 形式，例如 `"ruff>=0.18,<0.19"`）；找不到 `poetry` 時提示 `scoop install poetry`，不改用 uv | `pyproject.toml` 的 `[[tool.poetry.source]]`（不另外設定環境變數；預覽顯示 `（鏡像：<元件>/pyproject.toml 的 [[tool.poetry.source]] nexus）`） |
-| TypeScript | `npm install --save-dev <套件>@<範圍>` | `mirrors.npm` |
-| Go | `go get -tool <模組>@v<範圍下限>`（`go get` 只接受單一版本） | `mirrors.go`，並設定 `mirrors.gosumdb` |
-| Java、PATH 上的工具 | **不執行**，只印出要手動修改的地方，標示 `（請自行執行）` | — |
+| 語言 | 指令 |
+|---|---|
+| Python（uv） | `uv add --dev "<套件><範圍>"` |
+| Python（Poetry，最近的 lockfile 是 `poetry.lock`） | `poetry add --group dev "<套件><範圍>"`（PEP 508 形式，例如 `"ruff>=0.18,<0.19"`）；找不到 `poetry` 時提示 `scoop install poetry`，不改用 uv |
+| TypeScript | `npm install --save-dev <套件>@<範圍>` |
+| Go | `go get -tool <模組>@v<範圍下限>`（`go get` 只接受單一版本） |
+| Java、PATH 上的工具 | **不執行**，只印出要手動修改的地方，標示 `（請自行執行）` |
 
-同一個元件的多個套件合併成一條指令，在元件目錄中執行。預覽中 Python 指令含 `>`、`<`、`,` 或空白的引數加上雙引號，可以直接貼到 shell 執行；npm 與 go 的指令照原樣印出。
+同一個元件的多個套件合併成一條指令，在元件目錄中執行。套件從哪裡下載由開發者使用者層級的設定決定（npm 的 registry、uv／Poetry 的 index、`go env GOPROXY`），devguard 不另外指定。預覽中 Python 指令含 `>`、`<`、`,` 或空白的引數加上雙引號，可以直接貼到 shell 執行；npm 與 go 的指令照原樣印出。
 
 ---
 
@@ -71,13 +71,19 @@ devguard standard upgrade [目標版本] [--apply] [--cwd <dir>]
 
 ## 範例
 
-目前 CLI 內建 `team@1.0.0`、`team@1.1.0`、`team@1.2.0` 與 `legacy@1.0.0`。宣告 `team@1.0.0` 的 TypeScript 專案升級時（`doctor` 也會以 `standard/upgrade-available` 提示建議這個指令）：
+目前 CLI 內建 `team@1.0.0`、`team@1.1.0`、`team@1.2.0`、`team@1.3.0` 與 `legacy@1.0.0`。宣告 `team@1.0.0` 的 TypeScript 專案升級時（`doctor` 也會以 `standard/upgrade-available` 提示建議這個指令）：
 
 ```text
 $ devguard standard upgrade
-標準升級預覽：team@1.0.0 → team@1.2.0
+標準升級預覽：team@1.0.0 → team@1.3.0
 
 標準項目的差異：
+  整體｜鏡像帳密模式："none"（移除）
+  整體｜PyPI 鏡像："https://nexus.example.internal/repository/pypi-proxy/simple"（移除）
+  …
+  TypeScript｜弱點掃描（進階）：false（移除）
+  TypeScript｜弱點掃描門檻："high"（移除）
+  TypeScript｜忽略的弱點：[]（移除）
   TypeScript｜eslint-plugin-sonarjs 版本範圍：">=3,<4"（移除）
   TypeScript｜vitest 版本範圍：">=5,<6" → ">=4.1,<6"
 
@@ -87,7 +93,7 @@ $ devguard standard upgrade
 …
 要修改的檔案：
 .devguard.yaml：修改 CLI 管理的設定
-+standard: team@1.2.0
++standard: team@1.3.0
 -standard: team@1.0.0
 …
 只預覽，沒有套用。加上 --apply 才會套用。
@@ -95,11 +101,11 @@ $ echo $?
 1
 ```
 
-宣告中覆寫了 `tools.eslint-plugin-sonarjs` 時，這個覆寫會列在「多餘的覆寫」（`（新標準已移除這個項目）`），`--apply` 會把它刪除。已經是最新版本，或指定的版本不存在時：
+宣告中覆寫了 `tools.eslint-plugin-sonarjs`、`deps.vulnScan`，或有頂層 `mirrors:` 時，這些覆寫會列在「多餘的覆寫」（`（新標準已移除這個項目）`），`--apply` 會把它們刪除；刪除後空了的 `overrides:` 與 `mirrors:` 也一併刪除。已經是最新版本，或指定的版本不存在時：
 
 ```text
 $ devguard standard upgrade
-已經是這個 devguard 內建的最新標準 team@1.2.0
+已經是這個 devguard 內建的最新標準 team@1.3.0
 
 $ devguard standard upgrade team@9.0.0
 這個 devguard 沒有內建「team@9.0.0」
@@ -130,7 +136,7 @@ $ devguard standard upgrade
 …
 
 $ devguard standard upgrade team@1.0.0
-無法從 legacy@1.0.0 升級到 team@1.0.0；可以升級到 team@1.1.0、team@1.2.0
+無法從 legacy@1.0.0 升級到 team@1.0.0；可以升級到 team@1.1.0、team@1.2.0、team@1.3.0
 $ echo $?
 2
 ```
@@ -138,7 +144,7 @@ $ echo $?
 預覽的格式（各段落的標題，內容依專案而定）：
 
 ```text
-標準升級預覽：team@1.0.0 → team@1.2.0
+標準升級預覽：team@1.0.0 → team@1.3.0
 
 標準項目的差異：
   …
@@ -149,7 +155,7 @@ $ echo $?
   …
 需要調整的工具版本：
   …
-需要執行的套件管理指令（--apply 會透過內部鏡像執行）：
+需要執行的套件管理指令（--apply 會執行）：
   …
 要修改的檔案：
 …
@@ -162,7 +168,7 @@ $ echo $?
 | 現象 | 原因與處理 |
 |---|---|
 | CI 中跑預覽得到 exit `1` | 有變更待套用時預覽固定回傳 `1`（SPEC §11），可以用來偵測「需要升級」 |
-| `套件管理指令失敗：…` | 通常是鏡像連不上或帳密缺少。先跑 `devguard doctor` 檢查 `mirrors/credentials-missing`；檔案已經寫入，修好後可以直接執行印出的指令 |
+| `套件管理指令失敗：…` | 通常是套件來源連不上或帳密缺少，請檢查使用者層級的 npm／uv／Poetry／Go 設定；檔案已經寫入，修好後可以直接執行印出的指令 |
 | Java 的外掛版本沒有被更新 | 建置檔屬於 `snippet`，不會自動修改。照預覽中的 `（請自行執行）` 修改 `pom.xml` / `build.gradle` |
 
 ---

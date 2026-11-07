@@ -4,7 +4,7 @@ import { isScalar, isSeq, parse as parseYaml, parseDocument, type Document, type
 import type { KeyEdit, KeyPath } from "./repair.ts";
 
 /** How a structured shared file is read and written. */
-export type EditFormat = "toml" | "jsonc" | "yaml" | "lines" | "ini";
+export type EditFormat = "toml" | "jsonc" | "yaml" | "lines";
 
 const LINE_FILES = new Set([".gitattributes", ".gitignore", "lombok.config"]);
 
@@ -14,7 +14,6 @@ const baseName = (file: string): string => file.slice(file.lastIndexOf("/") + 1)
 export function editFormat(file: string, text = ""): EditFormat | undefined {
   const name = baseName(file);
   if (LINE_FILES.has(name)) return "lines";
-  if (name === ".npmrc") return "ini";
   if (name === ".prettierrc") return text.trim() === "" || text.trimStart().startsWith("{") ? "jsonc" : "yaml";
   if (/\.toml$/.test(name)) return "toml";
   if (/\.(json|jsonc|json5)$/.test(name)) return "jsonc";
@@ -200,35 +199,11 @@ function editLines(text: string, edits: readonly KeyEdit[]): string {
   return lines.join("\n") + "\n";
 }
 
-function iniKey(line: string): string | undefined {
-  const trimmed = line.trim();
-  if (trimmed.startsWith("#") || trimmed.startsWith(";")) return undefined;
-  const at = trimmed.indexOf("=");
-  return at < 0 ? undefined : trimmed.slice(0, at).trim();
-}
-
-/** `key=value` files (.npmrc): `set` replaces the key's line or appends one, `delete` drops it; the rest stays. */
-function editIni(text: string, edits: readonly KeyEdit[]): string {
-  const lines = text.split(/\r?\n/);
-  if (lines[lines.length - 1] === "") lines.pop();
-  for (const e of pathEdits(edits)) {
-    const key = String(e.path[0]);
-    const at = lines.findIndex((l) => iniKey(l) === key);
-    if (e.op === "delete" && at >= 0) lines.splice(at, 1);
-    if (e.op !== "set") continue;
-    const line = `${key}=${String(e.value)}`;
-    if (at >= 0) lines[at] = line;
-    else lines.push(line);
-  }
-  return lines.join("\n") + "\n";
-}
-
 const EDITORS: Record<EditFormat, (text: string, edits: readonly KeyEdit[]) => string> = {
   toml: editToml,
   jsonc: editJsonc,
   yaml: editYaml,
   lines: editLines,
-  ini: editIni,
 };
 
 /**

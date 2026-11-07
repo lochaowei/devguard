@@ -1,6 +1,3 @@
-import type { MirrorChecker } from "../mirrors/common.ts";
-import { checkPoetry, POETRY_AUTH_VARIABLES, POETRY_SOURCE_NAME } from "../mirrors/poetry.ts";
-import { checkUv, UV_AUTH_VARIABLES } from "../mirrors/uv.ts";
 import { upwards } from "../repo/paths.ts";
 
 /**
@@ -18,8 +15,8 @@ export function pythonLockfiles(dir: string): string[] {
 }
 
 /**
- * Poetry when the nearest Python lockfile is `poetry.lock`; uv otherwise. Running tools, the mirror check, mirror
- * credentials and `standard upgrade` all decide this way.
+ * Poetry when the nearest Python lockfile is `poetry.lock`; uv otherwise. Running tools and `standard upgrade` both
+ * decide this way.
  */
 export function pythonManager(dir: string, exists: FileExists): PythonManager {
   const nearest = pythonLockfiles(dir).find(exists);
@@ -36,24 +33,12 @@ export async function readPythonManager(
   return pythonManager(dir, (file) => present.has(file));
 }
 
-/** Where a Python manager downloads packages from. */
-export type PythonMirror =
-  /** `mirrors.pypi`, handed to it through environment variables. */
-  | { from: "env"; env: (mirror: string) => Readonly<Record<string, string>> }
-  /** The project's own settings, which the mirror check keeps on `mirrors.pypi`; `where` names them. */
-  | { from: "project"; where: (dir: string) => string };
-
 /** Everything devguard does differently for uv and Poetry. */
 export interface PythonManagerDef {
   /** The program, e.g. for `standard upgrade --apply`. */
   program: string;
   /** Adds dev dependencies, followed by PEP 508 requirements such as `ruff>=0.18,<0.19` (SPEC §5.5). */
   addDev: readonly string[];
-  mirror: PythonMirror;
-  /** The project-level mirror check (SPEC §10.2). */
-  checkMirror: MirrorChecker;
-  /** The variables it reads mirror credentials from, and what they are for (SPEC §10.3). */
-  auth: { variables: readonly string[]; purpose: string };
   /** What must run first for the project environment to be the `.venv` devguard runs tools from; none for uv. */
   inProject?: string;
   /** Installs the project environment into `.venv` (SPEC §5.2). */
@@ -68,18 +53,12 @@ export const PYTHON_MANAGERS: Readonly<Record<PythonManager, PythonManagerDef>> 
   uv: {
     program: "uv",
     addDev: ["add", "--dev"],
-    mirror: { from: "env", env: (mirror) => ({ UV_DEFAULT_INDEX: mirror }) },
-    checkMirror: checkUv,
-    auth: { variables: UV_AUTH_VARIABLES, purpose: "uv 登入 nexus index" },
     install: "uv sync",
     runTool: (_bin, tool, args) => ({ file: "uv", args: ["run", "--no-sync", tool, ...args] }),
   },
   poetry: {
     program: "poetry",
     addDev: ["add", "--group", "dev"],
-    mirror: { from: "project", where: (dir) => `${dir}pyproject.toml 的 [[tool.poetry.source]] ${POETRY_SOURCE_NAME}` },
-    checkMirror: checkPoetry,
-    auth: { variables: POETRY_AUTH_VARIABLES, purpose: "Poetry 登入 nexus source" },
     // Running the .venv's executables directly needs Poetry's environment inside the project.
     inProject: POETRY_IN_PROJECT,
     install: `${POETRY_IN_PROJECT} && poetry install`,

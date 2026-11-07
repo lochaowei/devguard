@@ -329,16 +329,15 @@ describe("tool runner: Go", () => {
     expect(started).toEqual([{ file: exe, args: ["run"], cwd: ROOT, env: { GOTOOLCHAIN: "local" } }]);
   });
 
-  it("passes the requested mirror environment but always keeps the local toolchain", async () => {
+  it("sets no GOPROXY of its own for golangci-lint; `go` stays offline (#64)", async () => {
     const exe = "C:\\scoop\\shims\\golangci-lint.exe";
     const { runner, started } = fakeRunner({ [exe]: "", "C:\\repo\\go.mod": GO_MOD });
-    const env = { GOTOOLCHAIN: "auto", GOPROXY: "https://mirror/", GOSUMDB: "sum.golang.org https://sumdb/" };
-    await runner.run(req({ language: "go", tool: "golangci-lint", env }));
-    await runner.run(req({ language: "go", tool: "go", args: ["mod", "tidy", "-diff"], env }));
+    await runner.run(req({ language: "go", tool: "golangci-lint" }));
+    await runner.run(req({ language: "go", tool: "go", args: ["mod", "tidy", "-diff"] }));
     expect(started.map((c) => c.env)).toEqual([
-      { GOTOOLCHAIN: "local", GOPROXY: "https://mirror/", GOSUMDB: "sum.golang.org https://sumdb/" },
+      { GOTOOLCHAIN: "local" },
       // `go` and `go tool` stay offline: resolving a tool never downloads it.
-      { GOTOOLCHAIN: "local", GOPROXY: "off", GOSUMDB: "sum.golang.org https://sumdb/" },
+      { GOTOOLCHAIN: "local", GOPROXY: "off" },
     ]);
   });
 
@@ -404,28 +403,14 @@ describe("ToolMissingError", () => {
   });
 });
 
-describe("tool runner: package-manager commands go through the internal mirror (SPEC §5.5)", () => {
-  const MIRROR = "https://nexus.example.internal/repository/proxy/";
-
-  it("Python: uv with the mirror as its default index", async () => {
+describe("tool runner: package-manager commands use the developer's own package sources (SPEC §5.5, #64)", () => {
+  it("Python: uv, with no index of devguard's", async () => {
     const { runner, started } = fakeRunner({});
-    await runner.manage({
-      language: "python",
-      dir: "api/",
-      args: ["add", "--dev", "ruff>=0.18,<0.19"],
-      mirror: MIRROR,
-    });
-    expect(started).toEqual([
-      {
-        file: "uv",
-        args: ["add", "--dev", "ruff>=0.18,<0.19"],
-        cwd: "C:\\repo\\api",
-        env: { UV_DEFAULT_INDEX: MIRROR },
-      },
-    ]);
+    await runner.manage({ language: "python", dir: "api/", args: ["add", "--dev", "ruff>=0.18,<0.19"] });
+    expect(started).toEqual([{ file: "uv", args: ["add", "--dev", "ruff>=0.18,<0.19"], cwd: "C:\\repo\\api" }]);
   });
 
-  it("Python with Poetry: poetry, which reads the mirror from [[tool.poetry.source]], never uv (#53)", async () => {
+  it("Python with Poetry: poetry, never uv (#53)", async () => {
     const { runner, started } = fakeRunner({});
     await runner.manage({
       language: "python",
@@ -438,12 +423,6 @@ describe("tool runner: package-manager commands go through the internal mirror (
     ]);
   });
 
-  it("uv still refuses to run without a mirror", async () => {
-    const { runner, started } = fakeRunner({});
-    await expect(runner.manage({ language: "python", dir: "", args: ["add"] })).rejects.toThrow("內部鏡像");
-    expect(started).toEqual([]);
-  });
-
   it("Python with Poetry: reports a missing poetry with an install hint instead of falling back to uv", async () => {
     const enoent: Exec = () => Promise.reject(Object.assign(new Error("spawn poetry ENOENT"), { code: "ENOENT" }));
     const { runner } = fakeRunner({}, { exec: enoent });
@@ -454,49 +433,31 @@ describe("tool runner: package-manager commands go through the internal mirror (
     });
   });
 
-  it("TypeScript: npm from PATH with the mirror as its registry", async () => {
+  it("TypeScript: npm from PATH, with no registry of devguard's", async () => {
     const { runner, started } = fakeRunner({ "C:\\scoop\\shims\\npm.cmd": "" });
-    await runner.manage({
-      language: "typescript",
-      dir: "",
-      args: ["install", "-D", "eslint@>=10 <11"],
-      mirror: MIRROR,
-    });
+    await runner.manage({ language: "typescript", dir: "", args: ["install", "-D", "eslint@>=10 <11"] });
     expect(started).toEqual([
-      {
-        file: "C:\\scoop\\shims\\npm.cmd",
-        args: ["install", "-D", "eslint@>=10 <11"],
-        cwd: "C:\\repo",
-        env: { npm_config_registry: MIRROR },
-      },
+      { file: "C:\\scoop\\shims\\npm.cmd", args: ["install", "-D", "eslint@>=10 <11"], cwd: "C:\\repo" },
     ]);
   });
 
   it("TypeScript: reports a missing npm", async () => {
     const { runner } = fakeRunner({});
-    const m = await missing(runner.manage({ language: "typescript", dir: "", args: ["install"], mirror: MIRROR }));
+    const m = await missing(runner.manage({ language: "typescript", dir: "", args: ["install"] }));
     expect(m.message).toContain("npm");
   });
 
-  it("Go: go with GOPROXY and the checksum database through the mirror, never the toolchain download", async () => {
+  it("Go: go with the developer's GOPROXY, never the toolchain download", async () => {
     const { runner, started } = fakeRunner({});
-    await runner.manage({
-      language: "go",
-      dir: "",
-      args: ["get", "-tool", "x@v1"],
-      mirror: MIRROR,
-      sumdb: "https://s/",
-    });
-    expect(started[0]).toMatchObject({
-      file: "go",
-      env: { GOTOOLCHAIN: "local", GOPROXY: MIRROR, GOSUMDB: "sum.golang.org https://s/" },
-    });
+    await runner.manage({ language: "go", dir: "", args: ["get", "-tool", "x@v1"] });
+    expect(started[0]).toMatchObject({ file: "go", env: { GOTOOLCHAIN: "local" } });
+    expect(started[0]?.env).not.toHaveProperty("GOPROXY");
+    expect(started[0]?.env).not.toHaveProperty("GOSUMDB");
   });
 
-  it("refuses to run without a mirror, and for Java (build files are edited by hand)", async () => {
+  it("refuses Java (build files are edited by hand)", async () => {
     const { runner, started } = fakeRunner({});
-    await expect(runner.manage({ language: "python", dir: "", args: ["add"], mirror: "" })).rejects.toThrow("鏡像");
-    await expect(runner.manage({ language: "java", dir: "", args: [], mirror: MIRROR })).rejects.toThrow("Java");
+    await expect(runner.manage({ language: "java", dir: "", args: [] })).rejects.toThrow("Java");
     expect(started).toEqual([]);
   });
 });
@@ -514,12 +475,7 @@ describe("tool runner: git's repo-location variables stay out of project tools (
     await runner.run(req({ language: "typescript", tool: "eslint", stdin: "staged" }));
     await runner.run(req({ language: "go", tool: "goimports" }));
     await runner.run(req({ language: "java", tool: "spotless" }));
-    await runner.manage({
-      language: "typescript",
-      dir: "",
-      args: ["install"],
-      mirror: "https://npm.example.internal/",
-    });
+    await runner.manage({ language: "typescript", dir: "", args: ["install"] });
     const gitRepoEnv = [
       "GIT_ALTERNATE_OBJECT_DIRECTORIES",
       "GIT_COMMON_DIR",

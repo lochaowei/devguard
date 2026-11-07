@@ -36,6 +36,7 @@ src/
 │   ├── team-1.0.0.ts       內建預設標準 team@1.0.0 定義
 │   ├── team-1.1.0.ts       team@1.1.0：沿用 team@1.0.0，移除 eslint-plugin-sonarjs、放寬版本範圍
 │   ├── team-1.2.0.ts       team@1.2.0：沿用 team@1.1.0，新增替代型別檢查工具 basedpyright
+│   ├── team-1.3.0.ts       team@1.3.0：沿用 team@1.2.0，移除鏡像與弱點掃描項目
 │   ├── legacy-1.0.0.ts     legacy@1.0.0：既有專案的基線，沿用 team@1.1.0 並放寬，升級目標是 team@1.1.0
 │   └── registry.ts         內建標準版本查找、未知/過新/已移除/已棄用版本判定、draft 使用的預設標準（最新 team）
 ├── declaration/
@@ -54,12 +55,11 @@ src/
 │   ├── settings-typescript.ts 第 7 層：TypeScript 設定檢查
 │   ├── tool-versions.ts    第 8 層：工具版本範圍一致性檢查
 │   ├── gitattributes.ts    第 9 層：.gitattributes EOL 規則檢查
-│   ├── mirrors.ts          第 10 層：專案層級的鏡像設定
+│   ├── credentials.ts      第 10 層：專案設定檔中的明碼帳密
 │   ├── claude-code.ts      第 11 層：.claude/ 的 rules、hooks 與 /standards-doctor
 │   ├── vscode.ts           第 12 層：.vscode/ 的 extensions、settings、tasks
 │   ├── code.ts             第 13 層：四語言程式碼檢查（lint / format / typecheck）
 │   ├── tests.ts            第 14 層：四語言測試與覆蓋率檢查（--full）
-│   ├── vuln.ts             第 15 層：弱點掃描（--full）
 │   └── environment.ts      doctor 專用：環境檢查
 ├── settings/               各語言設定檔解析、比對（judge.ts）與產生器
 ├── deps/                   解析 pyproject.toml / package.json / go.mod / pom.xml / build.gradle 直接依賴
@@ -70,9 +70,8 @@ src/
 ├── hooks/                  git 與 Claude Code hook、devguard install、既有 hook 框架（pre-commit / husky / lefthook）
 ├── vscode/                 .vscode/ 的 settings、extensions、tasks
 ├── claude/                 .claude/ 的 hooks、rules 與 /standards-doctor
-├── mirrors/                專案層級的鏡像設定（uv、npm、Maven、Gradle）
+├── credentials/            明碼帳密檢查（.npmrc、pyproject.toml、.mvn/settings.xml）
 ├── environment/            只有 doctor 跑的環境檢查
-├── vuln/                   各語言的弱點掃描
 ├── shared/                 共用的檔案讀取與型別守衛
 ├── tools/                  專案工具執行器（runner.ts）：封裝 uv run、node_modules/.bin、go tool、mvnw/gradlew
 ├── process/                子程序執行（exec.ts）與 Windows .cmd/.bat 透過 cmd.exe /d /s /c 呼叫（cmd-shim.ts）
@@ -126,8 +125,8 @@ src/
 | #21 | `devguard doctor` 與 git hook 環境檢查 | §7.4、§11 | ✅ 已完成（已合併至 `main`） |
 | #22 | 第一道防線：VS Code workspace 設定（`.vscode/`） | §7.2 | ✅ 已完成（已合併至 `main`） |
 | #23 | 第二道防線：Claude Code（`.claude/` rules、hooks、skill） | §7.3 | ✅ 已完成（已合併至 `main`） |
-| #24 | 內部鏡像設定與帳密檢查 | §10 | ✅ 已完成（已合併至 `main`） |
-| #25 | 進階：弱點掃描 | §5.3 | ✅ 已完成（已合併至 `main`） |
+| #24 | 內部鏡像設定與帳密檢查 | §10 | ✅ 已完成；鏡像部分已於 #64 移除，只保留明碼帳密檢查 |
+| #25 | 進階：弱點掃描 | §5.3 | ✅ 已完成；已於 #64 移除 |
 | #26 | `devguard standard upgrade` 與棄用版本 | §5.5 | ✅ 已完成（已合併至 `main`） |
 | #27 | Bun 打包單一 `.exe`、smoke test 與 T2 探測腳本 | §3.1、§13 | ✅ Bun 1.4.4 實機建置；smoke test、T1、T2 通過（已合併至 `main`） |
 | #28 | 以 GitHub Release 發佈 `.exe`（取代原簽章與內部 Scoop bucket） | §3.1、§12 | ✅ 已完成（`.github/workflows/release.yml`，已合併至 `main`） |

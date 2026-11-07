@@ -19,7 +19,7 @@ devguard hook git-pre-commit|git-pre-push|claude-session-start|claude-post-edit|
 | 名稱 | 觸發時機 | 檢查範圍 | 輸出到 | 有問題時的效果 |
 |---|---|---|---|---|
 | [`git-pre-commit`](#git-pre-commit) | `git commit` | staged 的檔案：lint、format、所屬元件的 typecheck；有依賴檔被 staged 時加上依賴規則 | stderr（git 顯示給開發者） | exit `1`，**擋下 commit** |
-| [`git-pre-push`](#git-pre-push) | `git push` | 預設不檢查、直接放行。設定 `DEVGUARD_PRE_PUSH=full` 時：所有元件的測試與覆蓋率；開啟 `deps.vulnScan` 的元件加上弱點掃描 | stderr | 預設 exit `0`；開啟時 exit `1`，**擋下 push** |
+| [`git-pre-push`](#git-pre-push) | `git push` | 預設不檢查、直接放行。設定 `DEVGUARD_PRE_PUSH=full` 時：所有元件的測試與覆蓋率 | stderr | 預設 exit `0`；開啟時 exit `1`，**擋下 push** |
 | [`claude-session-start`](#claude-session-start) | Claude Code 開始工作階段 | `doctor --quiet` | stdout，Claude Code 加進工作階段的 context | 只提供資訊，exit `0` |
 | [`claude-post-edit`](#claude-post-edit) | Claude 用 `Edit` / `Write` 改完一個檔案 | 該檔案的 lint、format | stdout 的 JSON：`decision: "block"` | Claude 收到問題並繼續修正，exit `0` |
 | [`claude-stop`](#claude-stop) | Claude 要結束這一輪 | 工作目錄中所有變更檔案的 lint、format、typecheck | stdout 的 JSON：`decision: "block"` 或 `systemMessage` | Claude 繼續修正；第二次仍失敗就放行並告訴開發者，exit `0` |
@@ -72,7 +72,7 @@ $ devguard check --staged
 ### 執行流程
 
 1. 環境變數 `DEVGUARD_PRE_PUSH` 不是 `full`（未設定或其他值）時，什麼都不跑、不印，以 exit `0` 放行。日常的 WIP push 不會被完整測試與覆蓋率計算擋住；這些由 CI 的 [`check --full`](Command-check.md) 把關。
-2. 設定 `DEVGUARD_PRE_PUSH=full` 時，不管這次 push 了哪些 commit（不讀 git 傳入的 remote 與 refs），都執行 `declaration`、`tests`、`vuln` 三層，等同 `check --full` 中的測試、覆蓋率與弱點掃描。
+2. 設定 `DEVGUARD_PRE_PUSH=full` 時，不管這次 push 了哪些 commit（不讀 git 傳入的 remote 與 refs），都執行 `declaration`、`tests` 兩層，等同 `check --full` 中的測試與覆蓋率。
 3. 通過時什麼都不印。
 4. 有錯誤時印出報告，以 exit `1` 擋下 push。
 

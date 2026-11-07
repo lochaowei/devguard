@@ -73,27 +73,26 @@ describe("resolveDeclaration — other rules", () => {
     ]);
   });
 
-  it("each ignored vulnerability needs an id, a reason and an until date", () => {
+  it("only hints at a retired item, on every standard version, and never judges it (#64)", () => {
     const r = resolveText(
       web(
         [
+          "      deps.vulnScan: true",
           "      deps.ignoredVulns:",
-          '        - {id: GHSA-ok, reason: "no fix yet", until: 2027-01-01}',
-          '        - {id: GHSA-nodate, reason: "x"}',
-          "        - {id: GHSA-noreason, until: 2027-01-01}",
-          '        - {id: GHSA-old, reason: "x", until: 2026-01-01}',
           "        - just-a-string",
+          "      deps.vulnFailOn: { value: critical }",
           "",
         ].join("\n"),
-      ),
+      ) + "mirrors:\n  auth: kerberos\n  npm: https://other/\n",
     );
-    expect(rules(r.findings)).toEqual([
-      "deviation:declaration/deviation",
-      "error:declaration/ignored-vuln-without-until",
-      "error:declaration/looser-without-reason",
-      "error:declaration/deviation-expired",
-      "error:declaration/invalid-value",
-    ]);
+    expect(rules(r.findings)).toEqual(Array<string>(5).fill("hint:declaration/retired-item"));
+    expect(r.findings[0]?.message).toBe("「deps.vulnScan」沒有作用：devguard 不再檢查內部鏡像，也不再執行弱點掃描");
+    expect(r.components[0]?.effective["deps.vulnScan"]?.source).toBe("default");
+  });
+
+  it("still reports a retired key written where it never belonged", () => {
+    const r = resolveText(web("      mirrors.npm: https://other/\n"));
+    expect(rules(r.findings)).toEqual(["error:declaration/unknown-item"]);
   });
 
   it("reports unknown languages and duplicate components", () => {
@@ -101,20 +100,6 @@ describe("resolveDeclaration — other rules", () => {
       `${head}  - path: x/\n    language: ruby\n  - path: ./web\n    language: typescript\n  - path: web/\n    language: typescript\n`,
     );
     expect(rules(r.findings)).toEqual(["error:declaration/unknown-language", "error:declaration/duplicate-component"]);
-  });
-
-  it("applies mirrors as global items: same-host URLs are free, other hosts looser, auth must be none or env", () => {
-    const internal = "https://nexus.example.internal/repository/npm-group/";
-    const ok = resolveText(`${head}  - path: ./\n    language: go\nmirrors:\n  auth: env\n  npm: ${internal}\n`);
-    expect(ok.findings).toEqual([]);
-    expect(ok.global["mirrors.auth"]?.status).toBe("alternative");
-    expect(ok.global["mirrors.npm"]?.status).toBe("different");
-    const external = resolveText(`${head}  - path: ./\n    language: go\nmirrors:\n  npm: https://other/\n`);
-    expect(rules(external.findings)).toEqual(["error:declaration/looser-without-reason"]);
-    const notUrl = resolveText(`${head}  - path: ./\n    language: go\nmirrors:\n  npm: other\n`);
-    expect(rules(notUrl.findings)).toEqual(["error:declaration/invalid-value"]);
-    const bad = resolveText(`${head}  - path: ./\n    language: go\nmirrors:\n  auth: kerberos\n  ftp: x\n`);
-    expect(rules(bad.findings)).toEqual(["error:declaration/looser-without-reason", "error:declaration/unknown-item"]);
   });
 
   it.each([
@@ -147,7 +132,7 @@ describe("resolveDeclaration — ignore and declared components (#35)", () => {
     expect(hints("['**']")).toHaveLength(3);
     const [finding] = resolveText(decl("[web/api]")).findings;
     expect(finding?.message).toContain("web/api");
-    expect(finding?.message).toContain("測試與弱點掃描仍會執行");
+    expect(finding?.message).toContain("測試仍會執行");
   });
 
   it("does not hint for entries that cover only part of a component", () => {

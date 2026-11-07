@@ -256,29 +256,12 @@ describe("code checks in devguard check", () => {
 });
 
 describe("Go code checks in devguard check", () => {
-  it("runs golangci-lint with GOTOOLCHAIN=local and the declared Go mirrors", async () => {
-    const declaration = [
-      "standard: team@1.0.0",
-      "components:",
-      "  - {path: svc/, language: go}",
-      "mirrors:",
-      "  go: https://nexus.example.internal/repository/go-group/",
-      "",
-    ].join("\n");
+  it("runs golangci-lint for the Go component, with no Go mirror of devguard's (#64)", async () => {
+    const declaration = ["standard: team@1.3.0", "components:", "  - {path: svc/, language: go}", ""].join("\n");
     const { tools, calls } = passingTools();
     const listFiles = () => Promise.resolve(["svc/main.go", "svc/pkg/a.go"]);
     const r = await runCheck({ cwd: project(declaration), today: TODAY, tools, listFiles }, LAYERS);
     expect(r.findings).toEqual([]);
-    expect(calls).toEqual([
-      expect.objectContaining({
-        tool: "golangci-lint",
-        dir: "svc/",
-        env: {
-          GOTOOLCHAIN: "local",
-          GOPROXY: "https://nexus.example.internal/repository/go-group/",
-          GOSUMDB: "sum.golang.org https://nexus.example.internal/repository/go-sumdb-proxy/",
-        },
-      }),
-    ]);
+    expect(calls).toEqual([expect.objectContaining({ tool: "golangci-lint", dir: "svc/" })]);
   });
 });

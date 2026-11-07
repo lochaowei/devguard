@@ -113,14 +113,6 @@ describe("credentials never appear in a printed plan (SPEC §10.3)", () => {
     for (const secret of secrets) expect(io.out).not.toContain(secret);
   });
 
-  it("still shows that the credential line changes, with the value masked", async () => {
-    const dir = repo(SECRET_REPOS[0]?.[1] ?? {});
-    const io = previewOnly();
-    await runFix({ cwd: dir, today: TODAY, io });
-    expect(io.out).toContain(`-${SCOPE}:_auth=***`);
-    expect(io.out).toContain(`+${SCOPE}:_auth=\${NEXUS_NPM_AUTH}`);
-  });
-
   it("masks printed snippets too", () => {
     const text = renderPlan({
       writes: [],

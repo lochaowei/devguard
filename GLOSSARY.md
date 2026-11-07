@@ -5,10 +5,10 @@
 _Avoid_: 規範文件、設定（「設定」專指落地後的工具設定檔）
 
 **預設標準 (Default Standard)**
-CLI 內建的最新 `team` 版本（`defaultStandard()`，目前是 `team@1.2.0`），涵蓋每種語言。`devguard draft` 寫入它，沒有專案宣告時的程式碼檢查也以它為準。不是所有內建標準：較舊的 `team@1.0.0`、`team@1.1.0` 與基線標準也內建，但只在專案宣告時套用。
+CLI 內建的最新 `team` 版本（`defaultStandard()`，目前是 `team@1.3.0`），涵蓋每種語言。`devguard draft` 寫入它，沒有專案宣告時的程式碼檢查也以它為準。不是所有內建標準：較舊的 `team@1.0.0`～`team@1.2.0` 與基線標準也內建，但只在專案宣告時套用。
 
 **基線標準 (Baseline Standard)**
-給既有（brownfield）專案先納管用的內建標準 `legacy@1.0.0`：以 `team@1.1.0` 為基礎，放寬覆蓋率、strict 型別檢查、複雜度、禁用套件與 Java 最低版本。只在專案宣告它時套用，之後以 `devguard standard upgrade` 升級到 `team@1.1.0` 或更新的 `team`（目前最新是 `team@1.2.0`）。
+給既有（brownfield）專案先納管用的內建標準 `legacy@1.0.0`：以 `team@1.1.0` 為基礎，放寬覆蓋率、strict 型別檢查、複雜度、禁用套件與 Java 最低版本。只在專案宣告它時套用，之後以 `devguard standard upgrade` 升級到 `team@1.1.0` 或更新的 `team`（目前最新是 `team@1.3.0`）。
 _Avoid_: legacy 標準、寬鬆版
 
 **專案宣告 (Project Declaration)**
@@ -27,7 +27,7 @@ _Avoid_: 專案設定
 **檢查 (Check)**
 驗證專案與開發者環境是否正確落實標準，包含三層環境/設定驗證與程式碼檢查：
 - **設定檢查**（`config`）：專案宣告與工具設定檔存在且內容符合標準
-- **環境檢查**（`environment`）：本機確實生效（擴充套件已裝、hook 已安裝、Claude Code 與鏡像帳密設定正確，由 `doctor` 執行）
+- **環境檢查**（`environment`）：本機確實生效（擴充套件已裝、hook 已安裝、Claude Code 版本正確，由 `doctor` 執行）
 - **一致性檢查**（`consistency`）：三道防線使用的工具與鎖定版本彼此一致且落在標準範圍內
 - **程式碼檢查**（`code`）：執行各語言的 lint、format、typecheck，以及 `--full` 時的測試與覆蓋率門檻檢查
 
@@ -46,7 +46,7 @@ _Avoid_: 自動安裝
 _Avoid_: 模組、子專案
 
 **排除路徑 (Ignored Path)**
-專案宣告頂層 `ignore` 中列出的目錄、檔案或 glob。符合的檔案不歸屬任何元件，也不交給以檔案為單位的檢查，用於範例、第三方嵌入原始碼與自動產生的檔案。測試與弱點掃描以元件為單位，不受影響。`ignore` 也管不到以整個目錄為單位執行的工具（`eslint .`、`tsc`、`mypy`）與覆蓋率工具，它們依各自的設定決定範圍。
+專案宣告頂層 `ignore` 中列出的目錄、檔案或 glob。符合的檔案不歸屬任何元件，也不交給以檔案為單位的檢查，用於範例、第三方嵌入原始碼與自動產生的檔案。測試以元件為單位，不受影響。`ignore` 也管不到以整個目錄為單位執行的工具（`eslint .`、`tsc`、`mypy`）與覆蓋率工具，它們依各自的設定決定範圍。
 _Avoid_: 未涵蓋檔案（那是沒有元件涵蓋、仍套用預設標準的檔案）
 
 **風格項目 (Style Item)**

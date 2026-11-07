@@ -250,7 +250,7 @@ describe("devguard fix --code (SPEC §9.1, §9.3)", () => {
       return {
         code,
         output: output(),
-        fixes: fixes.map((f) => ({ tool: f.tool, dir: f.dir, args: f.args, env: f.env })),
+        fixes: fixes.map((f) => ({ tool: f.tool, dir: f.dir, args: f.args })),
       };
     }
 
@@ -270,13 +270,13 @@ describe("devguard fix --code (SPEC §9.1, §9.3)", () => {
         };
       });
       expect(result.fixes).toEqual([
-        { tool: "ruff", dir: "api/", args: ["check", "--fix", "--force-exclude", "."], env: undefined },
-        { tool: "ruff", dir: "api/", args: ["format", "--force-exclude", "."], env: undefined },
+        { tool: "ruff", dir: "api/", args: ["check", "--fix", "--force-exclude", "."] },
+        { tool: "ruff", dir: "api/", args: ["format", "--force-exclude", "."] },
       ]);
       expect(result.code).toBe(0);
     });
 
-    it("Go: golangci-lint run --fix (gofumpt and the other formatters included) with the Go mirrors", async () => {
+    it("Go: golangci-lint run --fix (gofumpt and the other formatters included)", async () => {
       const files = { ".devguard.yaml": decl("svc", "go") };
       const result = await fixWith(files, ["svc/main.go"], (req, cwd, fixed) => {
         const issue = {
@@ -292,7 +292,6 @@ describe("devguard fix --code (SPEC §9.1, §9.3)", () => {
           tool: "golangci-lint",
           dir: "svc/",
           args: ["run", "--fix", "--show-stats=false", "./..."],
-          env: expect.objectContaining({ GOTOOLCHAIN: "local" }) as unknown,
         },
       ]);
       expect(result.code).toBe(0);
@@ -306,16 +305,14 @@ describe("devguard fix --code (SPEC §9.1, §9.3)", () => {
     it("Java with Maven: spotless:apply through the wrapper", async () => {
       const files = { ".devguard.yaml": decl("app", "java"), "app/pom.xml": "<project/>" };
       const result = await fixWith(files, ["app/src/App.java"], spotless);
-      expect(result.fixes).toEqual([
-        { tool: "mvnw", dir: "app/", args: ["-B", "-ntp", "spotless:apply"], env: undefined },
-      ]);
+      expect(result.fixes).toEqual([{ tool: "mvnw", dir: "app/", args: ["-B", "-ntp", "spotless:apply"] }]);
     });
 
     it("Java with Gradle: spotlessApply through the wrapper", async () => {
       const files = { ".devguard.yaml": decl("app", "java"), "app/build.gradle": "" };
       const result = await fixWith(files, ["app/src/App.java"], spotless);
       expect(result.fixes).toEqual([
-        { tool: "gradlew", dir: "app/", args: ["spotlessApply", "--console=plain", "-q"], env: undefined },
+        { tool: "gradlew", dir: "app/", args: ["spotlessApply", "--console=plain", "-q"] },
       ]);
     });
 

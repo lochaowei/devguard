@@ -17,8 +17,8 @@
 - **專案宣告與草稿**：解析並檢查 `.devguard.yaml`（9 種標準項目類型、覆寫與偏離規則、到期日檢查、未涵蓋程式檔提示），以及依既有設定產生宣告草稿（`devguard draft`，含 Gradle、pnpm、yarn、Poetry、Biome、Jest、pyright、basedpyright 等工具選擇）。
 - **四語言設定檢查與一致性檢查**：Python（`pyproject.toml`、`ruff.toml`、`pyrightconfig.json`）、Go（`.golangci.yml` / `.golangci.yaml`、`go.mod`）、TypeScript（`tsconfig.json`、ESLint、Prettier、Biome、Vitest / Jest、`package.json`）、Java（`pom.xml`、`build.gradle(.kts)`、`checkstyle.xml`、PMD ruleset、`lombok.config`）與共通 `.gitattributes`（`* text=auto eol=lf`）。monorepo 的子元件沿用上層目錄的共用設定檔。
 - **依賴規則與工具版本範圍**：lockfile 是否提交（含 `go mod tidy -diff`、Maven Enforcer、Gradle `gradle.lockfile`）、直接依賴是否包含禁用套件（`deps.banned`），以及鎖定的工具版本（`uv.lock` / `poetry.lock`、`package-lock.json` / `pnpm-lock.yaml` / `yarn.lock` 等）是否落在標準允許的範圍內（`tools.*`）。
-- **程式碼、測試與弱點掃描**：透過專案環境鎖定的工具執行 lint、format 與 typecheck；`check --full` 再跑測試、行 / 分支覆蓋率門檻與弱點掃描。
-- **三道防線**：`install` 產生 `.vscode/`、`.claude/`、工具設定檔與鏡像設定，並安裝 pre-commit / pre-push hook（或注入既有的 pre-commit、husky、lefthook）；`doctor` 檢查本機環境。
+- **程式碼與測試**：透過專案環境鎖定的工具執行 lint、format 與 typecheck；`check --full` 再跑測試與行 / 分支覆蓋率門檻。
+- **三道防線**：`install` 產生 `.vscode/`、`.claude/` 與工具設定檔，並安裝 pre-commit / pre-push hook（或注入既有的 pre-commit、husky、lefthook）；`doctor` 檢查本機環境。
 - **修正**：`fix` 依檔案類別修正設定（保留註解與順序、CRLF 檔不整份重寫），`fix --code` 修正程式碼。
 - **實際專案測試**：以 27 個開源專案跑過 `draft` → `check` → `fix --yes` → `check`，發現的問題都已修正並補上測試，見 [KEI-6 報告](docs/real-project-test-report.md) 與 [KEI-7 報告](docs/testing/round-2-report.md)。
 
@@ -43,22 +43,22 @@ devguard draft
 
 # 步驟 2：依語言安裝並鎖定專案工具（uv / npm / go / Maven 或 Gradle wrapper，見下方各語言章節）
 
-# 步驟 3：產生三道防線與工具設定檔（.vscode/、.claude/、工具設定、鏡像設定、git hooks）
+# 步驟 3：產生三道防線與工具設定檔（.vscode/、.claude/、工具設定、git hooks）
 devguard install        # 互動預覽 diff 後確認套用（CI 或腳本可加 --yes）
 
 # 步驟 4：執行檢查與自動修正
 devguard check          # 檢查宣告、設定、依賴、工具版本與程式碼（lint / format / typecheck）
 devguard fix            # 自動修補不合規的設定檔（保留註解與順序）
 devguard fix --code     # 自動格式化與修正可自動修復的 lint 問題
-devguard check --full   # 完整檢查：再加上測試、行/分支覆蓋率門檻與弱點掃描
+devguard check --full   # 完整檢查：再加上測試與行/分支覆蓋率門檻
 
 # 步驟 5：檢查本機開發環境
-devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code 版本、Go 鏡像、鏡像帳密環境變數
+devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code 版本、Java 執行環境
 ```
 
 > **提示**：
 > - `devguard` 透過 `git ls-files` 判斷專案檔案，請先確保 `git init` 已執行且 `.gitignore` 已排除虛擬環境或建置目錄（如 `.venv/`、`node_modules/`、`target/`、`build/`、`dist/`），避免第三方套件被誤判為專案元件。
-> - 若在公司內網外開發（無內部 Nexus 鏡像），請在 `.devguard.yaml` 的 `mirrors` 區塊將對應鏡像改為公開來源並附上 `reason`（見[鏡像設定](#鏡像mirrors)）。
+> - devguard 不檢查也不寫入套件來源（registry、index、鏡像）。企業內網的鏡像請設定在使用者層級（見[套件來源](#套件來源鏡像)）。
 
 ---
 
@@ -74,7 +74,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
    ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.2.0
+   standard: team@1.3.0
    components:
      - path: ./
        language: python
@@ -91,7 +91,6 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
    - `[tool.ruff.lint]`：`select = ["E", "W", "F", "I", "B", "UP", "C90", "SIM", "N", "S", "TID"]`（不使用 `extend-select`）、`mccabe.max-complexity = 10`，以及測試檔放寬 `S101`（`per-file-ignores`）
    - `[tool.mypy]`：`strict = true`、`python_version`（或 `[tool.pyright]` / `[tool.basedpyright]` 的 `typeCheckingMode = "strict"`）
    - `[tool.coverage.run]`：`branch = true`
-   - `[[tool.uv.index]]`：指向內部 PyPI 鏡像 `nexus`（`default = true`）
 4. **日常檢查與修正**：
    ```bash
    devguard check          # 透過 uv run --no-sync 執行 ruff check、ruff format --check、mypy/pyright/basedpyright
@@ -106,19 +105,14 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 1. **前置環境與安裝工具**：
    - Go `>= 1.26`（`go.mod` 的 `go` directive）。
    - **PATH 上的 `golangci-lint`**：Go 唯一由開發者放到 `PATH` 的工具，版本須在 `>=2.12,<3`（v2 格式，支援 `gomodguard_v2` 與 `golangci-lint fmt`）。
-   - 在 `go.mod` 以 `tool` directive 鎖定格式化與弱點掃描工具，並確保 `go.sum` 乾淨：
+   - 在 `go.mod` 以 `tool` directive 鎖定格式化工具，並確保 `go.sum` 乾淨：
      ```bash
-     go get -tool mvdan.cc/gofumpt@latest golang.org/x/tools/cmd/goimports@latest golang.org/x/vuln/cmd/govulncheck@latest
+     go get -tool mvdan.cc/gofumpt@latest golang.org/x/tools/cmd/goimports@latest
      go mod tidy
-     ```
-   - 設定使用者層級 Go 鏡像（`devguard doctor` 會檢查）：
-     ```bash
-     go env -w GOPROXY=https://nexus.example.internal/repository/go-proxy/
-     go env -w GOSUMDB="sum.golang.org https://nexus.example.internal/repository/go-sumdb-proxy/"
      ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.2.0
+   standard: team@1.3.0
    components:
      - path: ./
        language: go
@@ -153,7 +147,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
    ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.2.0
+   standard: team@1.3.0
    components:
      - path: ./
        language: typescript
@@ -169,7 +163,6 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
    - **自動寫入（`managed`）**：
      - `tsconfig.json`：設定 `strict: true`、`noUncheckedIndexedAccess: true`、`noImplicitOverride: true`、`noFallthroughCasesInSwitch: true`
      - `.prettierrc`（`printWidth: 120`、`endOfLine: "lf"`）或 `biome.json`（含 `noExcessiveCognitiveComplexity`）
-     - `.npmrc`：只在 `mirrors.auth: env` 時寫入 `:_auth=${NEXUS_NPM_AUTH}`；不寫入 `registry=`，套件來源交給使用者層級的 npm 設定
      - `.vscode/`：設定 Prettier/Biome 存檔格式化、`source.fixAll.eslint`、`js/ts.tsdk.path`
    - **印出片段由開發者套用（`snippet`）**：`eslint.config.js` 與 `vitest.config.ts` 屬於程式碼設定檔，CLI 不會自動改寫，可建立如下最小設定：
      ```js
@@ -225,7 +218,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
      ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.2.0
+   standard: team@1.3.0
    components:
      - path: ./
        language: java
@@ -239,7 +232,6 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
    - **CLI 全權產生（`generated`）**：
      - `checkstyle.xml`：包含 `CyclomaticComplexity`（上限 10）與 `IllegalImport`（預設禁用 `sun.*`）
      - `pmd-ruleset.xml`：引用 `rulesets/java/quickstart.xml` 並啟用 `CognitiveComplexity`（`reportLevel = 15`）
-     - `.mvn/maven.config` 與 `.mvn/settings.xml`（Maven 專案）：指向內部 Maven 鏡像，當 `mirrors.auth: env` 時引用 `${env.NEXUS_USERNAME}` / `${env.NEXUS_PASSWORD}`
    - **結構化設定（`managed`）**：
      - `lombok.config`（若偵測到使用 Lombok）：自動補上 `lombok.addLombokGeneratedAnnotation = true`，避免 Lombok 產生的程式碼拉低 JaCoCo 覆蓋率
      - `.vscode/settings.json`：關閉 Java `editor.formatOnSave`（避免 IDE 格式化與 Palantir 衝突），並將 `java.checkstyle.configuration` 與 `java.checkstyle.version` 對齊建置檔；同時在 `.vscode/tasks.json` 產生 `standards: format (Spotless)` task
@@ -273,7 +265,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 放在 repo 根目錄。最精簡的寫法：
 
 ```yaml
-standard: team@1.2.0
+standard: team@1.3.0
 components:
   - path: ./
     language: typescript
@@ -282,7 +274,7 @@ components:
 monorepo 與覆寫的寫法：
 
 ```yaml
-standard: team@1.2.0            # 必須寫確切版本
+standard: team@1.3.0            # 必須寫確切版本
 components:                     # 元件 = 目錄 + 語言
   - path: backend/
     language: go
@@ -296,8 +288,6 @@ components:                     # 元件 = 目錄 + 語言
         value: 60
         reason: "舊程式碼補測試中，2027 Q1 回到 80"
         until: 2027-03-31
-mirrors:
-  auth: env                     # 內部 Nexus 需要帳密時
 ```
 
 規則摘要（細節見 SPEC §4 與 [Project-Declaration.md](docs/wiki/Project-Declaration.md)）：
@@ -307,22 +297,17 @@ mirrors:
 - 理由仍是 `TODO`、覆寫不存在的項目、值的型別錯誤、重複宣告同一個元件，都是**錯誤**。
 - 每個檔案歸屬於路徑最長且語言相符的元件；沒有元件涵蓋時，依副檔名推定語言並套用預設標準（並發出 `declaration/uncovered-files` 提示）。
 
-可以覆寫的項目與預設值，見 [src/standard/team-1.0.0.ts](src/standard/team-1.0.0.ts)（`team@1.1.0`、`team@1.2.0` 與前一版的差異見 [src/standard/team-1.1.0.ts](src/standard/team-1.1.0.ts)、[src/standard/team-1.2.0.ts](src/standard/team-1.2.0.ts)）、SPEC §5–§6 或 [Language-Standards.md](docs/wiki/Language-Standards.md)。
+可以覆寫的項目與預設值，見 [src/standard/team-1.0.0.ts](src/standard/team-1.0.0.ts)（`team@1.1.0`～`team@1.3.0` 與前一版的差異見 [src/standard/team-1.1.0.ts](src/standard/team-1.1.0.ts)、[src/standard/team-1.2.0.ts](src/standard/team-1.2.0.ts)、[src/standard/team-1.3.0.ts](src/standard/team-1.3.0.ts)）、SPEC §5–§6 或 [Language-Standards.md](docs/wiki/Language-Standards.md)。
 
 既有專案可以先宣告基線標準 `legacy@1.0.0`（[src/standard/legacy-1.0.0.ts](src/standard/legacy-1.0.0.ts)，SPEC §6.5）：不判定覆蓋率、不要求 strict 型別檢查、放寬複雜度、只禁用有已知弱點的套件，並接受 Java 8；之後以 `devguard standard upgrade` 升級到 `team@1.1.0`。
 
-### 鏡像（`mirrors.*`）
+### 套件來源（鏡像）
 
-`mirrors.pypi`、`npm`、`go`、`maven` 等預設指向內部 Nexus（SPEC §10.1）。改成同一台內部主機上的其他 repository 直接寫值即可；**改成內部主機以外的網址算放寬**，必須寫成 `{value, reason}`，報告中一直列為偏離，沒有理由就是錯誤。這樣 §10.2「設定指向外部來源是錯誤」不會被宣告悄悄繞過。例如在公司網路外開發 Python 專案：
+devguard 不檢查也不寫入套件從哪裡下載（#64）：各企業的限制不同，使用者最清楚。在企業內網使用內部鏡像時，請設定在使用者層級，不要寫進專案的設定檔，例如 `npm config set registry …`、uv 的 `UV_DEFAULT_INDEX`、Poetry 的 `poetry source`／環境變數、`go env -w GOPROXY=…`、`~/.m2/settings.xml`。`standard upgrade --apply` 執行的套件管理指令也照這些設定下載。
 
-```yaml
-mirrors:
-  pypi:
-    value: https://pypi.org/simple
-    reason: "公司網路外開發，沒有內部 Nexus 可用"
-```
+devguard 只檢查提交進 repo 的設定檔沒有明碼帳密（`credentials/plaintext`）：`.npmrc` 的 `_auth`、`_authToken`、`_password` 要引用環境變數，`pyproject.toml` 中的網址不得內含密碼或 token，`.mvn/settings.xml` 的 `<password>` 要寫成 `${…}` 引用或 Maven 加密的 `{…}`。元件上層目錄的這些檔案（例如 workspace 根目錄的 `.npmrc`）也會檢查。
 
-npm 例外：devguard 不檢查也不寫入專案 `.npmrc` 的 `registry=`，套件來源交給使用者層級的 npm 設定，所以不需要覆寫 `mirrors.npm`（devguard 自己的 [.devguard.yaml](.devguard.yaml) 就沒有 `mirrors` 區塊）。
+`team@1.2.0` 以前的標準仍有 `mirrors.*` 與弱點掃描項目，但 devguard 不再依它們做任何檢查：不論宣告哪個版本，宣告中寫著它們只會得到 `declaration/retired-item` 提示；`devguard standard upgrade` 升到 `team@1.3.0` 時會把它們刪除。
 
 ### 還沒有宣告：`devguard draft`
 
@@ -336,7 +321,7 @@ npm 例外：devguard 不檢查也不寫入專案 `.npmrc` 的 `registry=`，套
 
 `check` 會讀出各元件用依賴管理鎖定的工具版本（`uv.lock` / `poetry.lock`、`package-lock.json`、`go.mod` 的 `tool`、`pom.xml` / `build.gradle(.kts)` 中的 plugin 版本），超出標準的版本範圍（`tools.<工具>` 項目）就回報錯誤。golangci-lint 例外：從 PATH 呼叫 `golangci-lint --version` 核對。專案用 pre-commit 框架時，其他工具 hook 的 `rev` 與鎖定版本不同會給提示（SPEC §8）。
 
-> `team@1.1.0` 的工具版本範圍（含 golangci-lint）已在 #36 審視並訂定（2026-10-27）。只有 `team@1.0.0` 保留原本的**佔位值**：它已發佈，不再修改（SPEC §12 第 5 項）。pom 沒有指定 Dependency-Check plugin 版本時 devguard 使用的版本仍是佔位值。
+> `team@1.1.0` 的工具版本範圍（含 golangci-lint）已在 #36 審視並訂定（2026-10-27）。只有 `team@1.0.0` 保留原本的**佔位值**：它已發佈，不再修改（SPEC §12 第 5 項）。
 
 ## 指令
 
@@ -356,10 +341,10 @@ devguard --version | --help
 
 | 指令 | 說明 |
 |---|---|
-| `check` | 依序執行專案宣告、未涵蓋檔案、四語言設定、依賴規則、工具版本、`.gitattributes`、鏡像、VS Code、Claude Code 與程式碼檢查（lint、格式、型別），不含環境檢查。給 CI 與 git hook 使用。指定檔案時，程式碼檢查只針對這些檔案 |
+| `check` | 依序執行專案宣告、未涵蓋檔案、四語言設定、依賴規則、工具版本、`.gitattributes`、明碼帳密、VS Code、Claude Code 與程式碼檢查（lint、格式、型別），不含環境檢查。給 CI 與 git hook 使用。指定檔案時，程式碼檢查只針對這些檔案 |
 | `check --staged` | 只檢查 staged 的檔案，與 pre-commit hook 相同：formatter 與單檔 linter 讀 staged 版本（stdin），依賴相關檔案 staged 時才跑依賴規則 |
-| `check --full` | 再加上各元件的完整測試、行 / 分支覆蓋率門檻與（開啟時的）弱點掃描，與設定 `DEVGUARD_PRE_PUSH=full` 時的 pre-push hook 相同；不能與檔案參數同時使用 |
-| `doctor` | `check` 加上環境檢查：工具是否安裝、git hook 是否安裝（含既有 hook 框架與 `pre-commit install`）、VS Code 擴充套件、Claude Code 版本、Go 鏡像、帳密變數是否存在、npm audit 端點、標準是否有更新。只回報並附上修正指令，不自動安裝 |
+| `check --full` | 再加上各元件的完整測試與行 / 分支覆蓋率門檻，與設定 `DEVGUARD_PRE_PUSH=full` 時的 pre-push hook 相同；不能與檔案參數同時使用 |
+| `doctor` | `check` 加上環境檢查：工具是否安裝、git hook 是否安裝（含既有 hook 框架與 `pre-commit install`）、VS Code 擴充套件、Claude Code 版本、Java 執行環境、標準是否有更新。只回報並附上修正指令，不自動安裝 |
 | `fix` | 修正**設定**（互動式終端機先預覽 diff、確認後套用）：工具設定檔、`.vscode/`、`.claude/`、被修改過的 devguard git hook、`.gitattributes`、`lombok.config`。CLI 產生的檔案整份重新產生；共用的結構化檔只改 CLI 管理的 key；建置檔與程式碼形式的設定只印出片段（SPEC §9.2） |
 | `fix --code` | 修正**程式碼**：格式化與可自動修正的 lint（Ruff、ESLint、Prettier、Biome、golangci-lint、Spotless），修正後回報剩餘問題 |
 | `install` | `fix` 會產生的設定，加上 `.claude/` 的初次產生與 pre-commit / pre-push hook。專案已在用 pre-commit、husky 或 lefthook（YAML、TOML、JSON）時，改為在其設定中注入呼叫 devguard 的項目 |
@@ -451,28 +436,15 @@ web/ (TypeScript)
   - 只檢查 staged 檔案；若檔案為「部分 staged（partially staged）」，CLI **不做 `git stash`**，而是透過 `git show :<path>` 取出 staged 內容由 stdin 送交單檔工具（`ruff`、`eslint`、`prettier`、`biome`、`golangci-lint fmt --stdin`）檢查，避免工作區未暫存修改造成誤判；無 stdin 模式的工具（`mypy`、`pyright`、`tsc`、`golangci-lint run`、Java wrapper）則檢查工作區版本並印出提示。
   - 當依賴相關檔案（如 `pyproject.toml`、`uv.lock`、`package.json`、`go.mod`、`pom.xml` 等）被 staged 時，一併執行依賴規則檢查（lockfile 與禁用套件）。
   - hook 只檢查不自動改檔；失敗時會印出可直接複製執行的 `devguard fix --code <files>` 指令。
-- **`pre-push`**：預設不跑任何檢查、直接放行，日常 WIP push 不會被完整測試擋住；完整測試與覆蓋率交給 CI 的 `devguard check --full`。開發者設定環境變數 `DEVGUARD_PRE_PUSH=full` 後，才在 push 前執行 `check --full` 中的單元測試、行/分支覆蓋率門檻與（開啟時的）弱點掃描。
+- **`pre-push`**：預設不跑任何檢查、直接放行，日常 WIP push 不會被完整測試擋住；完整測試與覆蓋率交給 CI 的 `devguard check --full`。開發者設定環境變數 `DEVGUARD_PRE_PUSH=full` 後，才在 push 前執行 `check --full` 中的單元測試與行/分支覆蓋率門檻。
 
-### 內部鏡像與帳密變數（`mirrors.auth: env`）
-
-當專案宣告設定 `mirrors.auth: env` 時，設定檔只寫入環境變數引用，帳密絕不進 repo，`devguard doctor` 會在不讀取變數值的前提下檢查變數或憑證檔是否存在（SPEC §10.3）：
-
-| 語言 / 工具 | 專案設定檔落地位置 | `mirrors.auth: env` 時需設定的本機環境變數 / 檔案 |
-|---|---|---|
-| Python（`uv`） | `pyproject.toml` 的 `[[tool.uv.index]]`（`name = "nexus"`） | `UV_INDEX_NEXUS_USERNAME`、`UV_INDEX_NEXUS_PASSWORD`（或通用 `NEXUS_USERNAME`、`NEXUS_PASSWORD`） |
-| TypeScript（`npm` / `pnpm` / `yarn`） | `.npmrc` 的 `//<host>/<path>/:_auth=${NEXUS_NPM_AUTH}`（`registry=` 交給使用者層級的 npm 設定） | `NEXUS_NPM_AUTH`（`username:password` 的 base64）或 `NEXUS_NPM_TOKEN` |
-| Java（Maven） | `.mvn/maven.config` + `.mvn/settings.xml` | `NEXUS_USERNAME`、`NEXUS_PASSWORD` |
-| Java（Gradle） | `settings.gradle(.kts)` 片段（`credentials(PasswordCredentials)`） | `ORG_GRADLE_PROJECT_nexusUsername`、`ORG_GRADLE_PROJECT_nexusPassword` |
-| Go | 使用者層級 `go env`（`GOPROXY`、`GOSUMDB`） | `NETRC` 環境變數指向的檔案，或 `%USERPROFILE%\_netrc` |
-
-### 標準升級與弱點掃描
+### 標準升級
 
 - **升級預設標準（`devguard standard upgrade`）**：
   ```bash
   devguard standard upgrade           # 預覽升級至最新內建標準的設定差異、既有覆寫變化與需執行的套件指令
-  devguard standard upgrade --apply   # 實際更新 .devguard.yaml、修補設定檔，並透過內部鏡像執行套件管理指令
+  devguard standard upgrade --apply   # 實際更新 .devguard.yaml、修補設定檔，並執行套件管理指令
   ```
-- **開啟弱點掃描（`deps.vulnScan: true`）**：在元件 `overrides` 將 `deps.vulnScan` 設為 `true` 後，`devguard check --full` 與開啟完整測試（`DEVGUARD_PRE_PUSH=full`）的 `pre-push` 會執行對應語言的弱點掃描（Python：`uv export` + `pip-audit`；Go：`govulncheck`；TypeScript：`npm audit`；Java：OWASP `dependency-check`）。若需暫時忽略特定弱點，可在 `deps.ignoredVulns` 填入 `{ id, reason, until }`。
 
 ## 開發
 
@@ -504,14 +476,13 @@ src/
   scope.ts               [檔案…]、--only、--full 的範圍
   declaration/           宣告檔的解析、比對、套用、檔案歸屬
   standard/              內建的預設標準、版本查找與 standard upgrade
-  layers/                check 的各層（宣告、設定、依賴、版本、鏡像、VS Code、Claude Code、程式碼、測試、弱點）
+  layers/                check 的各層（宣告、設定、依賴、版本、明碼帳密、VS Code、Claude Code、程式碼、測試）
   settings/              各語言工具設定檔的設定檢查（Python、Go、Java、TypeScript）、寬鬆／嚴格判定與 Java 設定檔產生器
   code/                  各語言的 lint、格式、型別檢查
   testing/               各語言的測試與覆蓋率
-  vuln/                  各語言的弱點掃描
   deps/                  依賴規則：lockfile 與禁用清單
   versions/              版本範圍、鎖定的工具版本、pre-commit rev
-  mirrors/               專案層級的鏡像設定（uv、npm、Maven、Gradle）
+  credentials/           專案設定檔中的明碼帳密（.npmrc、pyproject.toml、.mvn/settings.xml）
   environment/           只有 doctor 跑的環境檢查
   hooks/                 git 與 Claude Code hook、install、既有 hook 框架
   fix/                   fix 的檔案分類、設定修補（YAML / JSONC / TOML / 行規則）、diff 預覽與套用、fix --code
@@ -543,10 +514,10 @@ GLOSSARY.md              用語定義
 - [x] 程式碼檢查、測試與覆蓋率、報告格式（§6、§7.1、§11，#10–#15）
 - [x] `devguard fix` 與 `fix --code`（§9，#16–#17）
 - [x] `devguard install` 與 git hook：pre-commit、pre-push、既有 hook 框架（§7.4，#18–#20）
-- [x] `devguard doctor`、內部鏡像與帳密檢查（§7.4、§10，#21、#24）
+- [x] `devguard doctor`、內部鏡像與帳密檢查（§7.4、§10，#21、#24；鏡像部分已於 #64 移除）
 - [x] VS Code：`.vscode/` 的 extensions、settings、tasks（§7.2，#22）
 - [x] Claude Code：`.claude/` 的 rules、hooks 與 `/standards-doctor`（§7.3，#23）
-- [x] 弱點掃描（§5.3，#25）
+- [x] 弱點掃描（§5.3，#25；已於 #64 移除）
 - [x] `devguard standard upgrade` 與棄用版本（§5.5，#26）
 - [x] 實際專案測試（KEI-6、KEI-7）
 - [x] Bun 打包單一 exe、smoke test 與 T1 / T2 實機測試（§3.1、§13，#27）
@@ -554,7 +525,6 @@ GLOSSARY.md              用語定義
 
 ### 已知限制
 
-- 弱點掃描：pnpm / yarn、Poetry 與 Gradle 元件尚未支援，掃描時只給提示。
 - 多數 checker 與 fixer 只以工具的範例輸出與實際專案的設定檔測試過（ESLint、Prettier、tsc、Vitest、Ruff、mypy、pytest、`go test` 有真實執行）。
 
 導入前需要團隊或 IT 確認的事項見 SPEC §12，實作初期要實機測試的項目見 SPEC §13。

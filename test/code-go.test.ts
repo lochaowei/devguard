@@ -17,17 +17,12 @@ function fakeTools(reply: Partial<ToolResult> = {}) {
   return { tools, calls };
 }
 
-const MIRRORS = {
-  "mirrors.go": "https://nexus.example.internal/repository/go-proxy/",
-  "mirrors.gosumdb": "https://nexus.example.internal/repository/go-sumdb-proxy/",
-};
-
 function target(over: Partial<CodeTarget> = {}): CodeTarget {
   return {
     component: "svc/ (Go)",
     dir: "svc/",
     language: "go",
-    effective: { "lint.tool": "golangci-lint", ...MIRRORS },
+    effective: { "lint.tool": "golangci-lint" },
     categories: new Set<CodeCategory>(["lint", "format", "typecheck"]),
     ...over,
   };
@@ -76,22 +71,6 @@ describe("go checker: golangci-lint", () => {
       },
       expect.objectContaining({ level: "hint", rule: "golangci-lint/revive", file: "svc/pkg/a.go", line: 3 }),
     ]);
-  });
-
-  it("runs with GOTOOLCHAIN=local and the standard's Go mirrors (SPEC §3.2, §10.2)", async () => {
-    const { tools, calls } = fakeTools();
-    await check(target(), tools);
-    expect(calls[0]?.env).toEqual({
-      GOTOOLCHAIN: "local",
-      GOPROXY: "https://nexus.example.internal/repository/go-proxy/",
-      GOSUMDB: "sum.golang.org https://nexus.example.internal/repository/go-sumdb-proxy/",
-    });
-  });
-
-  it("leaves a mirror out when the standard has none", async () => {
-    const { tools, calls } = fakeTools();
-    await check(target({ effective: {} }), tools);
-    expect(calls[0]?.env).toEqual({ GOTOOLCHAIN: "local" });
   });
 });
 
@@ -215,7 +194,6 @@ describe("go checker: staged files (SPEC §7.4)", () => {
     expect(clean.map((f) => f.rule)).toEqual(["golangci-lint/errcheck"]);
     const fmt = calls.find((c) => c.args?.[0] === "fmt");
     expect(fmt).toMatchObject({ tool: "golangci-lint", dir: "svc/", args: ["fmt", "--stdin"], stdin: "package x\n" });
-    expect(fmt?.env?.GOTOOLCHAIN).toBe("local");
 
     const messy = await stagedCheck(tools().runner, { "svc/main.go": "package x\n\nfunc  f() {}\n" });
     expect(messy.map((f) => [f.rule, f.file, f.line])).toEqual([

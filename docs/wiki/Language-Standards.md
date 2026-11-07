@@ -1,4 +1,4 @@
-# 各語言預設標準（`team@1.0.0`、`team@1.1.0`、`team@1.2.0`、`legacy@1.0.0`）與檢查對照表
+# 各語言預設標準（`team@1.0.0`～`team@1.3.0`、`legacy@1.0.0`）與檢查對照表
 
 本文整理內建預設標準 `team@1.0.0`（定義於 [`src/standard/team-1.0.0.ts`](../../src/standard/team-1.0.0.ts)）在四種語言中的預設值、設定檢查項目、程式碼檢查執行方式，以及 `--full` 測試與覆蓋率檢查邏輯。
 
@@ -8,9 +8,16 @@
 - 語言最低版本不變：`java.minVersion` 維持 `"17"`（需要 Java 8 的既有專案改用 `legacy@1.0.0`）；Python、Node、Go 的最低版本已是上游仍支援的最舊版本。
 - 工具版本範圍（#36 於 2026-10-27 審視並訂定）：`tools.ruff` `>=0.17,<1`、`tools.pyright` `>=1.1.400,<2`、`tools.vitest` `>=4.1,<6`、`tools.spotless-maven-plugin` `>=2.44,<4`、`tools.spotless-gradle-plugin` `>=7,<9`、`tools.checkstyle` `>=10.21,<15`。下限不低於上游仍在修補的版本線。
 
-`team@1.2.0`（定義於 [`src/standard/team-1.2.0.ts`](../../src/standard/team-1.2.0.ts)）是 CLI 內建的最新版本，`devguard draft` 寫入、`doctor` 建議升級到的都是它。它沿用 `team@1.1.0` 的所有項目，只多了一個替代工具（minor，見 [SPEC §6](../../SPEC.md)）：
+`team@1.2.0`（定義於 [`src/standard/team-1.2.0.ts`](../../src/standard/team-1.2.0.ts)）沿用 `team@1.1.0` 的所有項目，只多了一個替代工具（minor，見 [SPEC §6](../../SPEC.md)）：
 
 - Python 的 `typecheck.tool` 允許 `basedpyright`，並新增 `tools.basedpyright` `>=1.40,<2`。basedpyright 的版本都從 `main` 依序發佈、不回補舊版本線（2026-11-03 查證 PyPI 與 GitHub Releases），所以下限是目前唯一仍在維護的 1.40。
+
+`team@1.3.0`（定義於 [`src/standard/team-1.3.0.ts`](../../src/standard/team-1.3.0.ts)）是 CLI 內建的最新版本，`devguard draft` 寫入、`doctor` 建議升級到的都是它。它沿用 `team@1.2.0` 的所有項目，只移除 devguard 不再檢查的項目（minor，見 [SPEC §6](../../SPEC.md)，#64）：
+
+- 所有 `mirrors.*`（內部鏡像與 `mirrors.auth`）：套件、工具與 VS Code 擴充套件從哪裡下載，交給開發者使用者層級的設定。
+- 各語言的 `deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`，以及 Go 的 `tools.govulncheck`：devguard 不再執行弱點掃描。
+
+較舊的版本仍保留這些項目，但 devguard 不再依它們做任何檢查：不論宣告哪個版本，寫著它們只會得到 `declaration/retired-item` 提示；執行 `devguard standard upgrade` 到 `team@1.3.0` 會把它們從宣告中刪除。
 
 下文各語言的「工具版本範圍」列的是 `team@1.0.0` 的值，`team@1.1.0`、`team@1.2.0` 的差異標在括號中。
 
@@ -45,8 +52,8 @@
 | `complexity.cognitive` | `15` | `max` | 認知複雜度上限（Python 不適用） |
 | `coverage.lines` | `80` | `min` | 覆蓋率門檻（%）；0 以下表示不設門檻：仍執行測試，但不判定覆蓋率、不要求覆蓋率設定 |
 | `deps.lockfile` | `true` | `bool` | 必須提交對應語言的 lockfile（或等效鎖定設定） |
-| `deps.vulnScan` | `false` | `bool` | 弱點掃描（進階項目，預設關閉） |
-| `deps.ignoredVulns` | `[]` | `ignoredVulns` | 忽略的弱點清單（每項需附 `reason` 與 `until`） |
+| `deps.vulnScan` | `false` | `bool` | 弱點掃描（`team@1.2.0` 以前；devguard 已不執行，`team@1.3.0` 移除） |
+| `deps.ignoredVulns` | `[]` | `ignoredVulns` | 忽略的弱點清單（同上，`team@1.3.0` 移除） |
 | `claude.minVersion` | `"2.1.295"` | `minVersion` | Claude Code 最低版本 |
 | `.gitattributes` | `* text=auto eol=lf` | 設定規則 | 確保跨平台換行字元一致為 LF |
 
@@ -75,7 +82,7 @@
 ### 執行方式
 
 - **工具執行器**：`uv run --no-sync <tool>`（鎖定版本讀取自 `uv.lock` 或 `poetry.lock`）。工具須已安裝在專案環境：有設定 `UV_PROJECT_ENVIRONMENT` 時就是它指定的目錄（絕對路徑照用，相對路徑相對於專案目錄，與 uv 相同），否則是 `.venv`；找不到時訊息會列出實際找過的路徑。安裝提示是 `uv sync`（Poetry：`poetry install`）；工具沒有列在 `pyproject.toml` 的依賴中時改為 `uv add --dev "<工具><範圍>"`（Poetry：`poetry config virtualenvs.in-project true && poetry add --group dev "<工具><範圍>"`），範圍取標準的 `tools.*`。Poetry 專案不讀 `UV_PROJECT_ENVIRONMENT`。Poetry 專案（最近的 lockfile 是 `poetry.lock`）改為直接執行專案內 `.venv` 中的工具，需要 `poetry config virtualenvs.in-project true`；以下的 `uv run --no-sync` 對 Poetry 專案都換成 `.venv` 中的執行檔
-- **內部鏡像**：uv 專案在 `pyproject.toml` 設定 `[[tool.uv.index]]`（`name = "nexus"`、`default = true`）；Poetry 專案改為 `[[tool.poetry.source]]`（`name = "nexus"`、`url = <mirrors.pypi>`、`priority = "primary"`），帳密只透過 `POETRY_HTTP_BASIC_NEXUS_USERNAME` / `POETRY_HTTP_BASIC_NEXUS_PASSWORD` 提供。兩者都由 `devguard fix` 寫入，`standard upgrade --apply` 對 Poetry 專案執行 `poetry add --group dev`
+- **套件來源**：devguard 不檢查也不寫入 `[[tool.uv.index]]` 或 `[[tool.poetry.source]]`，交給 uv／Poetry 的使用者層級設定；只檢查 `pyproject.toml` 中的網址沒有內含帳密（`credentials/plaintext`）。`standard upgrade --apply` 對 Poetry 專案執行 `poetry add --group dev`
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
   - `tools.ruff`：`>=0.17,<0.18`（`team@1.1.0`：`>=0.17,<1`）
   - `tools.mypy`：`>=1.18,<2`
@@ -92,8 +99,6 @@
   - `uv run --no-sync ruff format --force-exclude`
 - **測試與覆蓋率（`tests` 層，`--full`）**：
   - 執行 `uv run --no-sync pytest --cov --cov-branch --cov-report=json:<tmp>`，由 CLI 解析 JSON 報告中的 `totals`，分別檢查行覆蓋率與分支覆蓋率是否達到門檻。
-- **弱點掃描（`vuln` 層，`--full` 且 `deps.vulnScan: true`）**：
-  - 先執行 `uv export --frozen --no-emit-project --format requirements.txt -o <tmp>`，再對匯出檔執行 `pip-audit -r <tmp> --disable-pip -s osv --osv-url <mirrors.osv>`，`deps.ignoredVulns` 轉為 `--ignore-vuln`。
 
 ---
 
@@ -115,20 +120,18 @@
 
 ### 執行方式
 
-- **工具執行器**：PATH 上的 `golangci-lint`（例外：指定版本的 binary 由開發者放到 PATH，CLI 核對版本）與 `go tool <name>`（鎖定於 `go.mod` 的 `tool` directive）；執行時一律帶入 `GOTOOLCHAIN=local`；golangci-lint 與套件管理指令另外帶入鏡像環境變數（`GOPROXY`、`GOSUMDB`），`go tool` 與 `go mod` 等檢查用的指令則帶入 `GOPROXY=off`，檢查時不下載任何模組。
+- **工具執行器**：PATH 上的 `golangci-lint`（例外：指定版本的 binary 由開發者放到 PATH，CLI 核對版本）與 `go tool <name>`（鎖定於 `go.mod` 的 `tool` directive）；執行時一律帶入 `GOTOOLCHAIN=local`；`go tool` 與 `go mod` 等檢查用的指令另外帶入 `GOPROXY=off`，檢查時不下載任何模組。其餘指令（golangci-lint、套件管理指令）的模組來源是開發者自己的 Go 設定（`go env GOPROXY`）。
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
   - `tools.golangci-lint`（PATH）：`>=2.12,<3`
   - `tools.gofumpt`（`mvdan.cc/gofumpt`）：`>=0.9,<1`
   - `tools.goimports`（`golang.org/x/tools/cmd/goimports`）：`>=0.38,<1`
-  - `tools.govulncheck`（`golang.org/x/vuln/cmd/govulncheck`）：`>=1.1,<2`
+  - `tools.govulncheck`（`golang.org/x/vuln/cmd/govulncheck`）：`>=1.1,<2`（`team@1.3.0` 移除）
 - **程式碼檢查（`code` 層）**：
   - 透過 `golangci-lint run --output.json.path=stdout` 一次涵蓋 lint、format 與型別編譯問題，並依類別過濾；`--staged` 時額外對 staged `.go` 檔執行 `golangci-lint fmt --stdin` 檢查排版。
 - **自動修正程式碼（`fix --code`）**：
   - `golangci-lint run --fix`（套用 linters 自動修復與設定中的 `gofumpt` / `goimports`）。
 - **測試與覆蓋率（`tests` 層，`--full`）**：
   - 執行 `go test -coverprofile=<tmp> ./...` 與 `go tool cover -func=<tmp>`，過濾自動產生檔案與 `mocks/` 後計算總行覆蓋率。
-- **弱點掃描（`vuln` 層，`--full` 且 `deps.vulnScan: true`）**：
-  - 執行 `go tool govulncheck -json -db <mirrors.govulndb> ./...`，由 CLI 判定結果並過濾 `deps.ignoredVulns`。
 
 ---
 
@@ -168,8 +171,6 @@
 - **測試與覆蓋率（`tests` 層，`--full`）**：
   - 執行 Vitest（或 Jest）產生 `coverage-summary.json`，檢查 `lines`、`branches`、`functions`、`statements` 四項百分比。
   - Vitest 與 Jest 預設只計算被測試 import 的檔案，所以設定檢查會要求 `coverage.include` / `collectCoverageFrom`（`settings/coverage-include`）。
-- **弱點掃描（`vuln` 層，`--full` 且 `deps.vulnScan: true`）**：
-  - 執行 `npm audit --json --registry=<mirrors.npm>`，依嚴重度門檻（預設 `high`）與 `deps.ignoredVulns`（GHSA ID）過濾。
 
 ---
 
@@ -203,5 +204,3 @@
   - `mvnw -B -ntp spotless:apply`（或 `gradlew spotlessApply --console=plain -q`）。
 - **測試與覆蓋率（`tests` 層，`--full`）**：
   - 執行 `mvnw -B -Dmaven.test.failure.ignore=true test jacoco:report`（或 Gradle `test jacocoTestReport --continue`），解析 `jacoco.xml`（或 `jacocoTestReport.xml`）根層級的 `LINE` 與 `BRANCH` counter。
-- **弱點掃描（`vuln` 層，`--full` 且 `deps.vulnScan: true`）**：
-  - 透過 OWASP Dependency-Check Maven plugin（指向內部 NVD 資料鏡像 `<mirrors.nvd>nvdcve-{0}.json.gz`）產生報告，依 CVSS 門檻（`high` 對應 CVSS 7.0）與 `dependency-check-suppressions.xml` 判定。

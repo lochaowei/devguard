@@ -13,7 +13,7 @@ export interface CodeTarget {
   /** Where the tools run: normalized, "" for the repo root, otherwise ending in "/". */
   dir: string;
   language: Language;
-  /** Effective standard values for this target (`lint.tool`, `format.printWidth`...) and the repo-wide `mirrors.*`. */
+  /** Effective standard values for this target (`lint.tool`, `format.printWidth`...). */
   effective: Readonly<Record<string, unknown>>;
   /**
    * Files to check, relative to `dir`. Absent means the whole directory: file-level checks run on "." and
@@ -68,7 +68,6 @@ export interface FixStep {
   args: readonly string[];
   /** File arguments, appended in batches short enough for cmd.exe; absent means none. */
   files?: readonly string[];
-  env?: Readonly<Record<string, string>>;
   /** The highest exit code that still means the tool ran (1 for a tool that exits 1 when problems are left). */
   okUpTo: number;
 }

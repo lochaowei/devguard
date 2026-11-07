@@ -3,7 +3,8 @@
 > 狀態：規格定案，可交付實作（2026-10-22）
 > 來源：wayfinder 地圖 [map.md](.scratch/coding-standards-guard/map.md) 的 17 張決策票。每一節都附上來源票的連結；本文件與票的內容不一致時，以**本文件**為準（本文件已納入所有修訂）。
 > 用語定義見 [GLOSSARY.md](GLOSSARY.md)。
-> 名稱：CLI 名為 `devguard`，宣告檔為 `.devguard.yaml`。佔位符號：所有 Nexus 網址都是 dummy。
+> 名稱：CLI 名為 `devguard`，宣告檔為 `.devguard.yaml`。
+> 變更：內部鏡像設定與弱點掃描已於 #64 移除（`team@1.3.0`），見 §5.3、§10。
 > 查證：§13 原列的 9 個項目已於 2026-10-22 查證，結果見 `.scratch/coding-standards-guard/research/verify-*.md`，修正已併入本文；剩下必須實機測試或由他人決定的項目，列在 §12 與 §13。
 
 ---
@@ -23,7 +24,7 @@
 - 三道防線共用同一套底層工具與設定檔，差別只在觸發時機。
 - 檢查分三層：**設定檢查**（設定檔是否符合標準）、**環境檢查**（本機是否真的生效）、**一致性檢查**（三道防線用的工具與版本是否相同）。
 - 開發者主要使用 **Windows**。
-- **公司環境不允許下載外部檔案**：所有工具與依賴都只能透過公司內部的 Nexus 與內部 marketplace 取得，CLI 本身不連外網。
+- **套件來源交給使用者**：企業環境常限制下載外部檔案，但各企業的限制不同，使用者最清楚。devguard 不檢查也不寫入套件、工具與 VS Code 擴充套件從哪裡下載（內部鏡像、registry、index），這些設定在開發者使用者層級的設定中（§10）。CLI 本身不連外網。
 
 **範圍外**
 - 授權（license）檢查
@@ -81,9 +82,9 @@
 
 | 指令 | 用途 |
 |---|---|
-| `devguard install` | 在專案中產生各防線的設定（`.vscode/`、`.claude/`、git hook、工具設定檔、鏡像設定），並安裝 pre-commit 與 pre-push hook |
+| `devguard install` | 在專案中產生各防線的設定（`.vscode/`、`.claude/`、git hook、工具設定檔），並安裝 pre-commit 與 pre-push hook |
 | `devguard check [檔案…] [--staged] [--full] [--only <類別>] [--format text\|json\|sarif\|vscode\|claude] [--strict] [--verbose]` | 執行設定、一致性與程式碼檢查，不含環境檢查。指定檔案時只對這些檔案跑程式碼檢查。供 CI 與 git hook 使用。`--staged` 只檢查 staged 的檔案，內容與 pre-commit hook 相同 |
-| `devguard doctor [--quiet] [--exit-zero] [--format …]` | `check` 加上環境檢查（擴充套件、hook 是否安裝、Claude Code、鏡像、執行 Java 工具的 JDK、帳密變數是否存在）。`--exit-zero`：有問題時也以 0 結束，給 `/standards-doctor` skill 嵌入結果用（§7.3） |
+| `devguard doctor [--quiet] [--exit-zero] [--format …]` | `check` 加上環境檢查（擴充套件、hook 是否安裝、Claude Code、執行 Java 工具的 JDK、標準是否有更新）。`--exit-zero`：有問題時也以 0 結束，給 `/standards-doctor` skill 嵌入結果用（§7.3） |
 | `devguard draft` | 專案尚無 `.devguard.yaml` 時，依偵測到的元件與既有工具設定產生宣告草稿（§4.3），不覆寫既有檔案 |
 | `devguard fix [--yes]` | 修正**設定**（§9） |
 | `devguard fix --code [files] [--yes]` | 修正**程式碼**：格式化與可自動修正的 lint |
@@ -93,7 +94,7 @@
 
 - 每個指令都接受 `--cwd <dir>`，指定專案根目錄（預設為目前目錄）。
 - 各 `hook` 子指令自行處理該防線的輸入格式與 exit code 語意。
-- CLI 執行 Go 工具時，一律帶入 `GOTOOLCHAIN=local`。golangci-lint 與套件管理指令另外帶入鏡像相關的環境變數；`go tool <名稱>` 與 `go mod` 等檢查用的指令則帶入 `GOPROXY=off`，確保檢查時不會下載任何模組（模組不在快取中時，該次執行失敗，而不是改為下載）。
+- CLI 執行 Go 工具時，一律帶入 `GOTOOLCHAIN=local`。`go tool <名稱>` 與 `go mod` 等檢查用的指令另外帶入 `GOPROXY=off`，確保檢查時不會下載任何模組（模組不在快取中時，該次執行失敗，而不是改為下載）。golangci-lint 與套件管理指令的模組來源是開發者自己的 Go 設定（`go env GOPROXY`、`GOSUMDB`）。
 - **`.cmd` / `.bat` 檔一律透過 `cmd.exe /d /s /c` 執行**，例如 `code.cmd`、`mvnw.cmd`、`gradlew.bat`、`npm.cmd`。這類檔案無法直接當作程序啟動。
 
 ---
@@ -119,8 +120,6 @@ components:                     # 元件 = 目錄 + 語言
         value: 60
         reason: "舊程式碼補測試中，2027 Q1 回到 80"
         until: 2027-03-31
-mirrors:
-  auth: env                     # none（預設）| env，見 §10.3
 ignore:                         # 選填：不歸屬任何元件、不受檢查的路徑，見 §4.1
   - examples/
   - third_party/
@@ -134,7 +133,7 @@ ignore:                         # 選填：不歸屬任何元件、不受檢查�
 - 沒有元件涵蓋的程式檔，**依副檔名推定語言**，套用該語言的預設標準（不含覆寫），並提示「建議在宣告中補上元件」。
 - 頂層 `ignore` 是字串清單，列出範例、第三方嵌入原始碼、自動產生檔等不受檢查的路徑。一般路徑符合該檔案或該目錄底下的所有檔案；glob（`*`、`?` 不跨越 `/`，`**` 跨越多層）符合的路徑或符合的目錄底下的所有檔案。路徑相對於 repo 根目錄。
   - 符合的檔案不歸屬任何元件、不提示「建議補上元件」，也不交給 `check`、`fix --code` 與各 hook 以檔案為單位的檢查（程式碼檢查、未涵蓋檔案），即使在命令列上指定或已 staged。
-  - 測試與弱點掃描以元件為單位，不受 `ignore` 影響：每個宣告的元件照常執行，`check --full` 仍是完整的檢查。`ignore` 的某一項涵蓋整個元件目錄時：**提示**（`declaration/ignored-component`），說明這個元件的檔案檢查都會略過。
+  - 測試以元件為單位，不受 `ignore` 影響：每個宣告的元件照常執行，`check --full` 仍是完整的檢查。`ignore` 的某一項涵蓋整個元件目錄時：**提示**（`declaration/ignored-component`），說明這個元件的檔案檢查都會略過。
   - `ignore` 管不到的範圍：以整個目錄為單位執行的工具（元件的 `eslint .`、`tsc`、`mypy` 等）與覆蓋率工具（Vitest / Jest 的 `coverage.include`、coverage.py、JaCoCo）依各自的設定決定範圍；要排除的檔案也要寫進該工具的設定。
   - 不是非空字串的清單時：**錯誤**（`declaration/invalid`），整份清單不生效。
 - 四種語言以外的檔案不在檢查範圍內。例外：指定檔案時（含 `--staged` 與各 hook，見 §7.1），TypeScript 元件內的非原始碼檔案交給該元件的 linter 與 formatter，由工具決定是否處理。
@@ -147,22 +146,19 @@ ignore:                         # 選填：不歸屬任何元件、不受檢查�
 |---|---|---|
 | 上限 | 值越小越嚴格 | `complexity.cyclomatic` |
 | 下限 | 值越大越嚴格 | `coverage.lines`、`*.minVersion` |
-| 布林 | `true` 較嚴格 | `typecheck.strict`、`deps.lockfile`、`deps.vulnScan` |
-| 嚴重度 | 等級越低越嚴格（low < moderate < high < critical） | `deps.vulnFailOn` |
+| 布林 | `true` 較嚴格 | `typecheck.strict`、`deps.lockfile` |
 | 禁用清單 / 規則集 | 移除項目算放寬，新增項目算收緊 | `deps.banned`、`lint.rules` |
 | 工具選擇 | 改用允許清單內的工具算替代，不算偏離；改用清單外的工具算放寬 | `lint.tool` |
 | 版本範圍 | 超出範圍算放寬 | 各工具的版本範圍 |
-| **風格** | 沒有嚴格或寬鬆之分，可以直接覆寫，不算偏離 | `format.*`、`mirrors.auth` |
-| **鏡像** | 改成預設鏡像同一台主機上的其他 repository 視同風格；改成其他主機算放寬 | `mirrors.pypi`、`mirrors.npm` 等網址 |
+| **風格** | 沒有嚴格或寬鬆之分，可以直接覆寫，不算偏離 | `format.*` |
 
 - **放寬**時必須寫成 `{value, reason, until?}`。
   - 沒有理由，或理由仍是 `TODO`：**錯誤**。
   - 有理由：標示為**偏離**，不擋人，但一直列在報告中。
   - 超過 `until`：再變回**錯誤**。
 - 覆寫不存在的項目、值的型別錯誤、重複宣告同一個元件：**錯誤**。
-- 鏡像網址改到內部主機以外屬於放寬，必須寫理由並一直列為偏離；這樣 §10.2「設定指向外部來源是錯誤」不會被宣告悄悄繞過。
 - 同一個 repo 裡，同語言的元件風格不一致時：**提示**。
-- `deps.ignoredVulns` 中的每一項都比照偏離處理，必須有 `reason` 與 `until`。
+- 覆寫鏡像與弱點掃描項目（頂層 `mirrors:`、`deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`、`tools.govulncheck`）：不論宣告哪個標準版本，都只是**提示**（`declaration/retired-item`），不判定收緊或放寬，也不算錯誤，因為 devguard 不再依它們做任何檢查（#64）；`standard upgrade` 到 `team@1.3.0` 會刪除它們。寫錯位置的（例如元件 `overrides` 中的 `mirrors.npm`）仍是不存在的項目，算**錯誤**。
 
 ### 4.3 沒有宣告時
 
@@ -187,12 +183,10 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | `complexity.cognitive` | 15（Python 不適用） | 上限 |
 | `coverage.lines` | 80（0 以下表示不設覆蓋率門檻：`--full` 仍執行測試，但不判定覆蓋率，也不要求覆蓋率設定或報告） | 下限 |
 | `deps.lockfile` | `true`（各語言的落地方式不同） | 布林 |
-| `deps.vulnScan` | **`false`**（進階項目，見 §5.3） | 布林 |
-| `deps.ignoredVulns` | 空 | 新增項目算放寬 |
 | `claude.minVersion` | `2.1.295`（`onFailure: block` 需要此版本） | 下限 |
-| `mirrors.pypi` / `npm` / `go` / `maven` / `vscode` / `tools` 等 | 見 §10.1 | 鏡像（§4.2） |
-| `mirrors.auth` | `none` | 風格 |
 | 各工具的版本範圍 | 發佈 `team@1.0.0` 時訂定，例如 `ruff >=0.17,<0.18`、`golangci-lint >=2.12`（`gomodguard_v2` 從 v2.12.0 才有） | 版本範圍 |
+
+`team@1.2.0` 以前另有 `deps.vulnScan`（`false`）、`deps.ignoredVulns`（空）與 `mirrors.*`（Nexus 的 dummy 網址、`mirrors.auth: none`），`team@1.3.0` 移除（§5.3、§10）。
 
 **跨語言共用的修正項目**：`.gitattributes` 必須包含 `* text=auto eol=lf`（Prettier、Biome 預設使用 LF，Spotless 依 `.gitattributes` 決定換行）。
 
@@ -210,27 +204,15 @@ CLI 依偵測到的工具設定檔產生**草稿**：
   - TypeScript：`node_modules/.bin/<tool>`
   - Go：`go tool <名稱>`
   - Java：`./mvnw` / `./gradlew`
-- 工具尚未安裝時，CLI **不會自行下載**，而是報錯並附上一行安裝指令（例如 `uv sync`、`poetry config virtualenvs.in-project true && poetry install`、`npm ci`），透過內部鏡像安裝。標準要求的 Python 開發工具（型別檢查器、Ruff、pytest）不在專案環境、元件與上層目錄的 `pyproject.toml` 也都沒有列在依賴中時，`uv sync` 裝不到它，提示改為加入開發依賴的指令，格式與 `standard upgrade` 相同（§5.5）：uv 專案 `uv add --dev "<工具><範圍>"`，Poetry 專案 `poetry config virtualenvs.in-project true && poetry add --group dev "<工具><範圍>"`（前半與 `poetry install` 的提示相同，工具才會裝進 devguard 會找的專案內 `.venv`），範圍取標準的 `tools.<工具>`（#68）。已列在依賴中只是還沒安裝時，維持 `uv sync`／`poetry install`。找不到 uv 本身時，提示改為多行：列出官方安裝腳本、`pipx install uv`、`pip install uv`、`scoop install uv`（Windows），並說明已用 pip 安裝時要把 Python 的 Scripts 目錄（Windows）或 `~/.local/bin`（其他平台）加進 PATH，再以 `uv --version` 確認；devguard 不會到 PATH 以外的位置找 uv。
+- 工具尚未安裝時，CLI **不會自行下載**，而是報錯並附上一行安裝指令（例如 `uv sync`、`poetry config virtualenvs.in-project true && poetry install`、`npm ci`），套件來源是開發者使用者層級的設定（§10）。標準要求的 Python 開發工具（型別檢查器、Ruff、pytest）不在專案環境、元件與上層目錄的 `pyproject.toml` 也都沒有列在依賴中時，`uv sync` 裝不到它，提示改為加入開發依賴的指令，格式與 `standard upgrade` 相同（§5.5）：uv 專案 `uv add --dev "<工具><範圍>"`，Poetry 專案 `poetry config virtualenvs.in-project true && poetry add --group dev "<工具><範圍>"`（前半與 `poetry install` 的提示相同，工具才會裝進 devguard 會找的專案內 `.venv`），範圍取標準的 `tools.<工具>`（#68）。已列在依賴中只是還沒安裝時，維持 `uv sync`／`poetry install`。找不到 uv 本身時，提示改為多行：列出官方安裝腳本、`pipx install uv`、`pip install uv`、`scoop install uv`（Windows），並說明已用 pip 安裝時要把 Python 的 Scripts 目錄（Windows）或 `~/.local/bin`（其他平台）加進 PATH，再以 `uv --version` 確認；devguard 不會到 PATH 以外的位置找 uv。
 
 來源：[工具版本權威與一致性檢查](.scratch/coding-standards-guard/issues/14-tool-version-authority.md)
 
-### 5.3 弱點掃描（進階項目）
+### 5.3 弱點掃描（已移除）
 
-公司環境不允許下載外部檔案，所以四種語言都**預設關閉**（`deps.vulnScan: false`）。
-- 專案自行開啟算收緊，不需要寫理由。
-- 開啟後才套用各語言的 `deps.vulnFailOn` 與 `deps.ignoredVulns`。
-- 執行時機：只在 `check --full` 與 CI，以及開啟完整測試的 pre-push（§7.4）。
+devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預設關閉的進階項目（`deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`），開啟後在 `check --full` 執行 pip-audit、govulncheck、npm audit 與 OWASP Dependency-Check，資料來源指向內部鏡像（`mirrors.osv`、`mirrors.govulndb`、`mirrors.nvd`）。每個工具在內網都需要額外的基礎設施，各企業的條件也不同，所以整個移除，交給團隊自己的 CI 或資安工具。`team@1.3.0` 移除這些項目與 Go 的 `tools.govulncheck`；較舊的標準版本仍有這些項目，但 devguard 不依它們執行任何掃描。
 
-各工具在內網的資料來源（已查證）：
-
-| 工具 | 可行性 | 做法 |
-|---|---|---|
-| govulncheck | ✅ 可行 | `-db` 指向 `mirrors.govulndb`（Nexus raw proxy，指向 `https://vuln.go.dev`），或解壓 `vulndb.zip` 後使用 `file://` 路徑。Nexus 的 Go proxy 無法提供這份資料。 |
-| OWASP Dependency-Check | ⚠ 有條件 | `nvdDatafeedUrl` 指向 Nexus raw hosted repo 中的 NVD 鏡像。IT 需要一台能連到 NVD API 的機器，每天執行 `vulnz cve --cache` 並上傳結果。KEV 與 RetireJS 要指向鏡像，或用 `--disableKnownExploited`、`--disableRetireJs` 關閉。OSS Index、Node Audit 與 Maven Central analyzer 一律關閉（`--disableOssIndex`、`--disableNodeAudit`、`-DcentralAnalyzerEnabled=false`）。plugin 一律以確切版本呼叫（pom 鎖定的版本，否則用標準指定的版本），不讓 Maven 自行挑選最新版。 |
-| npm audit | ⚠ 有條件 | 需要 Sonatype Repository Firewall 授權、Nexus ≥3.82、npm ≥8（或 pnpm ≥11）。舊的 `/audits` 端點已於 2026-07-15 退役，只能使用 bulk 端點。doctor 會探測 bulk 端點，無法使用時給提示，不算錯誤。 |
-| pip-audit | ❌ 無法透過 Nexus PyPI | pip-audit 的 pypi 來源寫死為 pypi.org；若回應中缺少 `vulnerabilities` 欄位，它會直接回報「沒有弱點」而不發出警告。可行的替代：`-s osv --osv-url <內部端點>`，或改用 osv-scanner 的離線模式（讀取 Nexus raw 上的 `all.zip`），見 §13。 |
-
-來源：[預設標準：Java](.scratch/coding-standards-guard/issues/11-default-standard-java.md)、[內部鏡像設定檢查](.scratch/coding-standards-guard/issues/16-internal-mirror-config.md)
+來源：[預設標準：Java](.scratch/coding-standards-guard/issues/11-default-standard-java.md)、[內部鏡像設定檢查](.scratch/coding-standards-guard/issues/16-internal-mirror-config.md)（原始設計）
 
 ### 5.4 禁用清單
 
@@ -248,7 +230,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 - **發佈**：預設標準內建在 CLI 中。每個 CLI 版本都附帶目前 major 版本與前一個 major 版本的所有標準版本。標準的原始檔放在一個內部 repo。
 - **版本號的意義**：
   - **major**：可能讓原本通過的專案失敗。例如收緊、新增規則、工具版本範圍改成不相容的範圍。
-  - **minor**：不會讓任何專案失敗。例如新增選用項目、新增替代工具（`team@1.2.0` 新增 `basedpyright`）、放寬、擴大相容的工具版本範圍、更換鏡像網址。
+  - **minor**：不會讓任何專案失敗。例如新增選用項目、新增替代工具（`team@1.2.0` 新增 `basedpyright`）、放寬、擴大相容的工具版本範圍、移除 devguard 不再檢查的項目（`team@1.3.0` 移除鏡像與弱點掃描）。
   - **patch**：只修改說明。
 - **專案宣告寫確切版本**。
   - 有 minor 或 patch 更新時，doctor 建議升級。
@@ -260,16 +242,18 @@ CLI 依偵測到的工具設定檔產生**草稿**：
   - 需要調整的工具版本
   - 需要執行的套件管理指令
 
+  新標準移除的項目，宣告中的覆寫會列為多餘並在 `--apply` 時刪除；刪除後空了的 `overrides:` 與頂層 `mirrors:` 也一併刪除。
+
   目標版本：同一個標準的較新版本；`legacy` 另外可以升級到它指定的 `team` 版本（`legacy@1.0.0` → `team@1.1.0`）及該 `team` 的較新版本。沒有指定目標時，取同一個標準的最新版本，沒有的話取 `legacy` 指定的 `team` 版本。其他目標（例如從 `team` 升到 `legacy`，或從 `legacy@1.0.0` 升到 `team@1.0.0`）以 `2` 結束。
 - **基線標準 `legacy`**（§6.5）：給既有專案先納管用，最終要升級到 `team`。`legacy` → `team` 會收緊，不是 minor 更新，所以 doctor 不會建議；`devguard draft` 一律寫入 `team` 的最新版本，`team` 也不會升級到 `legacy`。
-  加上 `--apply` 才實際修改宣告與設定檔，並透過內部鏡像執行套件管理指令。預覽不會詢問；有變更待套用時以 `1` 結束（§11）。Python 元件依最近的 lockfile 選擇指令（與 §5.2 執行工具的判斷相同）：uv 專案執行 `uv add --dev`（以 `UV_DEFAULT_INDEX` 指向 `mirrors.pypi`）；Poetry 專案執行 `poetry add --group dev <套件><範圍>`（PEP 508 形式，例如 `ruff>=0.18,<0.19`），鏡像來自 `[[tool.poetry.source]]`（§10.2），不改用 uv。預覽中 Python 指令含 `>`、`<`、`,` 或空白的引數加上雙引號，可以直接貼到 shell 執行。
+  加上 `--apply` 才實際修改宣告與設定檔，並執行套件管理指令（套件來源是開發者使用者層級的設定，CLI 不另外指定）。預覽不會詢問；有變更待套用時以 `1` 結束（§11）。Python 元件依最近的 lockfile 選擇指令（與 §5.2 執行工具的判斷相同）：uv 專案執行 `uv add --dev`；Poetry 專案執行 `poetry add --group dev <套件><範圍>`（PEP 508 形式，例如 `ruff>=0.18,<0.19`），不改用 uv。預覽中 Python 指令含 `>`、`<`、`,` 或空白的引數加上雙引號，可以直接貼到 shell 執行。
 - **強制升級**：團隊可以把某個標準版本標為棄用並設定截止日。截止日之前只顯示提示，之後回報錯誤。
 
 來源：[預設標準的版本發佈與專案升級方式](.scratch/coding-standards-guard/issues/12-standards-versioning.md)
 
 ---
 
-## 6. 各語言的預設標準（`team@1.0.0` 草案，及 `team@1.1.0`、`team@1.2.0`、`legacy@1.0.0`）
+## 6. 各語言的預設標準（`team@1.0.0` 草案，及 `team@1.1.0`～`team@1.3.0`、`legacy@1.0.0`）
 
 本節的表格是 `team@1.0.0`。`team@1.1.0`（minor，§5.5）沿用 `team@1.0.0` 的所有項目，只有以下差異：
 
@@ -285,7 +269,12 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 
 - Python 的 `typecheck.tool` 多一個替代工具 `basedpyright`（§6.1），並新增 `tools.basedpyright` `>=1.40,<2`。下限依 #36 的原則取上游仍在修補的最舊版本線：basedpyright 的版本都從 `main` 依序發佈，不回補舊版本線（2026-11-03 查證 PyPI 與 GitHub Releases：1.39 的最後一版 1.39.10 在 1.40.0 之前發佈，目前最新是 1.40.2），所以只有 1.40 仍在維護；上限是下一個 major。
 
-`devguard draft` 寫入、`doctor` 建議升級到的都是 CLI 內建的最新 `team` 版本（目前是 `team@1.2.0`）。既有專案可以改宣告基線標準 `legacy@1.0.0`（§6.5）。
+`team@1.3.0`（minor，§5.5）沿用 `team@1.2.0` 的所有項目，只移除 devguard 不再檢查的項目（#64）：
+
+- 所有 `mirrors.*`（§10）。
+- 各語言的 `deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`，以及 Go 的 `tools.govulncheck`（§5.3）。
+
+`devguard draft` 寫入、`doctor` 建議升級到的都是 CLI 內建的最新 `team` 版本（目前是 `team@1.3.0`）。既有專案可以改宣告基線標準 `legacy@1.0.0`（§6.5）。
 
 ### 6.1 Python
 
@@ -300,9 +289,8 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | `typecheck.strict` | `true` | mypy `strict` / pyright、basedpyright `typeCheckingMode = "strict"` |
 | `test.tool` | pytest + pytest-cov | — |
 | `coverage.lines` | 行覆蓋率與分支覆蓋率**各自**都要達到 80%（`branch = true`），與 TS、Java 一致 | CLI 執行 `coverage json`，從 `totals` 分別計算行與分支的覆蓋率並自行判定。不使用 `fail_under`，因為它在 branch 模式下檢查的是行加分支的合併總數。 |
-| `deps.manager` | `uv`；允許替代工具 `poetry` | 決定 `deps.lockfile` 要求哪個 lockfile。執行工具（§5.2）、鏡像設定（§10.2）、鏡像帳密（§10.3）與 `standard upgrade`（§5.5）不讀這個項目，只看最近的 Python lockfile：`poetry.lock` 時用 Poetry，否則用 uv |
+| `deps.manager` | `uv`；允許替代工具 `poetry` | 決定 `deps.lockfile` 要求哪個 lockfile。執行工具（§5.2）與 `standard upgrade`（§5.5）不讀這個項目，只看最近的 Python lockfile：`poetry.lock` 時用 Poetry，否則用 uv |
 | `deps.lockfile` | `uv.lock`（或 `poetry.lock`）必須提交；只有不帶 hash 的 `requirements.txt` 不算 lockfile | CLI 檢查 |
-| 進階：`deps.vulnFailOn` | 任何等級 | 先執行 `uv export --frozen --no-emit-project --format requirements.txt -o <tmp>`，再執行 `pip-audit -r <tmp> --disable-pip`（匯出結果預設帶 hash）；`ignoredVulns` 轉成 `--ignore-vuln`；資料來源見 §5.3 |
 
 來源：[預設標準：Python](.scratch/coding-standards-guard/issues/08-default-standard-python.md)
 
@@ -318,7 +306,6 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | `coverage.lines` | 80，排除 `// Code generated … DO NOT EDIT.` 與 `mocks/` | CLI 解析 `go tool cover -func` 的 total |
 | `test.race` | 本機不強制（Windows 需要 cgo / gcc），交給 CI | — |
 | `deps.lockfile` | `go.mod` 與 `go.sum` 必須提交，且 `go mod tidy -diff` 必須乾淨 | CLI 檢查 |
-| 進階：`deps.vulnFailOn` | 任何等級 | `govulncheck -json`（source 模式），由 CLI 判定結果並過濾 `ignoredVulns` |
 
 來源：[預設標準：Go](.scratch/coding-standards-guard/issues/09-default-standard-go.md)
 
@@ -336,7 +323,6 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | `coverage.lines` | lines、branches、functions、statements 都是 80；覆蓋率必須涵蓋元件所有的原始碼，不只被測試 import 的檔案 | `coverage.thresholds` / `coverageThreshold.global`；並且必須設定 `coverage.include` / `collectCoverageFrom`，否則為錯誤 |
 | `deps.manager` | `npm`；允許替代工具 `pnpm`、`yarn` | — |
 | `deps.lockfile` | lockfile 必須提交；CI 使用 `npm ci` | CLI 檢查 |
-| 進階：`deps.vulnFailOn` | `high`（含 dev 依賴） | `npm audit --json`，由 CLI 依 GHSA 過濾 `ignoredVulns` |
 
 來源：[預設標準：TypeScript](.scratch/coding-standards-guard/issues/10-default-standard-typescript.md)
 
@@ -352,7 +338,6 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | `test.tool` | JUnit 5 | — |
 | `coverage.lines` | JaCoCo BUNDLE 層級，LINE 與 BRANCH 都要 0.80；排除 Lombok 產生的程式碼 | `jacoco:check`；在 `lombok.config` 設定 `lombok.addLombokGeneratedAnnotation = true` |
 | `deps.lockfile` | Maven：Enforcer 的 `banDynamicVersions`（一條規則同時禁止版本範圍、LATEST / RELEASE 與 SNAPSHOT）加上 `dependencyConvergence`；Gradle：dependency locking 加上 `gradle.lockfile` | — |
-| 進階：`deps.vulnFailOn` | CVSS 7 | OWASP Dependency-Check；`ignoredVulns` 轉成 suppression 檔；NVD API key 不由 CLI 管理，doctor 只檢查有沒有設定 |
 
 來源：[預設標準：Java](.scratch/coding-standards-guard/issues/11-default-standard-java.md)
 
@@ -385,7 +370,6 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 | 型別檢查 | 擴充套件即時顯示 | — | 這一輪改過的檔案 | staged 檔案所屬的元件 | — |
 | 依賴規則（lockfile、禁用清單） | — | — | — | 只在依賴相關檔案被 staged 時 | — |
 | 測試與覆蓋率 | 可手動執行的 task | — | — | — | `DEVGUARD_PRE_PUSH=full` 時完整執行 |
-| 進階：弱點掃描 | — | — | — | — | `DEVGUARD_PRE_PUSH=full` 且開啟時執行 |
 
 `devguard check --full` 與 CI 執行全部檢查，不受 `DEVGUARD_PRE_PUSH` 影響。pre-push 預設不跑任何檢查、直接放行，讓日常的 WIP push 不會被完整測試與覆蓋率計算擋住；完整測試與覆蓋率由 CI 的 `check --full` 把關（§7.4）。
 
@@ -431,7 +415,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 **環境檢查**
 - 用 `code --list-extensions --show-versions` 偵測擴充套件（透過 `cmd.exe` 執行）。這個指令只能判斷「是否已安裝」：被停用的擴充套件也會列出，而且只涵蓋預設 profile。CLI 沒有可靠的方式判斷是否已啟用（狀態存在 VS Code 內部的 `state.vscdb`，不是公開 API）。
-- 缺少推薦的擴充套件時給**提示**（不是錯誤），提示「請從公司內部 marketplace 安裝 `<id>`」並附上連結；訊息另外註明「若已安裝但被停用，請在 VS Code 中啟用」。找不到 `code` 指令或指令失敗時也只給提示。使用其他編輯器（IntelliJ IDEA、Cursor、Neovim 等）的開發者因此不會讓 `doctor` 失敗。
+- 缺少推薦的擴充套件時給**提示**（不是錯誤），附上安裝指令 `code --install-extension <id>`（擴充套件從哪裡下載由 VS Code 的設定決定）；訊息另外註明「若已安裝但被停用，請在 VS Code 中啟用」。找不到 `code` 指令或指令失敗時也只給提示。使用其他編輯器（IntelliJ IDEA、Cursor、Neovim 等）的開發者因此不會讓 `doctor` 失敗。
 - 裝了不推薦的擴充套件時給**提示**。
 
 **提交規則**：`settings.json`、`extensions.json`、`tasks.json` 必須提交。如果 `.gitignore` 忽略了 `.vscode/`，CLI 提示改成 `.vscode/*` 並加上例外規則。
@@ -484,7 +468,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
   - 印出的警告要說明哪些檢查用的是工作目錄版本。
 - **hook 只做檢查、不做修正**：失敗時印出 `devguard fix --code <files>`。
 - **專案工具不繼承 git 的 repo 定位變數**：git 執行 hook 前會匯出 `GIT_DIR`、`GIT_WORK_TREE`、`GIT_INDEX_FILE` 等變數（`githooks(5)`），在 worktree 中 `GIT_DIR` 是絕對路徑。CLI 代為執行的專案工具（測試、linter、formatter、型別檢查、套件管理指令）的環境中移除 `GIT_DIR`、`GIT_WORK_TREE`、`GIT_INDEX_FILE`、`GIT_OBJECT_DIRECTORY`、`GIT_ALTERNATE_OBJECT_DIRECTORIES`、`GIT_COMMON_DIR`、`GIT_PREFIX`，其餘變數照常傳遞；否則專案測試在暫存目錄中執行的 `git init`、`git commit` 會寫進外層的 repo。CLI 自己執行的 git 指令保留這些變數，例如 pre-commit 用 `git show :<path>` 讀 staged 版本時仍使用 git 提供的 index。
-- **pre-push 的完整測試由開發者開啟**：`install` 照常安裝 pre-push hook，但 hook 只在環境變數 `DEVGUARD_PRE_PUSH` 為 `full` 時，才執行 `check --full` 中的測試、覆蓋率與弱點掃描；未設定或其他值時直接放行，什麼都不印。開關放在開發者的環境而不是專案宣告，所以不改變 §4 的格式，切換時也不需要重新執行 `install`。
+- **pre-push 的完整測試由開發者開啟**：`install` 照常安裝 pre-push hook，但 hook 只在環境變數 `DEVGUARD_PRE_PUSH` 為 `full` 時，才執行 `check --full` 中的測試與覆蓋率；未設定或其他值時直接放行，什麼都不印。開關放在開發者的環境而不是專案宣告，所以不改變 §4 的格式，切換時也不需要重新執行 `install`。
 - **「已安裝」的環境檢查**
   1. 讀取 `core.hooksPath` 及其設定來源。
   2. 若使用既有框架，確認其設定中有呼叫 CLI 的項目；使用 pre-commit 框架時，另外確認 `pre-commit install --hook-type pre-commit --hook-type pre-push` 已執行（hooks 目錄中有 pre-commit 產生的 hook），且設定的 `minimum_pre_commit_version` 至少為 `"4.4.0"`（缺少或較低都是錯誤，`devguard install` 會修正）。沒有使用框架時，確認 hook 檔存在、有 CLI 標記，且 checksum 正確。
@@ -526,7 +510,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 | 類別 | 範例 | 做法 |
 |---|---|---|
-| CLI 全權產生 | `checkstyle.xml`、PMD ruleset、`.claude/rules/*`、`/standards-doctor` skill、git hook、Dependency-Check suppression 檔、`.mvn/settings.xml`、`.mvn/maven.config` | 整份重新產生，檔頭標示「由 CLI 產生」 |
+| CLI 全權產生 | `checkstyle.xml`、PMD ruleset、`.claude/rules/*`、`/standards-doctor` skill、git hook | 整份重新產生，檔頭標示「由 CLI 產生」 |
 | 結構化的共用檔 | `pyproject.toml` 的 `[tool.*]`、`.golangci.yml`、`tsconfig.json`、`.prettierrc`、`.npmrc`（只有帳密引用，不寫 `registry=`）、`.vscode/*`、`.claude/settings.json` | 只修改 CLI 管理的 key，並保留註解與順序（YAML 用 `yaml`，JSONC 用 `jsonc-parser`，TOML 用 `@decimalturn/toml-patch`；`@shopify/toml-patch` 需要在執行時載入 wasm，可能無法打包進 Bun exe） |
 | 建置檔與程式碼形式的設定檔 | `pom.xml`、`build.gradle`、`settings.gradle`、`vitest.config.ts`、`eslint.config.js` | 不自動修改，只印出要套用的片段或 diff |
 
@@ -541,59 +525,24 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 ---
 
-## 10. 內部環境
+## 10. 套件來源與帳密
 
-### 10.1 鏡像網址（dummy，正式導入前替換）
+devguard 不檢查也不寫入套件從哪裡下載（#64；npm 的部分先於 #65 處理）。各企業的限制不同，使用者最清楚：
 
-| 項目 | 預設值 |
-|---|---|
-| `mirrors.pypi` | `https://nexus.example.internal/repository/pypi-proxy/simple` |
-| `mirrors.npm` | `https://nexus.example.internal/repository/npm-proxy/` |
-| `mirrors.go` | `https://nexus.example.internal/repository/go-proxy/` |
-| `mirrors.gosumdb` | `https://nexus.example.internal/repository/go-sumdb-proxy/`（raw proxy，指向 `https://sum.golang.org`，需關閉 Strict Content Type Validation） |
-| `mirrors.govulndb` | `https://nexus.example.internal/repository/go-vulndb-proxy/`（raw proxy，指向 `https://vuln.go.dev`；只在開啟弱點掃描時使用） |
-| `mirrors.osv` | `https://osv.example.internal/v1/query`（OSV 相容的查詢端點，給 `pip-audit -s osv --osv-url` 使用；Nexus raw proxy 無法代理 POST，需自架或由轉送代理放行；只在開啟弱點掃描時使用） |
-| `mirrors.nvd` | `https://nexus.example.internal/repository/nvd-mirror/`（raw hosted，放 vulnz 產生的 `nvdcve-*.json.gz`；Dependency-Check 的 `nvdDatafeedUrl` 為 `<mirrors.nvd>nvdcve-{0}.json.gz`；只在開啟弱點掃描時使用） |
-| `mirrors.maven` | `https://nexus.example.internal/repository/maven-public/` |
-| `mirrors.tools` | `https://nexus.example.internal/repository/raw-tools/` |
-| `mirrors.vscode` | `https://vsmarketplace.example.internal`（公司內部 marketplace） |
+- 套件、工具與 VS Code 擴充套件的來源（內部鏡像、registry、index、marketplace）設定在開發者使用者層級，例如 `npm config set registry`、uv 的 `UV_DEFAULT_INDEX`、Poetry 的 source 或環境變數、`~/.m2/settings.xml`、`go env -w GOPROXY=… GOSUMDB=…`。寫死在專案中會覆蓋使用者的企業設定。
+- CLI 執行的套件管理指令（§5.5 的 `standard upgrade --apply`）與工具（§3.2 的 golangci-lint）不帶入任何來源設定，照這些使用者層級的設定下載。
+- 舊版 devguard 寫進專案的鏡像設定（`.npmrc` 的 `registry=`、`[[tool.uv.index]]` / `[[tool.poetry.source]]` 的 `nexus`、`.mvn/settings.xml` 與 `.mvn/maven.config`）不會自動刪除，由使用者自行處理。
 
-### 10.2 設定的落地位置
+**帳密**
+- 帳密**絕不進 repo**，CLI 也不保存。`check` 的 `credentials` 層把提交進專案的明碼帳密回報為**錯誤**（`credentials/plaintext`），只說明位置，不印出值：
+  - `.npmrc` 的 `_auth`、`_authToken`、`_password`（含 registry 前綴的形式），值不是 `${NAME}` 環境變數引用時（npm 會去掉引號，所以 `"${NAME}"` 也是引用）
+  - `pyproject.toml` 中任何位置的網址內含密碼（`user:password@`，密碼只引用變數如 `${PASS}` 的除外）或以 token 當作帳號（`ghp_…@`、`glpat-…@` 等），例如 uv 的 index 與 `[tool.uv.pip]`、`[tool.uv.sources]` 的 git／url、Poetry 的 source、直接以網址指定的依賴（`pkg @ https://…`）。只有帳號（`git@`、`deploy@`）不算帳密
+  - `.mvn/settings.xml` 的 `<password>`、`<passphrase>` 不是屬性引用（`${env.PW}`、`${nexus.password}`）、Maven 加密過的密碼（`{…}`）或空值時。`<privateKey>` 是金鑰檔的路徑，不檢查
+  - 每個元件的這些檔案，在元件目錄與上層各目錄中查找，與工具本身相同（npm workspace 根目錄的 `.npmrc`、uv workspace 根目錄的 `pyproject.toml`、多模組建置的 `.mvn/`）；多個元件共用的檔案只回報一次
+- `fix` 不改寫帳密：帳密已經外洩，必須更換；改由哪個環境變數或使用者層級設定提供，由開發者決定。
+- `fix`、`install` 與 `standard upgrade` 的預覽、印出的片段與報告中，一律遮蔽帳密的值（`.npmrc` 的 `_auth` / `_authToken` / `_password`、Maven 的 `<username>` / `<password>`、網址中的 `user:password@`）；只引用環境變數（`${…}`）的值照常顯示。
 
-| 工具 | 位置 | 層級 |
-|---|---|---|
-| uv | `pyproject.toml` 的 `[[tool.uv.index]]`（`name = "nexus"`、`default = true`；需要登入時再加 `authenticate = "always"`） | 專案，提交 |
-| Poetry（最近的 Python lockfile 是 `poetry.lock`） | `pyproject.toml` 的 `[[tool.poetry.source]]`（`name = "nexus"`、`url = <mirrors.pypi>`、`priority = "primary"`）；檢查並取代 uv 的 `[[tool.uv.index]]` | 專案，提交 |
-| npm / pnpm / yarn | 套件來源由使用者層級的 npm 設定決定；CLI 不檢查也不寫入專案 `.npmrc` 的 `registry=` 與 scope 的 `:registry`（寫死在專案中會覆蓋使用者的企業鏡像設定）。專案 `.npmrc` 只檢查帳密（§10.3） | 使用者；專案 `.npmrc` 只放帳密引用 |
-| Maven | `.mvn/maven.config`（`--settings .mvn/settings.xml`）+ `.mvn/settings.xml`（mirror） | 專案，提交 |
-| Gradle | `settings.gradle` 的 `dependencyResolutionManagement.repositories` | 專案；CLI 只印出片段 |
-| Go | `go env -w GOPROXY=…`、`GOSUMDB` | 使用者；doctor 印出指令；CLI 自己執行 Go 工具時直接帶入 |
-
-- 設定指向外部來源時：**錯誤**。
-- **Go 的 checksum 資料庫**：Nexus 的 Go proxy 無法代理 sumdb（`/sumdb/sum.golang.org/supported` 會回 404，go 隨即改為直連，在內網會失敗）。
-  - 設定 `GOSUMDB="sum.golang.org <mirrors.gosumdb>"`，沿用官方公鑰。
-  - 內部模組用 `GOPRIVATE` / `GONOSUMDB` 排除。
-  - `GOSUMDB=off` 算**錯誤**：關閉後，凡是 `go.sum` 中還沒有的模組，都會在未經驗證的情況下被接受。
-
-### 10.3 帳密
-
-有些 Nexus 需要登入，有些不需要，**依專案而定**。
-
-- `mirrors.auth: env` 時，統一使用環境變數 `NEXUS_USERNAME`、`NEXUS_PASSWORD`。專案層級的設定檔只引用變數：
-
-  | 工具 | 引用方式 |
-  |---|---|
-  | npm（**例外**） | `.npmrc` 寫 `//nexus.example.internal/repository/npm-proxy/:_auth=${NEXUS_NPM_AUTH}`，值是 `username:password` 的 base64；或改用 `:_authToken=${NEXUS_NPM_TOKEN}`。帳密相關的 key 必須帶 registry 前綴；npm 不接受明文的 `_password`，所以無法直接使用 `NEXUS_USERNAME` / `NEXUS_PASSWORD`。 |
-  | uv | `UV_INDEX_NEXUS_USERNAME` / `UV_INDEX_NEXUS_PASSWORD`（名稱取自 index 的 `name`，轉成大寫，非英數字元換成 `_`） |
-  | Poetry | `POETRY_HTTP_BASIC_NEXUS_USERNAME` / `POETRY_HTTP_BASIC_NEXUS_PASSWORD`（名稱取自 source 的 `name`，轉成大寫） |
-  | Maven | `.mvn/settings.xml` 的 `<server>` 寫 `${env.NEXUS_USERNAME}`；`<server>` 的 id 必須和 mirror 的 id 相同 |
-  | Gradle | repository 的 `name` 設為 `nexus`，並加上 `credentials(PasswordCredentials)`，即可讀取 `ORG_GRADLE_PROJECT_nexusUsername` / `ORG_GRADLE_PROJECT_nexusPassword`（或 `~/.gradle/gradle.properties`） |
-  | Go | `NETRC` 環境變數所指的檔案；沒有設定時用 `%USERPROFILE%\_netrc`。只寫主機名稱，僅適用 HTTPS |
-
-- 帳密**絕不進 repo**，CLI 也不保存。`fix`、`install` 與 `standard upgrade` 的預覽、印出的片段與報告中，一律遮蔽帳密的值（`.npmrc` 的 `_auth` / `_authToken` / `_password`、Maven 的 `<username>` / `<password>`、網址中的 `user:password@`）；只引用環境變數（`${…}`）的值照常顯示。
-- doctor 只檢查這些變數或 netrc 檔是否存在（Go 先看 `NETRC`，再看 `_netrc`），**不讀取也不印出它們的值**。這一點對 npm 特別重要：`.npmrc` 引用的變數不存在時，npm 不會報錯，而是把 `${VAR}` 原樣送出，最後得到 401。
-
-來源：[內部鏡像設定檢查](.scratch/coding-standards-guard/issues/16-internal-mirror-config.md)
+原本的設計（內部 Nexus 鏡像網址 `mirrors.*`、專案層級的鏡像設定、`mirrors.auth: env` 與 doctor 的帳密變數檢查）見[內部鏡像設定檢查](.scratch/coding-standards-guard/issues/16-internal-mirror-config.md)；`team@1.2.0` 以前的標準仍有 `mirrors.*` 項目，但 devguard 不再依它們做任何檢查，宣告中寫著它們只會得到提示（§4.2）。
 
 ---
 
@@ -627,18 +576,17 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 ## 12. 導入前提（由團隊或 IT 確認）
 
-1. 以真實的 Nexus 網址取代 §10.1 的 dummy 網址。
-2. §7.2 推薦的 VS Code 擴充套件，都能在公司內部 marketplace 取得。
+項目編號維持不變，其他文件與程式碼以編號引用；已不需要的項目標示「已移除」。
+
+1. 開發者使用者層級的套件來源設定（§10）能取得專案的依賴。（原本是以真實的 Nexus 網址取代 dummy 網址，#64 移除。）
+2. §7.2 推薦的 VS Code 擴充套件，開發者都能取得（從哪裡安裝由 VS Code 的設定決定）。
 3. 開發者能從 GitHub Release 下載 devguard 的 exe（§3.1），並取得預設標準指定版本的 golangci-lint binary。
-4. 在 Nexus 上建立 `mirrors.gosumdb` raw proxy（指向 `https://sum.golang.org`，關閉 Strict Content Type Validation）。
+4. 已移除（#64）：原本是在 Nexus 上建立 `mirrors.gosumdb` raw proxy。
 5. `team@1.1.0` 的工具版本範圍（含 golangci-lint）已在 #36 審視並訂定（2026-10-27）。只有 `team@1.0.0` 保留原本的佔位範圍：它已發佈，不再修改（§5.5）。
 6. 開發者的機器上有 Git for Windows（git hook 的 sh 依賴它）。
-7. 確認公司內部 marketplace 的類型。Microsoft 的私有 marketplace 需要 GitHub Enterprise，透過 `ExtensionGalleryServiceUrl` policy 設定；依原始碼推斷，`code --install-extension` 不會讀這個 policy（尚未實機確認）。
+7. 已移除（#64）：原本是確認公司內部 marketplace 的類型。
 8. **法務確認**：`eslint-plugin-sonarjs` 的授權是 LGPL-3.0-only。`team@1.1.0` 已不再要求它（§6）：使用 ESLint 的 TypeScript 專案只檢查循環複雜度，認知複雜度不檢查，devguard 自己也宣告 `team@1.1.0`。仍宣告 `team@1.0.0` 的專案照舊要求這個 plugin。
-9. 只在打算開啟進階弱點掃描時才需要：
-   - 一台能連到 NVD API 的機器，每天更新 Nexus raw hosted repo 中的 NVD 鏡像（給 Dependency-Check 使用）
-   - `mirrors.govulndb` raw proxy
-   - 確認是否有 Sonatype Repository Firewall 授權（npm audit 需要）
+9. 已移除（#64）：原本是開啟弱點掃描所需的 NVD 鏡像、`mirrors.govulndb` 與 Sonatype Repository Firewall 授權。
 
 ## 13. 待實機測試或待決定的事項
 
@@ -662,9 +610,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 | # | 項目 | 失敗時的退路 |
 |---|---|---|
-| T4 | `code --install-extension` 在公司內部 marketplace 下的行為 | doctor 的提示改為只附上 marketplace 連結 |
-| T5 | 沒有 Firewall 授權時，Nexus 對 npm audit bulk 端點的回應 | 維持「無法使用時給提示」 |
-| T6 | 評估 osv-scanner 離線模式（讀取 Nexus raw 上的 `all.zip`），是否能用一個工具取代 npm audit 與 pip-audit | 維持 §5.3 現有的做法 |
+| — | 目前沒有。原本的 T4–T6（內部 marketplace、npm audit bulk 端點、osv-scanner 離線模式）隨鏡像與弱點掃描一起移除（#64） | — |
 
 ---
 

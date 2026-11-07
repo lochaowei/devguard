@@ -26,7 +26,7 @@ describe("fileCategory (SPEC §9.2)", () => {
     ["checkstyle.xml", "generated"],
     ["svc/config/pmd/ruleset.xml", "generated"],
     [".claude/rules/python.md", "generated"],
-    [".mvn/settings.xml", "generated"],
+    [".mvn/settings.xml", "snippet"],
     ["pyproject.toml", "managed"],
     ["web/tsconfig.json", "managed"],
     [".golangci.yml", "managed"],

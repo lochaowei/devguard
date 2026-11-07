@@ -19,11 +19,6 @@ export interface ToolRequest {
   /** Component directory, normalized ("" for the repo root, otherwise ending in "/"). The tool runs there. */
   dir: string;
   args?: readonly string[];
-  /**
-   * Extra environment variables. Go only, e.g. the mirror's GOPROXY / GOSUMDB (SPEC §10.2); the runner still
-   * forces GOTOOLCHAIN=local, and GOPROXY=off for `go` / `go tool` so resolving a tool never downloads it.
-   */
-  env?: Readonly<Record<string, string>>;
   /** Fed to the tool's stdin, e.g. the staged version of a file (SPEC §7.4). */
   stdin?: string;
   /**
@@ -59,13 +54,6 @@ export interface PackageRequest {
   /** Component directory, normalized as in ToolRequest. */
   dir: string;
   args: readonly string[];
-  /**
-   * The internal mirror (`mirrors.pypi` / `mirrors.npm` / `mirrors.go`): the only place packages come from. Required
-   * for every manager but one that reads it from the project's own settings (Poetry's `[[tool.poetry.source]]`).
-   */
-  mirror?: string;
-  /** Go only: the checksum database mirror (`mirrors.gosumdb`). */
-  sumdb?: string;
 }
 
 /** Runs the project's own pinned tools (SPEC §5.2). `run` never installs or downloads anything. */
@@ -73,8 +61,8 @@ export interface ToolRunner {
   /** Throws ToolMissingError when the tool is not installed in the project environment. */
   run(request: ToolRequest): Promise<ToolResult>;
   /**
-   * Runs a package-manager command that downloads only through the internal mirror. Throws when there is no mirror,
-   * or for Java, whose build files are only ever edited by hand (SPEC §9.2). Absent on fakes that never need it.
+   * Runs a package-manager command, which downloads from wherever the developer's own configuration points it. Throws
+   * for Java, whose build files are only ever edited by hand (SPEC §9.2). Absent on fakes that never need it.
    */
   manage?(request: PackageRequest): Promise<ToolResult>;
 }
@@ -260,14 +248,14 @@ function go(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
   const cwd = dirs[0] ?? "";
   const args = req.args ?? [];
   // GOPROXY=off: running a check must never download modules.
-  const offline = { ...req.env, ...goEnv({ offline: true }) };
+  const offline = goEnv({ offline: true });
   // `go` itself, for module commands such as `go mod tidy -diff`.
   if (req.tool === "go") return { ok: true, command: { file: "go", args: [...args], cwd, env: offline } };
   if (req.tool === "golangci-lint") {
     // Exception in SPEC §5.2: not a go.mod tool, but a binary the developer puts on PATH.
     const exe = onPath(req.tool, env);
     if (!exe) return { ok: false, message: "找不到 golangci-lint", install: pathToolHint("golangci-lint") };
-    return { ok: true, command: { file: exe, args: [...args], cwd, env: { ...req.env, ...goEnv() } } };
+    return { ok: true, command: { file: exe, args: [...args], cwd, env: goEnv() } };
   }
   const goMod = env.readText(env.path.join(cwd, "go.mod"));
   const declared = goModTools(goMod ?? "").some((t) => t === req.tool || t.endsWith(`/${req.tool}`));
@@ -303,24 +291,19 @@ const RESOLVERS: Readonly<Record<Language, (req: ToolRequest, dirs: readonly str
   java,
 };
 
-/** The package manager of a language, pointed at the mirror through its own environment variables. */
-function packageManager(req: PackageRequest, mirror: string, cwd: string, env: Env): Resolved {
+/** The package manager of a language; it reads its package source from the developer's own configuration. */
+function packageManager(req: PackageRequest, cwd: string, env: Env): Resolved {
   const args = [...req.args];
   switch (req.language) {
-    case "python": {
-      const manager = PYTHON_MANAGERS[req.manager ?? "uv"];
-      const viaEnv = manager.mirror.from === "env" ? { env: manager.mirror.env(mirror) } : {};
-      return { ok: true, command: { file: manager.program, args, cwd, ...viaEnv } };
-    }
+    case "python":
+      return { ok: true, command: { file: PYTHON_MANAGERS[req.manager ?? "uv"].program, args, cwd } };
     case "typescript": {
       const npm = onPath("npm", env);
       if (!npm) return { ok: false, message: "找不到 npm", install: "scoop install nodejs-lts" };
-      return { ok: true, command: { file: npm, args, cwd, env: { npm_config_registry: mirror } } };
+      return { ok: true, command: { file: npm, args, cwd } };
     }
-    case "go": {
-      const env = goEnv({ proxy: mirror, ...(req.sumdb ? { sumdb: req.sumdb } : {}) });
-      return { ok: true, command: { file: "go", args, cwd, env } };
-    }
+    case "go":
+      return { ok: true, command: { file: "go", args, cwd, env: goEnv() } };
     case "java":
       throw new Error("Java 的建置檔只印出修改內容，不由 CLI 執行套件管理指令");
   }
@@ -353,10 +336,7 @@ export function createToolRunner(deps: ToolRunnerDeps): Required<ToolRunner> {
   return {
     run: (req) => start(RESOLVERS[req.language](req, searchDirs(deps.cwd, req.dir, env.path), env), req.stdin),
     async manage(req) {
-      const ownMirror = req.language === "python" && PYTHON_MANAGERS[req.manager ?? "uv"].mirror.from === "project";
-      const mirror = req.mirror ?? "";
-      if (!ownMirror && mirror.trim() === "") throw new Error("沒有設定內部鏡像，不執行套件管理指令");
-      return start(packageManager(req, mirror, dirOf(req.dir), env));
+      return await start(packageManager(req, dirOf(req.dir), env));
     },
   };
 }
