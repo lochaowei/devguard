@@ -266,7 +266,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 2. 推送相同版本的 tag：`git tag v0.3.0 && git push origin v0.3.0`。
 3. [release workflow](.github/workflows/release.yml) 會在 Windows runner 上執行測試、建置兩個 exe、跑 smoke test，再建立 GitHub Release 並附上 exe 與 `SHA256SUMS.txt`。tag 與 `package.json` 版本不同時會失敗。
 
-本機建置：`npm run build:exe`（需要 Bun ≥1.2.23），產物在 `dist/`；`npm run smoke:exe` 在 PATH 中沒有 Node 的情況下驗證 exe。
+本機建置：`npm run build:exe`（需要 Bun ≥1.2.23，`bun.exe` 或 npm 安裝的 `bun.cmd` 皆可），產物在 `dist/`；`npm run smoke:exe` 在 PATH 中沒有 Node 的情況下驗證 exe。
 
 ## 專案宣告 `.devguard.yaml`
 

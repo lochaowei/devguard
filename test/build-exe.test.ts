@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compilePlan } from "../scripts/build-exe.ts";
+import { bunCandidates, compilePlan, findBun, type BunProbe } from "../scripts/build-exe.ts";
 
 describe("compilePlan", () => {
   it("compiles the native target with icon and version info", () => {
@@ -47,5 +47,50 @@ describe("compilePlan", () => {
     expect(() => compilePlan({ version: "0.1.0-beta.1", hostArch: "x64", targets: ["x64"] })).toThrow(
       "版本必須是 x.y.z",
     );
+  });
+});
+
+describe("bunCandidates", () => {
+  it("falls back to the bun.cmd shim on Windows, where npm installs only that", () => {
+    expect(bunCandidates("win32")).toEqual(["bun", "bun.cmd"]);
+  });
+
+  it("tries only bun elsewhere", () => {
+    expect(bunCandidates("linux")).toEqual(["bun"]);
+    expect(bunCandidates("darwin")).toEqual(["bun"]);
+  });
+});
+
+describe("findBun", () => {
+  const notFound: BunProbe = {
+    error: Object.assign(new Error("spawn bun ENOENT"), { code: "ENOENT" }),
+    status: null,
+    stdout: "",
+  };
+  const found = (version: string): BunProbe => ({
+    status: 0,
+    stdout: `${version}
+`,
+  });
+
+  it("uses bun when it starts", () => {
+    const tried: string[] = [];
+    const bun = findBun(["bun", "bun.cmd"], (file) => (tried.push(file), found("1.4.4")));
+    expect(bun).toEqual({ file: "bun", version: "1.4.4" });
+    expect(tried).toEqual(["bun"]);
+  });
+
+  it("falls back to bun.cmd when bun is not on PATH", () => {
+    const bun = findBun(["bun", "bun.cmd"], (file) => (file === "bun" ? notFound : found("1.4.4")));
+    expect(bun).toEqual({ file: "bun.cmd", version: "1.4.4" });
+  });
+
+  it("skips a candidate that exits non-zero", () => {
+    const bun = findBun(["bun", "bun.cmd"], (file) => (file === "bun" ? { status: 1, stdout: "" } : found("1.3.0")));
+    expect(bun).toEqual({ file: "bun.cmd", version: "1.3.0" });
+  });
+
+  it("is undefined when no candidate starts", () => {
+    expect(findBun(["bun", "bun.cmd"], () => notFound)).toBeUndefined();
   });
 });

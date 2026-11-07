@@ -13,6 +13,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { toSpawnSpec } from "../src/process/exec.ts";
 
 export type Arch = "x64" | "arm64";
 export const ARCHES: readonly Arch[] = ["x64", "arm64"];
@@ -82,12 +83,52 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-function bunVersion(): string {
-  const r = spawnSync("bun", ["--version"], { encoding: "utf8" });
-  if (r.error || r.status !== 0) fail(`找不到 Bun。打包需要 Bun ≥ ${MIN_BUN}（https://bun.com）。`);
-  const version = r.stdout.trim();
-  if (!meetsMinimum(version, MIN_BUN)) fail(`Bun ${version} 太舊，需要 ≥ ${MIN_BUN}。`);
-  return version;
+/** Names Bun is started by, in order. `npm i -g bun` puts only a `bun.cmd` shim on PATH on Windows. */
+export function bunCandidates(platform: NodeJS.Platform): string[] {
+  return platform === "win32" ? ["bun", "bun.cmd"] : ["bun"];
+}
+
+/** The outcome of `<candidate> --version`. */
+export interface BunProbe {
+  error?: Error;
+  status: number | null;
+  stdout: string;
+}
+
+export interface Bun {
+  /** The name that started Bun, used again for every compile step. */
+  file: string;
+  version: string;
+}
+
+/** The first candidate whose `--version` succeeds; undefined when none does. */
+export function findBun(candidates: readonly string[], probe: (file: string) => BunProbe): Bun | undefined {
+  for (const file of candidates) {
+    const r = probe(file);
+    if (r.error === undefined && r.status === 0) return { file, version: r.stdout.trim() };
+  }
+  return undefined;
+}
+
+/** Runs Bun synchronously; a `.cmd` shim goes through cmd.exe, since it cannot be started directly. */
+function runBun(file: string, args: string[], cwd: string, inherit: boolean) {
+  const spec = toSpawnSpec({ file, args, cwd });
+  return spawnSync(spec.file, spec.args, {
+    cwd,
+    encoding: "utf8",
+    stdio: inherit ? "inherit" : "pipe",
+    windowsVerbatimArguments: spec.windowsVerbatimArguments,
+  });
+}
+
+function requireBun(root: string): Bun {
+  const candidates = bunCandidates(process.platform);
+  const bun = findBun(candidates, (file) => runBun(file, ["--version"], root, false));
+  if (bun === undefined) {
+    fail(`找不到 Bun（試過 ${candidates.join("、")}）。打包需要 Bun ≥ ${MIN_BUN}（https://bun.com）。`);
+  }
+  if (!meetsMinimum(bun.version, MIN_BUN)) fail(`Bun ${bun.version} 太舊，需要 ≥ ${MIN_BUN}。`);
+  return bun;
 }
 
 function main(): void {
@@ -109,12 +150,14 @@ function main(): void {
     name: values.name,
   });
 
-  process.stdout.write(`Bun ${bunVersion()}\n`);
+  const bun = requireBun(root);
+  const via = bun.file === "bun" ? "" : `（${bun.file}）`;
+  process.stdout.write(`Bun ${bun.version}${via}\n`);
   mkdirSync(join(root, "dist"), { recursive: true });
   for (const step of plan) {
     for (const w of step.warnings) process.stderr.write(`警告：${w}\n`);
-    process.stdout.write(`> bun ${step.args.join(" ")}\n`);
-    const r = spawnSync("bun", step.args, { cwd: root, stdio: "inherit" });
+    process.stdout.write(`> ${bun.file} ${step.args.join(" ")}\n`);
+    const r = runBun(bun.file, step.args, root, true);
     if (r.status !== 0) fail(`windows-${step.target} 打包失敗`);
   }
 }
