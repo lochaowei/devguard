@@ -1,4 +1,5 @@
-import { isAbsolute, posix, relative } from "node:path";
+import { realpathSync } from "node:fs";
+import { isAbsolute, posix, relative, sep } from "node:path";
 import { normalizePath } from "../declaration/path.ts";
 import type { Finding, Level } from "../report/finding.ts";
 import type { ToolRequest, ToolResult, ToolRunner } from "../tools/runner.ts";
@@ -6,10 +7,34 @@ import type { CodeCheckContext, CodeTarget } from "./types.ts";
 
 /** Helpers shared by the per-language code checkers. */
 
-/** A path printed by a tool (absolute, or relative to the target directory) as a repo-relative path. */
+/**
+ * A path printed by a tool (absolute, or relative to the target directory) as a repo-relative path. Some tools
+ * (ESLint) print real paths, so an absolute path outside `cwd` is retried against `cwd` with symlinks resolved: on
+ * macOS the temp directory `/var/…` is really `/private/var/…`.
+ */
 export function toRepoPath(cwd: string, dir: string, path: string): string {
-  if (isAbsolute(path)) return normalizePath(relative(cwd, path));
-  return normalizePath(posix.normalize(dir + normalizePath(path)));
+  if (!isAbsolute(path)) return normalizePath(posix.normalize(dir + normalizePath(path)));
+  const rel = relative(cwd, path);
+  if (!outside(rel)) return normalizePath(rel);
+  const real = relative(realCwd(cwd), path);
+  return normalizePath(outside(real) ? rel : real);
+}
+
+const outside = (rel: string): boolean => rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+
+const realCwds = new Map<string, string>();
+
+function realCwd(cwd: string): string {
+  let real = realCwds.get(cwd);
+  if (real === undefined) {
+    try {
+      real = realpathSync(cwd);
+    } catch {
+      real = cwd;
+    }
+    realCwds.set(cwd, real);
+  }
+  return real;
 }
 
 /**
