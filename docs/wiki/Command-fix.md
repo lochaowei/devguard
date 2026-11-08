@@ -59,6 +59,8 @@ devguard fix --code [檔案…] [--yes] [--cwd <dir>]
 | `snippet`：建置檔與程式碼形式的設定 | `pom.xml`、`build.gradle(.kts)`、`eslint.config.js`、`vitest.config.ts` 等 | **不寫入**，只印出要手動套用的片段 |
 | `user`：使用者層級設定 | repo 以外的路徑，例如 `~/.m2/settings.xml` | **不寫入**，只印出修改說明 |
 
+修改 TOML 共用檔（例如 `pyproject.toml`）時，`fix` 會先確認修改後的內容仍是合法的 TOML。不合法時該檔**不寫入**，改為印出 `pyproject.toml：錯誤：修改後不是合法的 TOML，不會修改；請自行套用` 與要套用的修改；同一次的其他檔案照常處理，這不會讓 `fix` 失敗：其他檔案寫入成功時 exit code 仍是 `0`。
+
 `check` 的報告會說明每筆問題屬於哪一種：`可用 fix 修正：devguard fix（…）` 表示 `fix` 會自動寫入；`（devguard fix 會印出要套用的片段，不會自動修改）` 表示屬於 `snippet` 或 `user`。
 
 **`.vscode/` 與 `.claude/` 的差別：** `.vscode/` 完全不存在時，`fix` 會產生整套設定，即使 `check` 沒有報告。`.claude/` 則只更新已經存在的設定，要初次建立請用 [`install`](Command-install.md)。
@@ -158,6 +160,7 @@ $ devguard fix --code src/mul.ts --yes
 |---|---|
 | 在 Claude Code 或 CI 中執行 `fix`，exit `1` 且沒有寫入 | 非互動環境需要 `--yes` |
 | 安裝套件時連不上 `nexus.example.internal` | 舊版 devguard 的 `fix` 會把標準中的範例鏡像網址寫進專案：`.npmrc` 的 `registry=`、`pyproject.toml` 的 `[[tool.uv.index]]` / `[[tool.poetry.source]]`（`name = "nexus"`）、`.mvn/settings.xml` 與 `.mvn/maven.config`。現在 devguard 不再寫入任何套件來源（#65、#64），套件來源交給使用者層級的設定；請自行刪除這些設定 |
+| `fix` 印出 `錯誤：修改後不是合法的 TOML，不會修改；請自行套用` | 標準要求的 key 與檔案現有的寫法衝突，例如標準要求 `[tool.x]` 表格，但檔案中 `x` 已經是一般的值。檔案沒有被修改，請依印出的內容自行調整 |
 | `fix` 之後 `check` 仍報 `settings/missing-file`（`eslint.config.js`、`vitest.config.ts`） | 程式碼形式的設定檔屬於 `snippet`，`fix` 只印出片段，要自己建立或修改 |
 | 改了 `.devguard.yaml` 之後 `check` 報 `.claude/rules/…` 不一致 | rules 檔會列出元件的標準與偏離，宣告改了就要重新產生。執行 `devguard fix --yes` |
 

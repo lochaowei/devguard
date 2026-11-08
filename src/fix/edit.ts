@@ -73,13 +73,25 @@ function separator(out: string): string {
   return out.endsWith("\n") ? "\n" : "\n\n";
 }
 
+/**
+ * Whether the file already defines the table, by `[header]`, dotted keys (`lint.select` under `[tool.ruff]`) or an
+ * inline table, so its keys are edited in place. A table that exists only because a sub-table's header names it
+ * (`[tool.ruff]` when only `[tool.ruff.lint]` is written) may still be declared, and gets its own `[section]` block.
+ * Declaring is allowed exactly when appending the header still parses.
+ */
 function hasTomlTable(text: string, doc: Obj, table: KeyPath, name: string): boolean {
   if (text.trim() === "") return false;
   if (table.length === 0) return true;
   if (!isObj(getIn(doc, table))) return false;
   if (table.some((k) => typeof k === "number")) return true;
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`^\\s*\\[\\s*${escaped}\\s*\\]`, "m").test(text);
+  try {
+    parseToml(`${text}\n[${name}]\n`);
+    return false;
+  } catch {
+    // `text` already parsed (doc came from it), so the only way the append fails is redeclaring the table. A library
+    // bug landing here instead just means an in-place edit, and planChanges refuses any TOML result that won't parse.
+    return true;
+  }
 }
 
 /**
