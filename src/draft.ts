@@ -17,7 +17,7 @@ import type { Finding } from "./report/finding.ts";
 import { listRepoFiles } from "./repo/files.ts";
 import { defaultStandard } from "./standard/registry.ts";
 import { EXTENSION_LANGUAGE, LANGUAGES, type Language, type Standard } from "./standard/types.ts";
-import { upwards } from "./repo/paths.ts";
+import { baseName, upwards } from "./repo/paths.ts";
 import { typeCheckerConfigs, type TypeChecker } from "./settings/type-checkers.ts";
 import { readIfExists } from "./shared/fs.ts";
 
@@ -46,7 +46,7 @@ export interface DraftComponent {
 const dirOf = (file: string): string => file.slice(0, file.lastIndexOf("/") + 1);
 
 function languageOf(file: string): Language | undefined {
-  const name = file.slice(file.lastIndexOf("/") + 1);
+  const name = baseName(file);
   const dot = name.lastIndexOf(".");
   return dot <= 0 ? undefined : EXTENSION_LANGUAGE[name.slice(dot).toLowerCase()];
 }

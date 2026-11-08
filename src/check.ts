@@ -14,6 +14,7 @@ import { toolVersionsLayer } from "./layers/tool-versions.ts";
 import { fixLayers, type CheckLayer, type CheckScope, type LayerContext, type LayerResult } from "./layers/types.ts";
 import { uncoveredFilesLayer } from "./layers/uncovered.ts";
 import { vscodeLayer } from "./layers/vscode.ts";
+import { workingTreeCrlfLayer } from "./layers/working-tree-crlf.ts";
 import type { Finding } from "./report/finding.ts";
 import type { ReportInput } from "./report/render.ts";
 import { listRepoFiles } from "./repo/files.ts";
@@ -36,6 +37,7 @@ export const CHECK_LAYERS: readonly CheckLayer[] = [
   typescriptSettingsLayer,
   toolVersionsLayer,
   gitattributesLayer,
+  workingTreeCrlfLayer,
   credentialsLayer,
   claudeCodeLayer,
   vscodeLayer,
