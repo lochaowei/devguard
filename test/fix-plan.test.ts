@@ -92,6 +92,18 @@ describe("planChanges / applyPlan", () => {
     expect(existsSync(outside)).toBe(false);
   });
 
+  it("does not write a TOML file the edit would leave unparseable, and reports the edit instead (#105)", async () => {
+    const text = "[tool]\nx = 1\n";
+    const dir = repo({ "pyproject.toml": text });
+    const plan = await planChanges(dir, [{ op: "set", file: "pyproject.toml", path: ["tool", "x", "y"], value: 1 }]);
+    expect(plan.writes).toHaveLength(0);
+    expect(renderPlan(plan)).toBe(
+      "pyproject.toml：錯誤：修改後不是合法的 TOML，不會修改；請自行套用\n    tool.x.y: 1\n",
+    );
+    await applyPlan(dir, plan);
+    expect(read(dir, "pyproject.toml")).toBe(text);
+  });
+
   it("skips files already as the standard wants them", async () => {
     const dir = repo({ ".gitattributes": "* text=auto eol=lf\n" });
     const plan = await planChanges(dir, [{ op: "line", file: ".gitattributes", value: "* text=auto eol=lf" }]);

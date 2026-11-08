@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { editConfigText } from "../src/fix/edit.ts";
+import { editConfigText, parseConfigText } from "../src/fix/edit.ts";
 
 const PYPROJECT = `# Project metadata
 [project]
@@ -67,6 +67,34 @@ describe("editConfigText: TOML (SPEC §13 T1)", () => {
     ]);
     expect(out.startsWith('[project]\nname = "app"')).toBe(true);
     expect(out).toContain("[tool.ruff]\nline-length = 120\n");
+  });
+
+  it("edits a table defined by dotted keys in place, applying every add to the same key (#105)", () => {
+    const text = '[tool.ruff]\nline-length = 120\nlint.select = ["E", "W", "F"]\n';
+    const out = editConfigText(
+      "pyproject.toml",
+      text,
+      ["B", "C90", "SIM", "N", "S"].map((value) => ({ op: "add", path: ["tool", "ruff", "lint", "select"], value })),
+    );
+    expect(out).toBe('[tool.ruff]\nline-length = 120\nlint.select = ["E", "W", "F", "B", "C90", "SIM", "N", "S"]\n');
+  });
+
+  it("edits an inline table in place", () => {
+    const out = editConfigText("pyproject.toml", '[tool.ruff]\nlint = { select = ["E"] }\n', [
+      { op: "add", path: ["tool", "ruff", "lint", "select"], value: "S" },
+    ]);
+    expect(out).toBe('[tool.ruff]\nlint = { select = ["E", "S"] }\n');
+  });
+
+  it("adds a new sub-table of a dotted-key table as its own valid section", () => {
+    const text = '[tool.ruff]\nlint.select = ["E"]\n';
+    const out = editConfigText("pyproject.toml", text, [
+      { op: "add", path: ["tool", "ruff", "lint", "per-file-ignores", "tests/**"], value: "S101" },
+    ]);
+    expect(out).toBe(`${text}\n[tool.ruff.lint.per-file-ignores]\n"tests/**" = [ "S101" ]\n`);
+    expect(parseConfigText("pyproject.toml", out)).toEqual({
+      tool: { ruff: { lint: { select: ["E"], "per-file-ignores": { "tests/**": ["S101"] } } } },
+    });
   });
 });
 
