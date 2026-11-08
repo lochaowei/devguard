@@ -1,5 +1,5 @@
 import { dirname, join } from "node:path";
-import { callsDevguard, hookCommandLine, type GitHookName } from "../hooks/file.ts";
+import { devguardCall, FOREIGN_HOOK_PLACEMENT, foreignHookLine, type GitHookName } from "../hooks/file.ts";
 import {
   detectFramework,
   frameworkEntry,
@@ -61,13 +61,19 @@ function hookFileProblem(hook: GitHookName, installed: InstalledHook): Finding |
   switch (status.kind) {
     case "missing":
       return problem("hook-missing", `沒有安裝 git ${hook} hook（${path}）`);
-    case "foreign":
-      if (callsDevguard(text, hook)) return undefined;
+    case "foreign": {
+      const call = devguardCall(text, hook);
+      if (call.kind === "runs") return undefined;
+      const why =
+        call.kind === "missing"
+          ? "也沒有呼叫 devguard"
+          : `對 devguard 的呼叫在「${call.after}」之後，不會執行，應移到開頭`;
       return problem(
         "hook-foreign",
-        `git ${hook} hook（${path}）不是 devguard 產生的，也沒有呼叫 devguard`,
-        `在該 hook 中加上：${hookCommandLine(hook)}`,
+        `git ${hook} hook（${path}）不是 devguard 產生的，${why}`,
+        `${FOREIGN_HOOK_PLACEMENT}：${foreignHookLine(hook)}`,
       );
+    }
     case "devguard":
       if (status.intact && status.hook === hook) return undefined;
       return problem("hook-modified", `git ${hook} hook（${path}）被修改過，checksum 不符`);

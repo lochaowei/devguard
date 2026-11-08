@@ -7,7 +7,7 @@ import type { Interaction } from "../src/fix/interaction.ts";
 import { inspectHookFile } from "../src/hooks/file.ts";
 import { runInstall } from "../src/hooks/install.ts";
 import { runFix } from "../src/fix/run.ts";
-import { lefthookWrote, TODAY } from "./helpers.ts";
+import { HUSKY_V4_HOOK, lefthookWrote, TODAY } from "./helpers.ts";
 import { isolateGit } from "./git-isolation.ts";
 
 // Real git runs here: keep it off any repo or config outside this file's temp directories.
@@ -131,6 +131,32 @@ describe("devguard install (SPEC §3.2, §7.4)", () => {
     expect(read(dir, ".git/hooks/pre-commit")).toBe("#!/bin/sh\nnpx lint-staged\n");
     expect(out.out).toContain("不是 devguard 產生的");
     expect(out.out).toContain("devguard hook git-pre-commit");
+  });
+
+  describe("an existing hook devguard did not write (husky v4, #126)", () => {
+    it("is listed as a git hook left alone, with the line to put at its top; install says it is not installed, exit 1", async () => {
+      const dir = repo({ ".devguard.yaml": DECL, ".git/hooks/pre-commit": HUSKY_V4_HOOK });
+      const out = io();
+      expect(await runInstall({ cwd: dir, today: TODAY, io: out })).toBe(1);
+      expect(read(dir, ".git/hooks/pre-commit")).toBe(HUSKY_V4_HOOK);
+      expect(out.out).not.toContain("建置檔");
+      expect(out.out).toContain(".git/hooks/pre-commit：既有的 git hook，不是 devguard 產生的，未修改");
+      expect(out.out).toContain("開頭");
+      expect(out.out).toContain('devguard hook git-pre-commit "$@" || exit $?');
+      expect(out.out).not.toContain("exec devguard hook git-pre-commit");
+      // The other settings are still written; the hook is named as not installed after them.
+      expect(read(dir, ".git/hooks/pre-push")).toContain("devguard hook git-pre-push");
+      expect(out.out).toMatch(/已套用。\n[^]*沒有安裝[^]*\.git\/hooks\/pre-commit/);
+    });
+
+    it("exits 1 when the foreign hooks are all there is", async () => {
+      const dir = repo({ ".devguard.yaml": DECL, ".git/hooks/pre-commit": HUSKY_V4_HOOK });
+      await runInstall({ cwd: dir, today: TODAY, io: io() });
+      const out = io();
+      expect(await runInstall({ cwd: dir, today: TODAY, io: out })).toBe(1);
+      expect(out.out).not.toContain("已套用");
+      expect(out.out).toContain("沒有安裝");
+    });
   });
 
   it("only previews without --yes in a non-interactive run", async () => {

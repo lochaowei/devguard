@@ -13,7 +13,14 @@ import {
 } from "../fix/plan.ts";
 import { planConfigFix } from "../fix/run.ts";
 import { nodeExec, type Exec } from "../process/exec.ts";
-import { hookCommandLine, inspectHookFile, renderHookFile, type GitHookName, type HookFileOptions } from "./file.ts";
+import {
+  FOREIGN_HOOK_PLACEMENT,
+  foreignHookLine,
+  inspectHookFile,
+  renderHookFile,
+  type GitHookName,
+  type HookFileOptions,
+} from "./file.ts";
 import {
   detectFramework,
   frameworkHooksNotInstalled,
@@ -50,8 +57,8 @@ export async function planHooks(
     if (before !== "" && inspectHookFile(before).kind === "foreign") {
       plan.printed.push({
         file,
-        category: "snippet",
-        lines: ["這個 hook 不是 devguard 產生的，不會覆寫；請在其中加上：", hookCommandLine(hook, options.command)],
+        category: "hook",
+        lines: [`${FOREIGN_HOOK_PLACEMENT}：`, foreignHookLine(hook, options.command)],
       });
     } else if (before !== after) {
       plan.writes.push({ file, category: "generated", before, after, mode: 0o755 });
@@ -146,5 +153,12 @@ export async function runInstall(options: InstallOptions): Promise<0 | 1> {
       `下一步：執行 ${unwritten.command}，hook 框架才會把 hook 寫進 hooks 目錄（install 不會自動執行）。\n`,
     );
   }
-  return hasBlockedWrites(plan) ? 1 : code;
+  const foreign = hooks.printed.filter((p) => p.category === "hook");
+  if (foreign.length > 0) {
+    options.io.write(
+      `以下 git hook 沒有安裝（既有的 hook 不是 devguard 產生的）；請照上方的說明加入那一行：\n` +
+        foreign.map((p) => `    ${p.file}\n`).join(""),
+    );
+  }
+  return hasBlockedWrites(plan) || foreign.length > 0 ? 1 : code;
 }
