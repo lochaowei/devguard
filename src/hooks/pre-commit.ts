@@ -9,7 +9,7 @@ import { declarationLayer } from "../layers/declaration.ts";
 import { depsLayer } from "../layers/deps.ts";
 import type { CheckLayer } from "../layers/types.ts";
 import { nodeExec, type EnvVars, type Exec } from "../process/exec.ts";
-import type { Finding } from "../report/finding.ts";
+import { isFixable, type Finding } from "../report/finding.ts";
 import { exitCodeFor, renderText } from "../report/render.ts";
 import { assignFiles } from "../repo/files.ts";
 
@@ -67,13 +67,18 @@ function workingTreeTools(components: readonly ResolvedComponent[], files: reado
   return [...tools];
 }
 
-function fixLine(findings: readonly Finding[]): string {
-  const files = [...new Set(findings.flatMap((f) => (f.layer === "code" && f.file !== undefined ? [f.file] : [])))];
+/** `devguard fix --code` for the staged files it can fix: those with a fixable code finding (SPEC §7.4). */
+function fixLine(findings: readonly Finding[], staged: ReadonlySet<string>): string {
+  const fixable = (f: Finding): f is Finding & { file: string } =>
+    f.layer === "code" && isFixable(f) && f.file !== undefined && staged.has(f.file);
+  const files = [...new Set(findings.filter(fixable).map((f) => f.file))];
   return files.length === 0 ? "" : `修正程式碼：devguard fix --code ${files.join(" ")}\n`;
 }
 
 export interface StagedCheck {
   result: CheckResult;
+  /** The staged files the check covered; deleted files are not among them. */
+  staged: ReadonlySet<string>;
   /** Set when a partially staged file is checked in its working-tree version by some tools (SPEC §7.4). */
   warning?: string;
 }
@@ -107,11 +112,11 @@ export async function checkStaged(
   // Ignored files get no file checks, so no tool reads their working-tree version either.
   const partial = withoutIgnored(result.resolution?.ignore ?? [], files).filter((f) => unstaged.has(f));
   const tools = workingTreeTools(result.resolution?.components ?? [], partial);
-  if (tools.length === 0) return { result };
+  if (tools.length === 0) return { result, staged };
   const warning =
     `注意：${partial.join("、")} 有未 staged 的修改。lint 與格式檢查用的是 staged 版本，` +
     `但 ${tools.join("、")} 沒有 stdin 模式，檢查的是工作目錄版本。\n`;
-  return { result, warning };
+  return { result, staged, warning };
 }
 
 /**
@@ -125,6 +130,6 @@ export async function runPreCommit(ctx: HookContext): Promise<number> {
   if (warning) ctx.write(warning);
   const code = exitCodeFor(result.findings, false);
   if (result.findings.length > 0) ctx.write(renderText(result));
-  if (code !== 0) ctx.write(fixLine(result.findings));
+  if (code !== 0) ctx.write(fixLine(result.findings, staged.staged));
   return code;
 }
