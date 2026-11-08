@@ -38,7 +38,22 @@ export function createClaudeCodeLayer(options: ClaudeCodeLayerOptions = {}): Che
           repairs: own,
         };
       });
-      return { findings };
+      // A rules or skill file devguard did not generate is never overwritten; `fix` prints the content instead (#100).
+      const foreign = plan.printed
+        .filter((p) => p.category === "foreign")
+        .map((p): Finding => {
+          const own = repairs.filter((r) => r.file === p.file);
+          return {
+            level: "error",
+            layer: "config",
+            rule: "settings/claude-code",
+            message: `${p.file}：不是 devguard 產生的 Claude Code 設定`,
+            file: p.file,
+            fix: `${p.file} 不是 devguard 產生的，不會覆寫；請自行比對（devguard fix 會印出產生的內容，不會自動修改）`,
+            repairs: own,
+          };
+        });
+      return { findings: [...findings, ...foreign] };
     },
   };
 }

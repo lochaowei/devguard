@@ -54,14 +54,35 @@ devguard fix --code [檔案…] [--yes] [--cwd <dir>]
 
 | 檔案類別 | 對象 | `fix` 的處理 |
 |---|---|---|
-| `generated`：CLI 全權產生 | `checkstyle.xml`、`pmd-ruleset.xml`（與 `pmd.xml`、`config/pmd/*.xml`）、`.claude/rules/*`、`.claude/skills/standards-doctor/*`、`.githooks/*`、git hook 檔 | 整份重新產生，檔頭加上 `由 CLI 產生（devguard），請勿手動修改` |
+| `generated`：CLI 全權產生 | `checkstyle.xml`、`pmd-ruleset.xml`（與 `pmd.xml`、`config/pmd/*.xml`）、`.claude/rules/*`、`.claude/skills/standards-doctor/*`、`.githooks/*`、git hook 檔 | 整份重新產生，檔頭加上 `由 CLI 產生（devguard），請勿手動修改`。檔案存在但**不是 devguard 產生的**（非空白、沒有這個檔頭）時**不寫入**，見下方說明 |
 | `managed`：結構化的共用檔 | `pyproject.toml`、`.golangci.yml`、`tsconfig.json`、`.prettierrc`、`biome.json`、`package.json`、`.gitattributes`、`.npmrc`、`.vscode/*.json`、`.claude/settings.json` 等 | 只改 CLI 管理的 key，保留註解、空行與欄位順序 |
 | `snippet`：建置檔與程式碼形式的設定 | `pom.xml`、`build.gradle(.kts)`、`eslint.config.js`、`vitest.config.ts` 等 | **不寫入**，只印出要手動套用的片段 |
 | `user`：使用者層級設定 | repo 以外的路徑，例如 `~/.m2/settings.xml` | **不寫入**，只印出修改說明 |
 
 修改 TOML 共用檔（例如 `pyproject.toml`）時，`fix` 會先確認修改後的內容仍是合法的 TOML。不合法時該檔**不寫入**，改為印出 `pyproject.toml：錯誤：修改後不是合法的 TOML，不會修改；請自行套用` 與要套用的修改；同一次的其他檔案照常處理，這不會讓 `fix` 失敗：其他檔案寫入成功時 exit code 仍是 `0`。
 
-`check` 的報告會說明每筆問題屬於哪一種：`可用 fix 修正：devguard fix（…）` 表示 `fix` 會自動寫入；`（devguard fix 會印出要套用的片段，不會自動修改）` 表示屬於 `snippet` 或 `user`。
+`generated` 類的檔案已經存在、內容不是空白、卻沒有 `由 CLI 產生` 檔頭時，表示是專案自己寫的。`fix` 不會覆寫它，加上 `--yes` 也一樣，只印出要加入的內容，其他檔案照常處理：
+
+- `checkstyle.xml`：印出 `TreeWalker` 底下缺少或要換掉的 module（`CyclomaticComplexity`、`IllegalImport`），內含宣告的屬性值。
+- PMD ruleset：印出 `CognitiveComplexity` 的 `<rule>`。
+- `.claude/rules/*`、`/standards-doctor` skill：印出完整的產生內容，請自行比對。
+
+```text
+$ devguard fix --yes
+checkstyle.xml：這份檔案不是 devguard 產生的，不會覆寫；請自行加入以下內容
+    加在 TreeWalker 底下：
+    <module name="CyclomaticComplexity">
+      <property name="max" value="10"/>
+    </module>
+    加在 TreeWalker 底下：
+    <module name="IllegalImport">
+      <property name="illegalPkgs" value="sun"/>
+    </module>
+```
+
+檔案不存在、空白，或帶有 `由 CLI 產生` 檔頭時，照常整份重新產生。要讓 devguard 接手一份自己寫的檔案，請刪除它再執行 `fix`。
+
+`check` 的報告會說明每筆問題屬於哪一種：`可用 fix 修正：devguard fix（…）` 表示 `fix` 會自動寫入；`（devguard fix 會印出要套用的片段，不會自動修改）` 表示屬於 `snippet` 或 `user`，或是不是 devguard 產生的 `generated` 檔案。
 
 **`.vscode/` 與 `.claude/` 的差別：** `.vscode/` 完全不存在時，`fix` 會產生整套設定，即使 `check` 沒有報告。`.claude/` 則只更新已經存在的設定，要初次建立請用 [`install`](Command-install.md)。
 
@@ -162,6 +183,7 @@ $ devguard fix --code src/mul.ts --yes
 | 安裝套件時連不上 `nexus.example.internal` | 舊版 devguard 的 `fix` 會把標準中的範例鏡像網址寫進專案：`.npmrc` 的 `registry=`、`pyproject.toml` 的 `[[tool.uv.index]]` / `[[tool.poetry.source]]`（`name = "nexus"`）、`.mvn/settings.xml` 與 `.mvn/maven.config`。現在 devguard 不再寫入任何套件來源（#65、#64），套件來源交給使用者層級的設定；請自行刪除這些設定 |
 | `fix` 印出 `錯誤：修改後不是合法的 TOML，不會修改；請自行套用` | 標準要求的 key 與檔案現有的寫法衝突，例如標準要求 `[tool.x]` 表格，但檔案中 `x` 已經是一般的值。檔案沒有被修改，請依印出的內容自行調整 |
 | `fix` 之後 `check` 仍報 `settings/missing-file`（`eslint.config.js`、`vitest.config.ts`） | 程式碼形式的設定檔屬於 `snippet`，`fix` 只印出片段，要自己建立或修改 |
+| `fix` 印出 `這份檔案不是 devguard 產生的，不會覆寫` | 這份 `checkstyle.xml`、PMD ruleset 或 `.claude/` 檔案沒有 `由 CLI 產生` 檔頭，devguard 不會蓋掉專案自己的設定。請把印出的片段加進檔案；或刪除檔案，讓 `fix` 重新產生 |
 | 改了 `.devguard.yaml` 之後 `check` 報 `.claude/rules/…` 不一致 | rules 檔會列出元件的標準與偏離，宣告改了就要重新產生。執行 `devguard fix --yes` |
 
 ---
