@@ -39,11 +39,22 @@ async function git(ctx: Pick<HookContext, "cwd" | "exec">, args: string[]): Prom
 
 const nulList = (out: string) => out.split("\0").filter((p) => p !== "");
 
-/** `git diff --cached --name-status -z`: status and path of each staged change (renames as delete + add). */
+/** The mode git gives a submodule (gitlink): a commit pointer, not a file. */
+const GITLINK_MODE = "160000";
+
+/**
+ * `git diff --cached --raw -z`: status and path of each staged change (renames as delete + add). A submodule (gitlink)
+ * is left out: its files are not this repo's, and it has no staged text to read (#147).
+ */
 async function stagedEntries(ctx: Pick<HookContext, "cwd" | "exec">): Promise<StagedEntry[]> {
-  const parts = nulList(await git(ctx, ["diff", "--cached", "--name-status", "-z", "--no-renames"]));
+  const parts = nulList(await git(ctx, ["diff", "--cached", "--raw", "-z", "--no-renames", "--no-abbrev"]));
   const entries: StagedEntry[] = [];
-  for (let i = 0; i + 1 < parts.length; i += 2) entries.push({ status: parts[i] ?? "", path: parts[i + 1] ?? "" });
+  for (let i = 0; i + 1 < parts.length; i += 2) {
+    // `:<old mode> <new mode> <old sha> <new sha> <status>`, then the path.
+    const [oldMode, newMode, , , status = ""] = (parts[i] ?? "").slice(1).split(" ");
+    if (oldMode === GITLINK_MODE || newMode === GITLINK_MODE) continue;
+    entries.push({ status, path: parts[i + 1] ?? "" });
+  }
   return entries;
 }
 

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -96,6 +96,39 @@ describe("runPreCommit (SPEC §7.4)", () => {
     expect(code).toBe(1);
     expect(out).toContain("找不到 ruff");
     expect(out).toContain("uv sync");
+  });
+
+  it("skips a staged submodule (gitlink) and checks the other staged files (#147)", async () => {
+    const { dir, git, write } = repo();
+    // A TypeScript component reads every staged file in it, whatever its extension, through `git show`.
+    write(
+      ".devguard.yaml",
+      "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: python\n  - path: ./web\n    language: typescript\n",
+    );
+    git("add", ".devguard.yaml");
+    git("commit", "-q", "--no-verify", "-m", "web");
+    const sub = join(dir, "web", "sub");
+    mkdirSync(sub, { recursive: true });
+    const subGit = (...args: string[]) => execFileSync("git", args, { cwd: sub, encoding: "utf8" });
+    subGit("init", "-q");
+    subGit("config", "user.email", "t@example.com");
+    subGit("config", "user.name", "t");
+    writeFileSync(join(sub, "x.py"), "import os\n");
+    subGit("add", ".");
+    subGit("commit", "-q", "--no-verify", "-m", "sub");
+    git("add", "web/sub");
+    write("app.py", "import os\n");
+    git("add", "app.py");
+    const fake = fakeTools();
+    const tools: ToolRunner = {
+      run: (req) =>
+        req.tool === "eslint" ? Promise.resolve({ code: 0, stdout: "[]", stderr: "" }) : fake.tools.run(req),
+    };
+    const { code, out } = await preCommit(dir, tools);
+    expect(code).toBe(1);
+    expect(out).toContain("app.py");
+    expect(out).not.toContain("sub");
+    expect(fake.calls.filter((c) => c.dir === "web")).toEqual([]);
   });
 
   it("skips staged files the declaration ignores", async () => {
