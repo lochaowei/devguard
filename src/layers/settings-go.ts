@@ -5,7 +5,7 @@ import type { Repair } from "../fix/repair.ts";
 import type { Finding } from "../report/finding.ts";
 import { checkGoSettings, GOLANGCI_FILE, GOLANGCI_FILES, GOMOD_FILE } from "../settings/go.ts";
 import type { CheckLayer } from "./types.ts";
-import { upwards } from "../repo/paths.ts";
+import { baseName, upwards } from "../repo/paths.ts";
 import { readIfExists } from "../shared/fs.ts";
 
 interface FoundGolangci {
@@ -32,8 +32,6 @@ async function findGolangci(cwd: string, dir: string): Promise<FoundGolangci | u
   }
   return undefined;
 }
-
-const baseName = (file: string) => file.slice(file.lastIndexOf("/") + 1);
 
 /** Several golangci configs in one directory: golangci-lint reads only the first of GOLANGCI_FILES. */
 function golangciMultiple(component: ResolvedComponent, found: FoundGolangci): Finding {

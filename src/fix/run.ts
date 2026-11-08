@@ -51,16 +51,17 @@ export async function runFix(options: FixOptions, layers: readonly CheckLayer[] 
   }
   const hooks = await planFixHooks(options.cwd, options.exec);
   const plan: ChangePlan = { writes: [...config.writes, ...hooks.writes], printed: config.printed };
-  const state = { applied: false };
+  // An object, not a `let`: TypeScript does not see the assignment inside `apply` and would narrow it to false.
+  const applyOutcome = { applied: false };
   const code = await previewThenApply(options.io, {
     preview: renderPlan(plan),
     pending: plan.writes.length > 0,
     apply: async () => {
       await applyPlan(options.cwd, plan);
-      state.applied = true;
+      applyOutcome.applied = true;
     },
   });
-  if (state.applied && addsEolRule(plan) && (await crlfWorkingTreeFiles(options.cwd, options.exec)).length > 0) {
+  if (applyOutcome.applied && addsEolRule(plan) && (await crlfWorkingTreeFiles(options.cwd, options.exec)).length > 0) {
     options.io.write(`\n${GITATTRIBUTES} 的換行規則只影響之後 checkout 的檔案，工作目錄裡已經是 CRLF 的檔案不會變。\n`);
     options.io.write(`${RECHECKOUT_HINT}\n`);
   }

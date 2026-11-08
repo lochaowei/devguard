@@ -1,5 +1,6 @@
 import type { Language } from "../standard/types.ts";
 import { parseConfigText } from "../fix/edit.ts";
+import { baseName } from "../repo/paths.ts";
 import { isRecord } from "../shared/guards.ts";
 import { child, descendants, parseXmlText } from "../xml/parse.ts";
 
@@ -193,7 +194,7 @@ const DEPENDENCY_FILES = new Set([
 
 /** A manifest or lockfile the dependency rules read; staging one makes the pre-commit hook run them (SPEC §7.1). */
 export function isDependencyFile(path: string): boolean {
-  const name = path.slice(path.lastIndexOf("/") + 1);
+  const name = baseName(path);
   return DEPENDENCY_FILES.has(name) || /^requirements.*\.txt$/.test(name);
 }
 

@@ -4,7 +4,9 @@ import { isNode, LineCounter, parseDocument } from "yaml";
 import { compareToDefault } from "../declaration/compare.ts";
 import type { EffectiveItem, ResolvedComponent } from "../declaration/resolve.ts";
 import { fixText } from "../fix/category.ts";
+import { editFormat } from "../fix/edit.ts";
 import type { Repair } from "../fix/repair.ts";
+import { baseName } from "../repo/paths.ts";
 import type { Finding, Level } from "../report/finding.ts";
 import { at } from "./config-files.ts";
 import { judgeConfigValue, setAt } from "./judge.ts";
@@ -95,7 +97,7 @@ class Golangci {
 
   /** The file name for messages, such as `.golangci.toml`. */
   get name(): string {
-    return this.file.slice(this.file.lastIndexOf("/") + 1);
+    return baseName(this.file);
   }
 
   get(...path: string[]): unknown {
@@ -109,8 +111,11 @@ class Golangci {
   }
 }
 
-/** Line of the deepest existing node along `path`, from `lineOf` for one exact path. */
-const deepest =
+/**
+ * Turns a line lookup for one exact path into one that falls back to the nearest existing ancestor along `path`, so a
+ * missing key still points at the table it belongs in.
+ */
+const withAncestorFallback =
   (lineOf: (path: readonly string[]) => number | undefined): Lines =>
   (path) => {
     for (let n = path.length; n > 0; n--) {
@@ -122,17 +127,23 @@ const deepest =
 
 type Parsed = { config: Golangci } | { syntax: { rule: string; message: string; line?: number } };
 
+/** A golangci config that does not parse in its format, such as `settings/golangci-toml-syntax`. */
+function syntaxError(format: "YAML" | "TOML" | "JSON", name: string, reason: string, line?: number): Parsed {
+  return {
+    syntax: {
+      rule: `settings/golangci-${format.toLowerCase()}-syntax`,
+      message: `${name} 的 ${format} 語法錯誤：${reason}`,
+      ...(line === undefined ? {} : { line }),
+    },
+  };
+}
+
 function parseYamlConfig(file: string, name: string, text: string): Parsed {
   const lines = new LineCounter();
   const doc = parseDocument(text, { lineCounter: lines, prettyErrors: false });
   const syntax = doc.errors[0];
-  if (syntax) {
-    const line = lines.linePos(syntax.pos[0]).line;
-    return {
-      syntax: { rule: "settings/golangci-yaml-syntax", message: `${name} 的 YAML 語法錯誤：${syntax.message}`, line },
-    };
-  }
-  const lineOf = deepest((path) => {
+  if (syntax) return syntaxError("YAML", name, syntax.message, lines.linePos(syntax.pos[0]).line);
+  const lineOf = withAncestorFallback((path) => {
     const node = doc.getIn(path, true);
     const offset = isNode(node) ? node.range?.[0] : undefined;
     return offset === undefined ? undefined : lines.linePos(offset).line;
@@ -146,13 +157,7 @@ function parseTomlConfig(file: string, name: string, text: string): Parsed {
   } catch (e) {
     const line = (e as { line?: unknown }).line;
     const reason = (e instanceof Error ? e.message : String(e)).split("\n").pop() ?? "";
-    return {
-      syntax: {
-        rule: "settings/golangci-toml-syntax",
-        message: `${name} 的 TOML 語法錯誤：${reason}`,
-        ...(typeof line === "number" ? { line } : {}),
-      },
-    };
+    return syntaxError("TOML", name, reason, typeof line === "number" ? line : undefined);
   }
 }
 
@@ -161,17 +166,10 @@ function parseJsonConfig(file: string, name: string, text: string): Parsed {
   const root = parseTree(text, errors, { disallowComments: true });
   const error = errors[0];
   if (error || !root) {
-    const offset = error?.offset ?? 0;
     const reason = error ? printParseErrorCode(error.error) : "空檔案";
-    return {
-      syntax: {
-        rule: "settings/golangci-json-syntax",
-        message: `${name} 的 JSON 語法錯誤：${reason}`,
-        line: lineAtOffset(text, offset),
-      },
-    };
+    return syntaxError("JSON", name, reason, lineAtOffset(text, error?.offset ?? 0));
   }
-  const lineOf = deepest((path) => {
+  const lineOf = withAncestorFallback((path) => {
     const node = findNodeAtLocation(root, [...path]);
     return node ? lineAtOffset(text, node.offset) : undefined;
   });
@@ -180,12 +178,20 @@ function parseJsonConfig(file: string, name: string, text: string): Parsed {
 
 const lineAtOffset = (text: string, offset: number): number => text.slice(0, offset).split("\n").length;
 
-/** Reads a golangci config in the format its name says (golangci-lint reads `.json`, `.toml`, `.yaml`, `.yml`). */
+/**
+ * Reads a golangci config in the format its name says (golangci-lint reads `.json`, `.toml`, `.yaml`, `.yml`), by the
+ * same extension mapping `devguard fix` edits it with. JSON is read strictly: golangci-lint allows no comments.
+ */
 function parseGolangci(file: string, text: string): Parsed {
-  const name = file.slice(file.lastIndexOf("/") + 1);
-  if (name.endsWith(".toml")) return parseTomlConfig(file, name, text);
-  if (name.endsWith(".json")) return parseJsonConfig(file, name, text);
-  return parseYamlConfig(file, name, text);
+  const name = baseName(file);
+  switch (editFormat(file)) {
+    case "toml":
+      return parseTomlConfig(file, name, text);
+    case "jsonc":
+      return parseJsonConfig(file, name, text);
+    default:
+      return parseYamlConfig(file, name, text);
+  }
 }
 
 function isLinterOn(config: Golangci): (name: string) => boolean {
