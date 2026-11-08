@@ -285,6 +285,18 @@ describe("devguard hook claude-stop (SPEC §7.3)", () => {
     ]);
   });
 
+  it("skips an untracked nested git repo, which git status lists as one directory (#142)", async () => {
+    const { dir, write } = repo();
+    // A TypeScript component checks the format of every changed file, whatever its extension.
+    write(".devguard.yaml", `${DECL}  - path: ./web\n    language: typescript\n`);
+    write("web/repro/index.ts", "export const x = 1;\n");
+    execFileSync("git", ["init", "-q"], { cwd: join(dir, "web/repro") });
+    const { code, stdout, calls } = await runHook("claude-stop", dir, stop(dir, false));
+    expect(code).toBe(0);
+    expect(stdout).toBe("");
+    expect(calls).toEqual([]);
+  });
+
   it("prints nothing when nothing changed", async () => {
     const { dir } = repo();
     const { code, stdout, calls } = await runHook("claude-stop", dir, stop(dir, false));

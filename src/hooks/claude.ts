@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { runCheck, TOOL_MISSING_RULE } from "../check.ts";
@@ -81,7 +81,20 @@ export async function runClaudePostEdit(ctx: HookContext): Promise<number> {
   return 0;
 }
 
-/** The files changed in the working tree since the last commit, new ones included, deleted ones left out. */
+/** Whether `path` is a file (following symlinks): not missing, and not a directory. */
+function isFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The files changed in the working tree since the last commit, new ones included, deleted ones left out. An untracked
+ * nested git repo is listed by git as one directory (`repro/`); its files are not this repo's, so it is left out
+ * too (#142).
+ */
 async function changedFiles(ctx: HookContext): Promise<string[]> {
   const args = ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"];
   const r = await (ctx.exec ?? nodeExec)({ file: "git", args, cwd: ctx.cwd });
@@ -90,7 +103,7 @@ async function changedFiles(ctx: HookContext): Promise<string[]> {
     .split("\0")
     .filter((e) => e.length > 3)
     .map((e) => e.slice(3))
-    .filter((p) => existsSync(join(ctx.cwd, p)));
+    .filter((p) => isFile(join(ctx.cwd, p)));
 }
 
 /**
