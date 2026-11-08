@@ -60,6 +60,7 @@ describe("runCheck", () => {
       "settings-typescript",
       "tool-versions",
       "gitattributes",
+      "working-tree-crlf",
       "credentials",
       "claude-code",
       "vscode",

@@ -51,11 +51,12 @@ devguard fix --code [檔案…] [--yes] [--cwd <dir>]
 3. 收集每筆 finding 附帶的修補（repair），依**檔案類別**決定怎麼處理（見下表）。
 4. 檢查 devguard 自己的 git hook（`pre-commit`、`pre-push`）：被改過的才重新產生，並保留原本呼叫 CLI 的指令。從未安裝的 hook 交給 `install`；別人寫的 hook 不碰。
 5. 依互動規則預覽並套用。
+6. 這次套用在 `.gitattributes` 新增了 `* text=auto eol=lf`，而且工作目錄有在 git 裡是 LF、checkout 成 CRLF 的檔案（`i/lf w/crlf`）時，最後印出重新 checkout 的提示：先警告下面的指令會丟掉未提交的修改（包括 `fix` 剛寫入的檔案），請先 commit 或 stash，再列出 `git rm --cached -r -q .` 與 `git reset --hard`（一行一個指令，PowerShell 與 Git Bash 都能照著執行）。`.gitattributes` 已經有這條規則、或工作目錄沒有這種檔案時不印。`fix` **不會**自己重新 checkout，也不碰 git index。原因見 [check 頁的工作目錄是 CRLF](Command-check.md#工作目錄是-crlf)。
 
 | 檔案類別 | 對象 | `fix` 的處理 |
 |---|---|---|
 | `generated`：CLI 全權產生 | `checkstyle.xml`、`pmd-ruleset.xml`（與 `pmd.xml`、`config/pmd/*.xml`）、`.claude/rules/*`、`.claude/skills/standards-doctor/*`、`.githooks/*`、git hook 檔 | 整份重新產生，檔頭加上 `由 CLI 產生（devguard），請勿手動修改`。檔案存在但**不是 devguard 產生的**（非空白、沒有這個檔頭）時**不寫入**，見下方說明 |
-| `managed`：結構化的共用檔 | `pyproject.toml`、`.golangci.yml`、`tsconfig.json`、`.prettierrc`、`biome.json`、`package.json`、`.gitattributes`、`.npmrc`、`.vscode/*.json`、`.claude/settings.json` 等 | 只改 CLI 管理的 key，保留註解、空行與欄位順序 |
+| `managed`：結構化的共用檔 | `pyproject.toml`、golangci 設定檔（golangci-lint 採用的 `.golangci.json` / `.toml` / `.yaml` / `.yml`，沒有時建立 `.golangci.yml`）、`tsconfig.json`、`.prettierrc`、`biome.json`、`package.json`、`.gitattributes`、`.npmrc`、`.vscode/*.json`、`.claude/settings.json` 等 | 只改 CLI 管理的 key，保留註解、空行、欄位順序與換行字元（原本是 CRLF 就寫 CRLF，新建的檔案用 LF） |
 | `snippet`：建置檔與程式碼形式的設定 | `pom.xml`、`build.gradle(.kts)`、`eslint.config.js`、`vitest.config.ts` 等 | **不寫入**，只印出要手動套用的片段 |
 | `user`：使用者層級設定 | repo 以外的路徑，例如 `~/.m2/settings.xml` | **不寫入**，只印出修改說明 |
 
@@ -180,6 +181,7 @@ $ devguard fix --code src/mul.ts --yes
 | 現象 | 原因與處理 |
 |---|---|
 | 在 Claude Code 或 CI 中執行 `fix`，exit `1` 且沒有寫入 | 非互動環境需要 `--yes` |
+| `fix` 加上 `* text=auto eol=lf` 之後，`check` 仍把幾乎每個檔案報成第 1 行格式錯誤 | 工作目錄的檔案是 CRLF，`.gitattributes` 只影響之後 checkout 的檔案。先 commit 或 stash，再照 `fix` 印出的指令重新 checkout（見 [check 頁的工作目錄是 CRLF](Command-check.md#工作目錄是-crlf)） |
 | 安裝套件時連不上 `nexus.example.internal` | 舊版 devguard 的 `fix` 會把標準中的範例鏡像網址寫進專案：`.npmrc` 的 `registry=`、`pyproject.toml` 的 `[[tool.uv.index]]` / `[[tool.poetry.source]]`（`name = "nexus"`）、`.mvn/settings.xml` 與 `.mvn/maven.config`。現在 devguard 不再寫入任何套件來源（#65、#64），套件來源交給使用者層級的設定；請自行刪除這些設定 |
 | `fix` 印出 `錯誤：修改後不是合法的 TOML，不會修改；請自行套用` | 標準要求的 key 與檔案現有的寫法衝突，例如標準要求 `[tool.x]` 表格，但檔案中 `x` 已經是一般的值。檔案沒有被修改，請依印出的內容自行調整 |
 | `fix` 之後 `check` 仍報 `settings/missing-file`（`eslint.config.js`、`vitest.config.ts`） | 程式碼形式的設定檔屬於 `snippet`，`fix` 只印出片段，要自己建立或修改 |

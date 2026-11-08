@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -91,6 +91,29 @@ default = true
     expect(out).toContain("# team lint");
     expect(out).toContain("# more below");
     expect(out).toContain("max-complexity: 10");
+  });
+
+  it("Go: edits the .golangci.toml golangci-lint uses instead of creating a .golangci.yml", async () => {
+    const golangci = '# team lint\nversion = "2"\n\n[linters]\nenable = ["gosec"] # more below\n';
+    const dir = repo({ ".devguard.yaml": decl("go"), ".golangci.toml": golangci, "go.mod": "module x\n\ngo 1.26\n" });
+    const after = await fixesEverything(dir);
+    expect(after.filter((f) => f.rule.startsWith("settings/golangci"))).toEqual([]);
+    expect(existsSync(join(dir, ".golangci.yml"))).toBe(false);
+    const out = read(dir, ".golangci.toml");
+    expect(out).toContain("# team lint");
+    expect(out).toContain("# more below");
+    expect(out).toContain("min-complexity = 15");
+  });
+
+  it("Go: edits the .golangci.json golangci-lint uses instead of creating a .golangci.yml", async () => {
+    const golangci = '{\n  "version": "2",\n  "linters": { "enable": ["gosec"] }\n}\n';
+    const dir = repo({ ".devguard.yaml": decl("go"), ".golangci.json": golangci, "go.mod": "module x\n\ngo 1.26\n" });
+    const after = await fixesEverything(dir);
+    expect(after.filter((f) => f.rule.startsWith("settings/golangci"))).toEqual([]);
+    expect(existsSync(join(dir, ".golangci.yml"))).toBe(false);
+    expect(JSON.parse(read(dir, ".golangci.json"))).toMatchObject({
+      linters: { settings: { gocognit: { "min-complexity": 15 } } },
+    });
   });
 
   it("Go: creates .golangci.yml when it is missing", async () => {

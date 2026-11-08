@@ -162,7 +162,7 @@ components:
 ```
 
 #### 執行 `devguard install` 產生的設定
-`devguard install`（或 `devguard fix`）會產生或更新 `.golangci.yml`（v2 格式）：
+`devguard install`（或 `devguard fix`）會更新 golangci-lint 採用的設定檔（`.golangci.json`、`.golangci.toml`、`.golangci.yaml` 或 `.golangci.yml`，沿用它的格式），沒有任何一份時產生 `.golangci.yml`（v2 格式）：
 ```yaml
 version: "2"
 linters:
@@ -209,7 +209,7 @@ formatters:
 |---|---|
 | `devguard check` | 檢查 `go.mod` / `go.sum`、`go mod tidy -diff`（強制 `GOPROXY=off` 與 `GOTOOLCHAIN=local`）、禁用模組、`golangci-lint` 版本，並執行 `golangci-lint run` 一次檢查 lint、format 與型別編譯問題 |
 | `devguard check --staged` | 對 staged 的 `.go` 檔案額外以 `golangci-lint fmt --stdin` 檢查 staged 版本的排版 |
-| `devguard fix` | 自動修補 `.golangci.yml`、`.gitattributes`、`.vscode/`、`.claude/` |
+| `devguard fix` | 自動修補 golangci 設定檔、`.gitattributes`、`.vscode/`、`.claude/` |
 | `devguard fix --code` | 執行 `golangci-lint run --fix`（含 `gofumpt` 與 `goimports` 格式化） |
 | `devguard check --full` | 執行 `go test -coverprofile=<tmp> ./...` 與 `go tool cover -func`，排除自動產生檔案（`// Code generated … DO NOT EDIT.`）與 `mocks/` 後檢查總行覆蓋率 `>= 80%` |
 

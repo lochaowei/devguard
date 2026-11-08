@@ -1,7 +1,9 @@
 import { FIX_LAYERS, runCheck, type CheckLayer, type CheckOptions } from "../check.ts";
 import type { Resolution } from "../declaration/resolve.ts";
 import { planFixHooks } from "../hooks/install.ts";
+import { GITATTRIBUTES, hasEolRule } from "../layers/gitattributes.ts";
 import type { Exec } from "../process/exec.ts";
+import { crlfWorkingTreeFiles, RECHECKOUT_HINT } from "../repo/eol.ts";
 import { renderText } from "../report/render.ts";
 import { previewThenApply, type Interaction } from "./interaction.ts";
 import { applyPlan, planChanges, renderPlan, type ChangePlan } from "./plan.ts";
@@ -49,9 +51,27 @@ export async function runFix(options: FixOptions, layers: readonly CheckLayer[] 
   }
   const hooks = await planFixHooks(options.cwd, options.exec);
   const plan: ChangePlan = { writes: [...config.writes, ...hooks.writes], printed: config.printed };
-  return previewThenApply(options.io, {
+  // An object, not a `let`: TypeScript does not see the assignment inside `apply` and would narrow it to false.
+  const applyOutcome = { applied: false };
+  const code = await previewThenApply(options.io, {
     preview: renderPlan(plan),
     pending: plan.writes.length > 0,
-    apply: () => applyPlan(options.cwd, plan),
+    apply: async () => {
+      await applyPlan(options.cwd, plan);
+      applyOutcome.applied = true;
+    },
   });
+  if (applyOutcome.applied && addsEolRule(plan) && (await crlfWorkingTreeFiles(options.cwd, options.exec)).length > 0) {
+    options.io.write(`\n${GITATTRIBUTES} 的換行規則只影響之後 checkout 的檔案，工作目錄裡已經是 CRLF 的檔案不會變。\n`);
+    options.io.write(`${RECHECKOUT_HINT}\n`);
+  }
+  return code;
+}
+
+/**
+ * Whether the plan adds the LF rule to `.gitattributes`. Files already checked out keep their CRLF line endings, so
+ * `fix` then tells how to check out again (#84); it never does so itself, nor touches the index.
+ */
+function addsEolRule(plan: ChangePlan): boolean {
+  return plan.writes.some((w) => w.file === GITATTRIBUTES && !hasEolRule(w.before) && hasEolRule(w.after));
 }

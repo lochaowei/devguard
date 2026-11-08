@@ -299,7 +299,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | 項目 | 預設值 | 落地方式 |
 |---|---|---|
 | `go.minVersion` | 1.26（`go.mod` 較高時以專案為準） | `go.mod` |
-| `lint.tool` | golangci-lint v2，**≥2.12** | `.golangci.yml`（`version: "2"`） |
+| `lint.tool` | golangci-lint v2，**≥2.12** | golangci-lint 採用的設定檔（`version: "2"`）：從元件目錄往上到 repo 根目錄，最近一層有設定檔的目錄，同層依 `.golangci.json` > `.golangci.toml` > `.golangci.yaml` > `.golangci.yml` 取第一份。檢查與修正都針對這一份並沿用它的格式；同層有多份時提示其他的會被忽略；整條路徑都沒有時才建立 `.golangci.yml` |
 | `lint.rules` | v2 預設組加上 `gosec, revive, errorlint, bodyclose, misspell, cyclop, gocognit, gomodguard_v2, depguard` | `linters.enable`；depguard 一定要寫明確規則 |
 | `format.tools` | gofumpt + goimports（風格） | golangci-lint formatters；gopls `formatting.gofumpt` |
 | `complexity.cyclomatic` / `cognitive` | 10 / 15 | `cyclop.max-complexity`（預設 10）/ `gocognit.min-complexity`，**必須明確設為 15**（預設 30） |
@@ -511,7 +511,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 | 類別 | 範例 | 做法 |
 |---|---|---|
 | CLI 全權產生 | `checkstyle.xml`、PMD ruleset、`.claude/rules/*`、`/standards-doctor` skill、git hook | 整份重新產生，檔頭標示「由 CLI 產生」。例外：檔案已存在、非空白、且沒有「由 CLI 產生」檔頭時，表示不是 devguard 產生的，一律不覆寫（`--yes` 也一樣），只印出要加入的內容：Checkstyle 設定與 PMD ruleset 印出缺少或要換掉的 module / rule，其餘印出完整的產生內容；`check` 也只提示手動修正。git hook 由 `install` / `fix` 以 hook 自己的標記判斷（§7.4） |
-| 結構化的共用檔 | `pyproject.toml` 的 `[tool.*]`、`.golangci.yml`、`tsconfig.json`、`.prettierrc`、`.npmrc`（只有帳密引用，不寫 `registry=`）、`.vscode/*`、`.claude/settings.json` | 只修改 CLI 管理的 key，並保留註解與順序（YAML 用 `yaml`，JSONC 用 `jsonc-parser`，TOML 用 `@decimalturn/toml-patch`；`@shopify/toml-patch` 需要在執行時載入 wasm，可能無法打包進 Bun exe）。TOML 的修改結果無法解析時不寫入該檔，改為印出要套用的修改 |
+| 結構化的共用檔 | `pyproject.toml` 的 `[tool.*]`、golangci 設定檔（`.golangci.json` / `.toml` / `.yaml` / `.yml`）、`tsconfig.json`、`.prettierrc`、`.npmrc`（只有帳密引用，不寫 `registry=`）、`.vscode/*`、`.claude/settings.json` | 只修改 CLI 管理的 key，並保留註解與順序（YAML 用 `yaml`，JSONC 用 `jsonc-parser`，TOML 用 `@decimalturn/toml-patch`；`@shopify/toml-patch` 需要在執行時載入 wasm，可能無法打包進 Bun exe）。TOML 的修改結果無法解析時不寫入該檔，改為印出要套用的修改 |
 | 建置檔與程式碼形式的設定檔 | `pom.xml`、`build.gradle`、`settings.gradle`、`vitest.config.ts`、`eslint.config.js` | 不自動修改，只印出要套用的片段或 diff |
 
 ### 9.3 互動方式

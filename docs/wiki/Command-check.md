@@ -46,26 +46,40 @@ devguard check [檔案…] [--staged] [--only lint|format|typecheck] [--full]
 | 1 | `declaration` | `config` | 解析 `.devguard.yaml`、驗證標準版本、比對覆寫與偏離理由 / 到期日、檢查同語言風格一致性 |
 | 2 | `uncovered-files` | `config` | 沒有被任何元件涵蓋的四語言程式檔，套用推定的預設標準並給提示 |
 | 3 | `settings-python` | `config` | `pyproject.toml` 的 Ruff、mypy / pyright / basedpyright 設定 |
-| 4 | `settings-go` | `config` | `go.mod` 的 Go 版本與 `.golangci.yml` |
+| 4 | `settings-go` | `config` | `go.mod` 的 Go 版本與 golangci-lint 採用的設定檔（`.golangci.json` / `.toml` / `.yaml` / `.yml`，查找順序見 [Language-Standards](Language-Standards.md)） |
 | 5 | `settings-java` | `config` | Maven / Gradle 建置檔、Wrapper、`checkstyle.xml`、PMD ruleset、`lombok.config` |
 | 6 | `deps` | `config` | lockfile 是否已提交、直接依賴是否違反 `deps.banned` |
 | 7 | `settings-typescript` | `config` | `package.json`、`tsconfig.json`、ESLint flat config、Prettier、Biome、Vitest / Jest 覆蓋率門檻 |
 | 8 | `tool-versions` | `consistency` | lockfile / 建置檔鎖定的工具版本（與 PATH 上的 `golangci-lint`）是否在標準的 `tools.*` 範圍內 |
 | 9 | `gitattributes` | `config` | repo 根目錄 `.gitattributes` 有 `* text=auto eol=lf` |
-| 10 | `credentials` | `config` | 提交進 repo 的專案設定檔中沒有明碼帳密（`credentials/plaintext`）：`.npmrc` 的 `_auth`、`_authToken`、`_password` 必須引用環境變數（`${NAME}`，可加引號）；`pyproject.toml` 中任何網址（index、source、`[tool.uv.sources]`、`pkg @ https://…` 依賴）不得內含密碼或 token（只有帳號不算）；`.mvn/settings.xml` 的 `<password>`、`<passphrase>` 必須是屬性引用（`${…}`）、Maven 加密的 `{…}` 或空值。各檔案也在元件的上層目錄中查找（workspace 根目錄的 `.npmrc` 等），共用的檔案只回報一次。只回報、不印出值，`fix` 也不會改寫。套件從哪裡下載（registry、index、鏡像）不檢查，交給使用者層級的設定 |
-| 11 | `claude-code` | `config` | `.claude/` 的 rules、hooks、`/standards-doctor` 與標準一致 |
-| 12 | `vscode` | `config` | `.vscode/` 的 extensions、settings、tasks |
-| 13 | `code` | `code` | 用各元件的工具跑 lint、format、typecheck |
-| 14 | `tests` | `code` | **只在 `--full` 且沒有 `--only`**：跑測試並檢查行、分支、函式、陳述式覆蓋率 |
+| 10 | `working-tree-crlf` | `environment` | 工作目錄的換行字元：有追蹤中的檔案在 git 裡是 LF、在工作目錄是 CRLF 時給一筆提示，見[工作目錄是 CRLF](#工作目錄是-crlf) |
+| 11 | `credentials` | `config` | 提交進 repo 的專案設定檔中沒有明碼帳密（`credentials/plaintext`）：`.npmrc` 的 `_auth`、`_authToken`、`_password` 必須引用環境變數（`${NAME}`，可加引號）；`pyproject.toml` 中任何網址（index、source、`[tool.uv.sources]`、`pkg @ https://…` 依賴）不得內含密碼或 token（只有帳號不算）；`.mvn/settings.xml` 的 `<password>`、`<passphrase>` 必須是屬性引用（`${…}`）、Maven 加密的 `{…}` 或空值。各檔案也在元件的上層目錄中查找（workspace 根目錄的 `.npmrc` 等），共用的檔案只回報一次。只回報、不印出值，`fix` 也不會改寫。套件從哪裡下載（registry、index、鏡像）不檢查，交給使用者層級的設定 |
+| 12 | `claude-code` | `config` | `.claude/` 的 rules、hooks、`/standards-doctor` 與標準一致 |
+| 13 | `vscode` | `config` | `.vscode/` 的 extensions、settings、tasks |
+| 14 | `code` | `code` | 用各元件的工具跑 lint、format、typecheck |
+| 15 | `tests` | `code` | **只在 `--full` 且沒有 `--only`**：跑測試並檢查行、分支、函式、陳述式覆蓋率 |
 
 各種範圍選項的影響：
 
-- **指定檔案**：設定檢查（1–12）照常跑整個專案；`code` 層只檢查這些檔案。`tsc`、`mypy`、`pyright`、`basedpyright` 這類無法只檢查單一檔案的工具，仍會檢查檔案所屬的整個元件。
+- **指定檔案**：設定檢查（1–13）照常跑整個專案；`code` 層只檢查這些檔案。`tsc`、`mypy`、`pyright`、`basedpyright` 這類無法只檢查單一檔案的工具，仍會檢查檔案所屬的整個元件。
 - **指定的檔案不是原始碼**：TypeScript 元件內的檔案（`.js`、`.mjs`、`.json`、`.md`、`.prettierrc`、`LICENSE` 等）都交給元件的 linter 與 formatter，由工具決定是否處理（ESLint `--no-warn-ignored`、Prettier `--ignore-unknown`、Biome `--files-ignore-unknown=true`），回報的問題與全專案檢查一致。工具不處理的檔案不產生 finding。只有這類檔案時，不跑型別檢查。
 - **`--staged`**：只跑 `declaration`、`code` 兩層；有依賴檔（`package.json`、lockfile 等）被 staged 時再加上 `deps`。細節見 [hook 頁的 git-pre-commit](Command-hook.md#git-pre-commit)。
 - **宣告的 `ignore`**：符合的檔案從檔案清單中排除，不會觸發 `uncovered-files` 提示，也不會交給 `code`、`tests` 層，即使在命令列上指定或已 staged 也一樣（格式見[專案宣告](Project-Declaration.md#排除路徑ignore)）。以整個目錄為單位執行的工具（元件的 `eslint .`、`prettier .`、`tsc`、`mypy` 等）仍依各自的設定決定範圍；元件目錄內要排除的檔案，也要在該工具的設定中排除。
 - **沒有 `.devguard.yaml`**：報告 `declaration/missing` 錯誤，程式碼檢查仍以推定的預設標準執行。
 - **`.vscode/` 完全不存在**：`check` 不會報告；要產生它請執行 [`fix`](Command-fix.md) 或 [`install`](Command-install.md)。已經有部分檔案時，缺少的才算錯誤。
+
+### 工作目錄是 CRLF
+
+Git for Windows 預設 `core.autocrlf=true`，以 LF 提交的檔案 checkout 後會變成 CRLF（`git ls-files --eol` 顯示 `i/lf w/crlf`）。這時 gofmt、gofumpt、gci、Prettier、Biome 與 `go mod tidy -diff`（`deps/go-mod-untidy`）幾乎會把每個檔案都報成第 1 行格式錯誤；pre-commit hook 檢查的是 staged（LF）的版本，所以不會。
+
+`check` 偵測到這種檔案時，另外回報**一筆** repo 層級的提示 `environment/working-tree-crlf`，說明原因、受影響的檔案數（列出前幾個當例子），以及怎麼重新 checkout。它是提示，不影響 exit code，`text` 格式要加 `--verbose` 才展開；那些格式錯誤照常回報。不在 git repo 裡、或沒有這種檔案時不回報；以 CRLF 提交的檔案（`i/crlf`）是專案自己的選擇，也不算。`--staged` 與 pre-commit hook 不跑這一層。
+
+只在 `.gitattributes` 加上 `* text=auto eol=lf` 不會改變已經 checkout 的檔案，要重新 checkout。下面的指令會**丟掉所有未提交的修改**（包括 `devguard fix` 剛寫入的檔案），請先 commit 或 stash，再在 repo 根目錄依序執行（PowerShell 與 Git Bash 都可以，一行一個指令）：
+
+```text
+git rm --cached -r -q .
+git reset --hard
+```
 
 ---
 

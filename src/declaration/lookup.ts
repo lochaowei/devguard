@@ -1,3 +1,4 @@
+import { baseName } from "../repo/paths.ts";
 import { EXTENSION_LANGUAGE, type Language } from "../standard/types.ts";
 import { normalizePath } from "./path.ts";
 import type { ResolvedComponent } from "./resolve.ts";
@@ -10,7 +11,7 @@ export type FileOwner =
   | { kind: "out-of-scope" };
 
 function languageOf(file: string): Language | undefined {
-  const name = file.slice(file.lastIndexOf("/") + 1);
+  const name = baseName(file);
   const dot = name.lastIndexOf(".");
   return dot <= 0 ? undefined : EXTENSION_LANGUAGE[name.slice(dot).toLowerCase()];
 }

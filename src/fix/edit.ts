@@ -1,14 +1,13 @@
 import { parse as parseToml, patch as patchToml, stringify as stringifyToml } from "@decimalturn/toml-patch";
 import { applyEdits, modify, parse as parseJsoncTree, type FormattingOptions, type ParseError } from "jsonc-parser";
 import { isScalar, isSeq, parse as parseYaml, parseDocument, type Document, type YAMLSeq } from "yaml";
+import { baseName } from "../repo/paths.ts";
 import type { KeyEdit, KeyPath } from "./repair.ts";
 
 /** How a structured shared file is read and written. */
 export type EditFormat = "toml" | "jsonc" | "yaml" | "lines";
 
 const LINE_FILES = new Set([".gitattributes", ".gitignore", "lombok.config"]);
-
-const baseName = (file: string): string => file.slice(file.lastIndexOf("/") + 1);
 
 /** The format of a file whose managed keys the CLI may edit; undefined when it is not a structured file it can edit. */
 export function editFormat(file: string, text = ""): EditFormat | undefined {
@@ -130,14 +129,44 @@ function editToml(text: string, edits: readonly KeyEdit[]): string {
   }
   const blocks = [
     // Top-level keys of an empty file (a new ruff.toml) have no section header.
-    ...[...sections].map(([name, values]) => ({ head: name ? `[${name}]\n` : "", values })),
-    ...[...arrayTables].flatMap(([name, items]) => items.map((values) => ({ head: `[[${name}]]\n`, values }))),
+    ...[...sections].map(([name, values]) => ({ head: name ? `[${name}]\n` : "", name, values })),
+    ...[...arrayTables].flatMap(([name, items]) => items.map((values) => ({ head: `[[${name}]]\n`, name, values }))),
   ];
   let out = empty ? "" : patchToml(text, doc, TOML_FORMAT);
-  for (const { head, values } of blocks) {
-    out += `${separator(out)}${head}${stringifyToml(values, TOML_FORMAT).trimEnd()}\n`;
+  for (const { head, name, values } of blocks) {
+    out += `${separator(out)}${head}${underTable(stringifyToml(values, TOML_FORMAT), name).trimEnd()}\n`;
   }
   return out;
+}
+
+/** One TOML key segment: bare, "basic" (with escapes) or 'literal'. */
+const KEY_SEGMENT = String.raw`(?:[A-Za-z0-9_-]+|"(?:[^"\\\n]|\\.)*"|'[^'\n]*')`;
+/** A whole `[table]` or `[[array]]` header line, whose key may hold quoted segments with brackets in them. */
+const TABLE_HEADER = new RegExp(
+  String.raw`^(\[\[?)[ \t]*(${KEY_SEGMENT}(?:[ \t]*\.[ \t]*${KEY_SEGMENT})*)[ \t]*(\]\]?)[ \t]*$`,
+);
+
+/** Whether a line opens or closes a multi-line string: an odd number of `"""` or `'''` delimiters on it. */
+const togglesMultiline = (line: string): boolean => ((line.match(/"""|'''/g) ?? []).length & 1) === 1;
+
+/**
+ * stringify writes the sub-tables of a section's values (`rules.main` under `[linters.settings.depguard]`) with
+ * headers relative to the root, so they get the section's name in front. Only real header lines are renamed: a line
+ * inside a multi-line string that merely looks like `[x]` is left alone.
+ */
+function underTable(toml: string, name: string): string {
+  if (name === "") return toml;
+  let inString = false;
+  return toml
+    .split("\n")
+    .map((line) => {
+      const header = inString ? null : TABLE_HEADER.exec(line);
+      if (togglesMultiline(line)) inString = !inString;
+      if (!header) return line;
+      const [, open = "", key = "", close = ""] = header;
+      return `${open}${name}.${key}${close}`;
+    })
+    .join("\n");
 }
 
 function jsonFormatting(text: string): FormattingOptions {
@@ -218,14 +247,22 @@ const EDITORS: Record<EditFormat, (text: string, edits: readonly KeyEdit[]) => s
   lines: editLines,
 };
 
+/** Whether a file's line breaks are mostly CRLF (a file committed with CRLF, or checked out with it). */
+export function usesCrlf(text: string): boolean {
+  const crlf = text.split("\r\n").length - 1;
+  return crlf > 0 && crlf >= text.split("\n").length - 1 - crlf;
+}
+
 /**
  * Applies edits to the CLI-managed keys of a structured shared file and leaves everything else (comments, blank
- * lines, key order) as it was (SPEC §9.2). `text` is "" for a file that does not exist yet.
+ * lines, key order, CRLF line endings) as it was (SPEC §9.2, #84). `text` is "" for a file that does not exist yet,
+ * which gets LF.
  */
 export function editConfigText(file: string, text: string, edits: readonly KeyEdit[]): string {
   const format = editFormat(file, text);
   if (!format) throw new Error(`${file} 不是 CLI 能修改的結構化設定檔`);
-  return EDITORS[format](text.replace(/\r\n/g, "\n"), edits);
+  const out = EDITORS[format](text.replace(/\r\n/g, "\n"), edits);
+  return usesCrlf(text) ? out.replace(/\n/g, "\r\n") : out;
 }
 
 /**
