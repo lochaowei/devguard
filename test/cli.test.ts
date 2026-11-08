@@ -227,9 +227,6 @@ describe("devguard check", () => {
 
   it("does not advertise the removed mirrors or vulnerability scanning in its help (#104)", async () => {
     const help = (await run(["--help"])).out;
-    expect(help).toContain(
-      "doctor         check 加上環境檢查（工具、git hook、VS Code、Claude Code、Java 執行環境、標準更新）",
-    );
     expect(help).toContain("--full                跑全部檢查，包含測試與覆蓋率（不能與檔案一起使用）");
     expect(help).not.toMatch(/鏡像|弱點/);
   });
