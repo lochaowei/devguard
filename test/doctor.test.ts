@@ -10,7 +10,7 @@ import { runInstall } from "../src/hooks/install.ts";
 import { nodeExec, type Exec } from "../src/process/exec.ts";
 import type { Finding } from "../src/report/finding.ts";
 import { ToolMissingError, type ToolRunner } from "../src/tools/runner.ts";
-import { rules, TODAY } from "./helpers.ts";
+import { lefthookWrote, rules, TODAY } from "./helpers.ts";
 import { isolateGit } from "./git-isolation.ts";
 
 // Real git runs here: keep it off any repo or config outside this file's temp directories.
@@ -33,10 +33,6 @@ function repo(files: Record<string, string> = { ".devguard.yaml": DECL }, git = 
   }
   return dir;
 }
-
-/** The hook `lefthook install` (2.2.2) wrote, with the machine-specific lefthook path made generic. */
-const lefthookWrote = (hook: GitHookName): string =>
-  readFileSync(new URL(`./fixtures/lefthook/${hook}`, import.meta.url), "utf8");
 
 const environment = (findings: Finding[]) => findings.filter((f) => f.layer === "environment");
 

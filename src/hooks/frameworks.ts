@@ -52,9 +52,11 @@ interface Injector {
   installer?: FrameworkInstaller;
 }
 
+/** The command a framework writes its hooks with, and how to recognise a hook file it wrote. */
 interface FrameworkInstaller {
   command: string;
-  wrote(hook: GitHookName, installed: InstalledHook): boolean;
+  /** Whether `installed` is the file the command writes for `hook`. */
+  wroteHook(hook: GitHookName, installed: InstalledHook): boolean;
 }
 
 // --- pre-commit -------------------------------------------------------------------------------------------------
@@ -134,7 +136,7 @@ function requireMinimumVersion(text: string): string {
 }
 
 /** What pre-commit needs to write every hook type devguard installs. */
-export const PRE_COMMIT_INSTALL = `pre-commit install ${INSTALLED_HOOKS.map((h) => `--hook-type ${h}`).join(" ")}`;
+const PRE_COMMIT_INSTALL = `pre-commit install ${INSTALLED_HOOKS.map((h) => `--hook-type ${h}`).join(" ")}`;
 
 /** Whether `pre-commit install` has written the hook into the hooks directory. */
 function preCommitWroteHook(hook: GitHookName, installed: InstalledHook): boolean {
@@ -152,7 +154,7 @@ const preCommit: Injector = {
   inject: (file, text, hook, command) =>
     editConfigText(file, text, [{ op: "add", path: ["repos"], value: preCommitRepo(hook, command) }]),
   finish: requireMinimumVersion,
-  installer: { command: PRE_COMMIT_INSTALL, wrote: preCommitWroteHook },
+  installer: { command: PRE_COMMIT_INSTALL, wroteHook: preCommitWroteHook },
 };
 
 // --- husky ------------------------------------------------------------------------------------------------------
@@ -183,12 +185,14 @@ function lefthookRuns(jobs: unknown, commands: unknown, hook: GitHookName): bool
 }
 
 /** What writes lefthook's hooks into the hooks directory. */
-export const LEFTHOOK_INSTALL = "lefthook install";
+const LEFTHOOK_INSTALL = "lefthook install";
 
-/** Whether `lefthook install` has written the hook: its script calls lefthook to `run "<hook>"`. */
+/**
+ * Whether `lefthook install` has written the hook: its script calls lefthook to run the hook, as
+ * `call_lefthook run "<hook>" "$@"` (1.5 and later) or `call_lefthook "run <hook> $@"` (before 1.5).
+ */
 function lefthookWroteHook(hook: GitHookName, installed: InstalledHook): boolean {
-  const text = installed.text ?? "";
-  return text.includes("call_lefthook") && text.includes(`run "${hook}"`);
+  return new RegExp(`^call_lefthook "?run "?${hook}(?![\\w-])`, "m").test(installed.text ?? "");
 }
 
 const lefthook: Injector = {
@@ -207,7 +211,7 @@ const lefthook: Injector = {
     }
     return editConfigText(file, text, [{ op: "add", path: [hook, "jobs"], value: { name: "devguard", run } }]);
   },
-  installer: { command: LEFTHOOK_INSTALL, wrote: lefthookWroteHook },
+  installer: { command: LEFTHOOK_INSTALL, wroteHook: lefthookWroteHook },
 };
 
 const INJECTORS: Record<HookFrameworkName, Injector> = { "pre-commit": preCommit, husky, lefthook };
@@ -343,9 +347,11 @@ export async function planFrameworkHooks(
   return { writes, printed: [] };
 }
 
+/** The hooks a framework has not written into the hooks directory yet, and the command that writes them. */
 export interface UnwrittenHooks {
+  /** The framework in use (pre-commit or lefthook). */
   framework: HookFrameworkName;
-  /** The command that writes them, e.g. `PRE_COMMIT_INSTALL` or `LEFTHOOK_INSTALL`. */
+  /** The command that writes them: `pre-commit install --hook-type …` or `lefthook install`. */
   command: string;
   /** Each hook not written yet, with what is there now. Never empty. */
   hooks: ReadonlyMap<GitHookName, InstalledHook>;
@@ -369,7 +375,7 @@ export async function frameworkHooksNotInstalled(
   const hooks = new Map<GitHookName, InstalledHook>();
   for (const hook of INSTALLED_HOOKS) {
     const installed = await installedHook(cwd, hook, exec);
-    if (!installer.wrote(hook, installed)) hooks.set(hook, installed);
+    if (!installer.wroteHook(hook, installed)) hooks.set(hook, installed);
   }
   return hooks.size > 0 ? { framework: framework.name, command: installer.command, hooks } : undefined;
 }

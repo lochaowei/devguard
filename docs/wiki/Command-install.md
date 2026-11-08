@@ -65,7 +65,7 @@ devguard install [--yes] [--cwd <dir>]
    下一步：執行 lefthook install，hook 框架才會把 hook 寫進 hooks 目錄（install 不會自動執行）。
    ```
 
-   `install` 不會自己執行這條指令，這則提示也不改變 exit code。hook 已經安裝、或不使用 hook 框架（或用 husky，見下方 `core.hooksPath` 的說明）時，不會印出。hooks 目錄依 `core.hooksPath` 決定。設定了 `core.hooksPath` 時也不會印出：pre-commit 這時拒絕安裝，`install` 改為列出這個衝突（與 `doctor` 回報 `hooks-path-conflict` 而非 `framework-not-installed` 一致）。
+   `install` 不會自己執行這條指令，這則提示也不改變 exit code。hook 已經安裝、或不使用 hook 框架（或用 husky，見下方 `core.hooksPath` 的說明）時，不會印出。hooks 目錄依 `core.hooksPath` 決定：lefthook 會把 hook 寫進 `core.hooksPath` 指向的目錄，所以照常檢查。用 pre-commit 框架而設定了 `core.hooksPath` 時則不會印出：pre-commit 這時拒絕安裝，`install` 改為列出這個衝突（與 `doctor` 回報 `hooks-path-conflict` 而非 `framework-not-installed` 一致）。
 
 ### 產生的 hook 檔
 
