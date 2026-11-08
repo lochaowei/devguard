@@ -3,7 +3,14 @@ import { FIX_LAYERS, type CheckOptions } from "../check.ts";
 import { CLAUDE_CODE_LAYER_ID, createClaudeCodeLayer } from "../layers/claude-code.ts";
 import { normalizePath } from "../declaration/path.ts";
 import { previewThenApply, type Interaction } from "../fix/interaction.ts";
-import { applyPlan, renderPlan, type ChangePlan, type Printed } from "../fix/plan.ts";
+import {
+  applyPlan,
+  hasBlockedWrites,
+  renderPlan,
+  withoutBlockedWrites,
+  type ChangePlan,
+  type Printed,
+} from "../fix/plan.ts";
 import { planConfigFix } from "../fix/run.ts";
 import { nodeExec, type Exec } from "../process/exec.ts";
 import { hookCommandLine, inspectHookFile, renderHookFile, type GitHookName, type HookFileOptions } from "./file.ts";
@@ -122,10 +129,11 @@ export async function runInstall(options: InstallOptions): Promise<0 | 1> {
     FIX_LAYERS.map((l) => (l.id === CLAUDE_CODE_LAYER_ID ? claude : l)),
   );
   const typeCheckers = config.resolution ? await otherTypeCheckers(options.cwd, config.resolution) : [];
-  const plan: ChangePlan = {
-    writes: [...config.writes, ...hooks.writes],
-    printed: [...config.printed, ...typeCheckers, ...hooks.printed],
-  };
+  const plan = await withoutBlockedWrites(
+    options.cwd,
+    { writes: [...config.writes, ...hooks.writes], printed: [...config.printed, ...typeCheckers, ...hooks.printed] },
+    options.exec,
+  );
   const code = await previewThenApply(options.io, {
     preview: renderPlan(plan),
     pending: plan.writes.length > 0,
@@ -138,5 +146,5 @@ export async function runInstall(options: InstallOptions): Promise<0 | 1> {
       `下一步：執行 ${PRE_COMMIT_INSTALL}，hook 框架才會把 hook 寫進 hooks 目錄（install 不會自動執行）。\n`,
     );
   }
-  return code;
+  return hasBlockedWrites(plan) ? 1 : code;
 }

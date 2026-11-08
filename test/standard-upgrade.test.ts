@@ -202,6 +202,16 @@ describe("devguard standard upgrade (SPEC §5.5)", () => {
     expect(out).not.toContain("非互動環境");
   });
 
+  it("--apply writes what it can and exits 1 when a file blocks a path (#129)", async () => {
+    const dir = await pythonRepo(OVERRIDES);
+    rmSync(join(dir, ".vscode"), { recursive: true });
+    writeFileSync(join(dir, ".vscode"), "not a directory");
+    const { code, out } = await upgrade(dir, { target: "team@1.1.0", apply: true });
+    expect(code).toBe(1);
+    expect(read(dir, ".devguard.yaml")).toContain("standard: team@1.1.0");
+    expect(out).toContain(".vscode 是檔案，不是目錄");
+  });
+
   it("--apply updates the declaration and config files, then runs the commands", async () => {
     const dir = await pythonRepo(OVERRIDES);
     const { tools, managed } = fakeTools();

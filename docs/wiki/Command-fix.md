@@ -39,6 +39,7 @@ devguard fix --code [檔案…] [--yes] [--cwd <dir>]
 | 加上 `--yes` | 印出預覽後直接套用 | `0` |
 | 非互動環境（CI、pipe、Claude Code）且沒有 `--yes` | 只預覽，印出 `非互動環境：只預覽，沒有套用。加上 --yes 才會套用。` | `1` |
 | 沒有任何需要寫入的檔案 | 只印出預覽（可能只有要手動套用的片段） | `0` |
+| 有檔案因為路徑上有檔案而不是目錄而無法寫入（見[下方](#路徑上有檔案而不是目錄)） | 其他檔案照上面的規則處理 | `1`，即使其他檔案已套用 |
 
 ---
 
@@ -61,6 +62,17 @@ devguard fix --code [檔案…] [--yes] [--cwd <dir>]
 | `user`：使用者層級設定 | repo 以外的路徑，例如 `~/.m2/settings.xml` | **不寫入**，只印出修改說明 |
 
 修改 TOML 共用檔（例如 `pyproject.toml`）時，`fix` 會先確認修改後的內容仍是合法的 TOML。不合法時該檔**不寫入**，改為印出 `pyproject.toml：錯誤：修改後不是合法的 TOML，不會修改；請自行套用` 與要套用的修改；同一次的其他檔案照常處理，這不會讓 `fix` 失敗：其他檔案寫入成功時 exit code 仍是 `0`。
+
+### 路徑上有檔案而不是目錄
+
+預覽前，`fix` 會檢查每個要寫入的檔案：上層路徑中已經存在、卻不是目錄的項目（例如 `.claude/skills` 是一般檔案）會讓那個檔案無法寫入。這種檔案**不寫入**，改為印出一筆錯誤；其他檔案（包括 git hook）照常預覽與套用，最後以 exit `1` 結束，即使其他檔案已經套用（`已套用。` 之後仍是 `1`）：
+
+```text
+.claude/skills/standards-doctor/SKILL.md：錯誤：路徑上有檔案而不是目錄，無法寫入；請自行處理
+    .claude/skills 是檔案，不是目錄
+```
+
+最常見的原因是 Windows 上未展開的 git symlink：Git for Windows 預設 `core.symlinks=false`，在 git 中是 symlink 的路徑會 checkout 成內容為目標路徑（例如 `../.agents/skills`）的一般檔案。這個檔案在 git index 中是 symlink（mode `120000`）時，訊息會多兩行說明，並提示讓系統允許建立 symlink（Windows：開啟開發人員模式）、執行 `git config core.symlinks true`，再重新 checkout 該路徑。devguard 不會跟隨或解析這種檔案，也不會把檔案改寫到 symlink 指向的位置。[`install`](Command-install.md) 與 [`standard upgrade --apply`](Command-standard-upgrade.md) 也是如此。
 
 `generated` 類的檔案已經存在、內容不是空白、卻沒有 `由 CLI 產生` 檔頭時，表示是專案自己寫的。`fix` 不會覆寫它，加上 `--yes` 也一樣，只印出要加入的內容，其他檔案照常處理：
 
@@ -181,6 +193,7 @@ $ devguard fix --code src/mul.ts --yes
 | 現象 | 原因與處理 |
 |---|---|
 | 在 Claude Code 或 CI 中執行 `fix`，exit `1` 且沒有寫入 | 非互動環境需要 `--yes` |
+| `fix` 印出 `錯誤：路徑上有檔案而不是目錄，無法寫入`，exit `1` | 上層路徑中有一般檔案佔住目錄的位置，常見於 Windows 上未展開的 git symlink（例如 `.claude/skills`）。其他檔案已照常寫入；照訊息處理該路徑後再執行一次。見[路徑上有檔案而不是目錄](#路徑上有檔案而不是目錄) |
 | `fix` 加上 `* text=auto eol=lf` 之後，`check` 仍把幾乎每個檔案報成第 1 行格式錯誤 | 工作目錄的檔案是 CRLF，`.gitattributes` 只影響之後 checkout 的檔案。先 commit 或 stash，再照 `fix` 印出的指令重新 checkout（見 [check 頁的工作目錄是 CRLF](Command-check.md#工作目錄是-crlf)） |
 | 安裝套件時連不上 `nexus.example.internal` | 舊版 devguard 的 `fix` 會把標準中的範例鏡像網址寫進專案：`.npmrc` 的 `registry=`、`pyproject.toml` 的 `[[tool.uv.index]]` / `[[tool.poetry.source]]`（`name = "nexus"`）、`.mvn/settings.xml` 與 `.mvn/maven.config`。現在 devguard 不再寫入任何套件來源（#65、#64），套件來源交給使用者層級的設定；請自行刪除這些設定 |
 | `fix` 印出 `錯誤：修改後不是合法的 TOML，不會修改；請自行套用` | 標準要求的 key 與檔案現有的寫法衝突，例如標準要求 `[tool.x]` 表格，但檔案中 `x` 已經是一般的值。檔案沒有被修改，請依印出的內容自行調整 |
