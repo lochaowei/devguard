@@ -114,8 +114,8 @@ export async function checkStaged(
   const tools = workingTreeTools(result.resolution?.components ?? [], partial);
   if (tools.length === 0) return { result, staged };
   const warning =
-    `注意：${partial.join("、")} 有未 staged 的修改。lint 與格式檢查用的是 staged 版本，` +
-    `但 ${tools.join("、")} 沒有 stdin 模式，檢查的是工作目錄版本。\n`;
+    `注意：${partial.join("、")} 有未 staged 的修改。其他檢查用的是 staged 版本，` +
+    `但 ${tools.join("、")} 沒有可用的 stdin 模式，檢查的是工作目錄版本。\n`;
   return { result, staged, warning };
 }
 

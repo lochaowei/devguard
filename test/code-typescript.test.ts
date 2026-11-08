@@ -212,35 +212,56 @@ describe("typescript checker: Biome", () => {
     ]);
   });
 
-  it("checks staged files through `--stdin-file-path` and the rest on disk (SPEC §7.4)", async () => {
-    const staged = "debugger;\nlet  a=1\n";
+  it("formats staged files through `--stdin-file-path` but lints them on disk: Biome 2 lints nothing from stdin (#120)", async () => {
     const { tools, calls } = fakeTools({
       biome: (req) => {
         if (req.args?.[0] === "format") return { stdout: req.stdin === undefined ? "" : "debugger;\nlet a = 1;\n" };
-        if (req.stdin === undefined) return {};
-        // Biome echoes the code on stdout and reports on stderr when reading stdin.
-        const annotation = "::error title=lint/suspicious/noDebugger,line=1,endLine=1,col=1,endColumn=9::Debugger.\n";
-        return { code: 1, stdout: req.stdin, stderr: annotation };
+        if (req.stdin !== undefined) return { code: 1, stderr: "The contents aren't fixed." };
+        const annotation = "::error title=lint/suspicious/noDebugger,file=src/a.ts,line=1,col=1::Debugger.\n";
+        return { code: 1, stdout: annotation };
       },
     });
     const ctx = {
       cwd: CWD,
       tools,
       readText: () => Promise.resolve(undefined),
-      staged: (p: string) => Promise.resolve(p === "web/src/a.ts" ? staged : undefined),
+      staged: (p: string) => Promise.resolve(p === "web/src/a.ts" ? "debugger;\nlet  a=1\n" : undefined),
     };
     const findings = await typescriptChecker.check({ ...biome, files: ["src/a.ts", "src/b.ts"] }, ctx);
+    const unknown = ["--files-ignore-unknown=true", "--no-errors-on-unmatched"];
     expect(calls.map((c) => [...(c.args ?? []), c.stdin === undefined ? "disk" : "stdin"])).toEqual([
-      ["lint", "--reporter=github", "--files-ignore-unknown=true", "--no-errors-on-unmatched", "src/b.ts", "disk"],
-      ["lint", "--reporter=github", "--stdin-file-path=src/a.ts", "--files-ignore-unknown=true", "stdin"],
-      ["format", "--reporter=github", "--files-ignore-unknown=true", "--no-errors-on-unmatched", "src/b.ts", "disk"],
+      ["lint", "--reporter=github", ...unknown, "src/a.ts", "src/b.ts", "disk"],
+      ["format", "--reporter=github", ...unknown, "src/b.ts", "disk"],
       ["format", "--stdin-file-path=src/a.ts", "--files-ignore-unknown=true", "stdin"],
     ]);
     expect(findings.map((f) => [f.rule, f.file, f.line])).toEqual([
       ["biome/lint/suspicious/noDebugger", "web/src/a.ts", 1],
       ["biome/format", "web/src/a.ts", 2],
     ]);
-    expect(typescriptChecker.workingTreeTools({ ...biome, categories: only("lint", "format") })).toEqual([]);
+  });
+
+  it("names Biome lint among the tools that check the working-tree version (SPEC §7.4)", () => {
+    expect(typescriptChecker.workingTreeTools(biome)).toEqual(["biome lint"]);
+    expect(typescriptChecker.workingTreeTools({ ...biome, categories: only("format") })).toEqual([]);
+    expect(typescriptChecker.workingTreeTools({ ...biome, categories: only("lint", "typecheck") })).toEqual([
+      "biome lint",
+      "tsc",
+    ]);
+    expect(typescriptChecker.workingTreeTools(target({ categories: only("lint", "format") }))).toEqual([]);
+  });
+
+  it("decodes the escaped annotation properties Biome prints, such as an absolute path with a drive letter", async () => {
+    const file = abs("web", "src", "a.ts").replaceAll("\\", "/").replaceAll(":", "%3A").replaceAll(",", "%2C");
+    const { tools } = fakeTools({
+      biome: {
+        code: 1,
+        stdout: `::error title=lint/suspicious/noDebugger,file=${file},line=3,col=1::Debugger%25 here.\n`,
+      },
+    });
+    const findings = await check(target({ effective: { "lint.tool": "biome" }, categories: only("lint") }), tools);
+    expect(findings.map((f) => [f.rule, f.file, f.line, f.message])).toEqual([
+      ["biome/lint/suspicious/noDebugger", "web/src/a.ts", 3, "Debugger% here."],
+    ]);
   });
 
   it("reports a failing Biome run without diagnostics as a failed run", async () => {
