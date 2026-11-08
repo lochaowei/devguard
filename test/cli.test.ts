@@ -224,6 +224,23 @@ describe("devguard check", () => {
     expect((await run(["--version"])).out).toBe(`devguard ${VERSION}\n`);
     expect((await run(["--help"])).code).toBe(0);
   });
+
+  it("does not advertise the removed mirrors or vulnerability scanning in its help (#104)", async () => {
+    const help = (await run(["--help"])).out;
+    expect(help).toContain(
+      "doctor         check 加上環境檢查（工具、git hook、VS Code、Claude Code、Java 執行環境、標準更新）",
+    );
+    expect(help).toContain("--full                跑全部檢查，包含測試與覆蓋率（不能與檔案一起使用）");
+    expect(help).not.toMatch(/鏡像|弱點/);
+  });
+
+  it("keeps the wiki's command overview a copy of the help text", async () => {
+    const help = (await run(["--help"])).out;
+    const wiki = readFileSync(join(import.meta.dirname, "..", "docs", "wiki", "CLI-Reference.md"), "utf8");
+    const block = /## 指令總覽\s+```text\n([\s\S]*?)```/.exec(wiki.replaceAll("\r\n", "\n"))?.[1] ?? "";
+    expect(block).toContain("指令：");
+    expect(help).toContain(block);
+  });
 });
 
 describe("devguard fix", () => {
