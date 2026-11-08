@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -125,6 +125,22 @@ describe("devguard check --staged (SPEC §3.2): the pre-commit hook's checks", (
       it("reports nothing, and no tool failure, for staged files no tool handles", async () => {
         const dir = typescriptRepo({ LICENSE: "MIT   License\n", "notes.txt": "anything    goes\n" });
         const r = await cli(dir, ["check", "--staged", "--format", "json"], undefined);
+        expect(brief(r.out)).toEqual([]);
+        expect(r.code).toBe(0);
+      });
+
+      it("leaves out a staged nested repo or submodule, which is a commit, not a file (#142)", async () => {
+        const dir = typescriptRepo({});
+        const sub = join(dir, "vendor");
+        mkdirSync(sub);
+        writeFileSync(join(sub, "a.ts"), "const unused = 2;\n");
+        const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, stdio: "ignore" });
+        git(sub, "init", "-q");
+        git(sub, "-c", "user.email=t@example.com", "-c", "user.name=t", "add", ".");
+        git(sub, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "--no-verify", "-m", "a");
+        git(dir, "add", "vendor");
+        const r = await cli(dir, ["check", "--staged", "--format", "json"], undefined);
+        expect(r.err).toBe("");
         expect(brief(r.out)).toEqual([]);
         expect(r.code).toBe(0);
       });

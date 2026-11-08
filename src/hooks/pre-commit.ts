@@ -39,11 +39,21 @@ async function git(ctx: Pick<HookContext, "cwd" | "exec">, args: string[]): Prom
 
 const nulList = (out: string) => out.split("\0").filter((p) => p !== "");
 
-/** `git diff --cached --name-status -z`: status and path of each staged change (renames as delete + add). */
+/** The file mode git gives a nested repo or submodule: a commit, not a file. */
+const GITLINK = "160000";
+
+/**
+ * `git diff --cached --raw -z`: status and path of each staged change (renames as delete + add). A staged nested repo
+ * or submodule is left out: it has no file content to check (#142).
+ */
 async function stagedEntries(ctx: Pick<HookContext, "cwd" | "exec">): Promise<StagedEntry[]> {
-  const parts = nulList(await git(ctx, ["diff", "--cached", "--name-status", "-z", "--no-renames"]));
+  const parts = nulList(await git(ctx, ["diff", "--cached", "--raw", "-z", "--no-renames"]));
   const entries: StagedEntry[] = [];
-  for (let i = 0; i + 1 < parts.length; i += 2) entries.push({ status: parts[i] ?? "", path: parts[i + 1] ?? "" });
+  for (let i = 0; i + 1 < parts.length; i += 2) {
+    // `:<old mode> <new mode> <old sha> <new sha> <status>`
+    const [, newMode, , , status = ""] = (parts[i] ?? "").slice(1).split(" ");
+    if (newMode !== GITLINK) entries.push({ status, path: parts[i + 1] ?? "" });
+  }
   return entries;
 }
 

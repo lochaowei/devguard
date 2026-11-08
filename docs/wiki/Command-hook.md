@@ -35,7 +35,7 @@ git 執行 hook 時會匯出 `GIT_DIR`、`GIT_INDEX_FILE` 等 repo 定位變數�
 ### 執行流程
 
 1. 以 `git diff --cached --name-status` 列出 staged 的變更。沒有 staged 任何東西就直接通過。
-2. 執行 `declaration` 與 `code` 兩層，只檢查 staged 的檔案（刪除的不算）。有依賴檔（`package.json`、lockfile、`go.mod`、`pom.xml` 等）被 staged 時加上 `deps` 層。TypeScript 元件內的非原始碼檔案（`.mjs`、`package.json`、`.prettierrc` 等）也交給 ESLint 與 Prettier（或 Biome），由工具決定是否處理；`LICENSE` 這類工具不處理的檔案不產生 finding。
+2. 執行 `declaration` 與 `code` 兩層，只檢查 staged 的檔案（刪除的不算；staged 的巢狀 repo 或 submodule 不是檔案，也不算）。有依賴檔（`package.json`、lockfile、`go.mod`、`pom.xml` 等）被 staged 時加上 `deps` 層。TypeScript 元件內的非原始碼檔案（`.mjs`、`package.json`、`.prettierrc` 等）也交給 ESLint 與 Prettier（或 Biome），由工具決定是否處理；`LICENSE` 這類工具不處理的檔案不產生 finding。
 3. 檢查的是 **staged 版本**：formatter 與單檔 linter（`ruff`、`eslint`、`prettier`、`biome format`、`golangci-lint fmt`）用 `git show :<path>` 讀取 staged 內容，從 stdin 檢查。過程中不做 `git stash`。
 4. 沒有可用 stdin 模式的工具（`tsc`、`mypy`、`pyright`、`golangci-lint run`、Java 的 wrapper，以及 `biome lint`：Biome 2.x 從 stdin 讀取時不回報 lint 診斷）只能檢查工作目錄。檔案有未 staged 的修改時，會印出提示說明哪些工具看的是工作目錄版本；宣告的 `ignore` 排除的檔案不會列入提示。
 5. 有任何發現就印出報告。有錯誤時以 exit `1` 擋下 commit，最後再加一行 `修正程式碼：devguard fix --code <檔案…>`。這一行只列出 staged、而且有 `fix --code` 能自動修正的發現（格式、可自動修正的 lint）的檔案；只有型別錯誤（`tsc`、`mypy`、`pyright`、`basedpyright`）或其他需手動修正的發現的檔案不列入，沒有 staged 的檔案也不列入。沒有這種檔案時不印這一行，commit 一樣被擋下。
@@ -150,7 +150,7 @@ $ echo '{"tool_name":"Write","tool_input":{"file_path":"C:\\work\\demo\\src\\sub
 
 ### 執行流程
 
-1. 用 `git status` 找出工作目錄中所有變更與新增的檔案（刪除的不算）。透過 Bash 改的檔案也會被找到。
+1. 用 `git status` 找出工作目錄中所有變更與新增的檔案（刪除的不算；未追蹤的巢狀 git repo 裡的檔案不屬於這個 repo，也不算）。透過 Bash 改的檔案也會被找到。
 2. 對這些檔案跑 lint、format、typecheck。TypeScript 元件內的非原始碼檔案交給 linter 與 formatter，由工具決定是否處理；元件只有這類檔案變更時不跑 typecheck。
 3. 沒有錯誤就通過。
 4. 有錯誤時，依 hook 輸入的 `stop_hook_active` 決定：

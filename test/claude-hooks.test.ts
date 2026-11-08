@@ -293,6 +293,21 @@ describe("devguard hook claude-stop (SPEC §7.3)", () => {
     expect(calls).toEqual([]);
   });
 
+  it("skips an untracked nested git repo, which git lists as a directory, not as files (#142)", async () => {
+    const { dir, write } = repo();
+    // eslint and prettier get every changed file of a TypeScript component, so a directory would reach them.
+    write(".devguard.yaml", `${DECL}  - path: ./web\n    language: typescript\n`);
+    write("web/probe/a.ts", "export const a = 1\n");
+    execFileSync("git", ["init", "-q"], { cwd: join(dir, "web/probe") });
+    // Committed so that the only change left is the nested repo.
+    execFileSync("git", ["add", ".devguard.yaml"], { cwd: dir });
+    execFileSync("git", ["commit", "-q", "-m", "web"], { cwd: dir });
+    const { code, stdout, calls } = await runHook("claude-stop", dir, stop(dir, false));
+    expect(code).toBe(0);
+    expect(stdout).toBe("");
+    expect(calls).toEqual([]);
+  });
+
   it("prints nothing when the changed files are clean", async () => {
     const { dir, write } = repo();
     write("api/app.py", "z = 2\n");
