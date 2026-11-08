@@ -94,6 +94,7 @@
   - `lint`：`uv run --no-sync ruff check --output-format json`（`--staged` 時改用 `--stdin-filename <path> -` 讀取 staged 內容）
   - `format`：`uv run --no-sync ruff format --check`（`--staged` 時改用 `--stdin-filename <path> -`）
   - `typecheck`：`uv run --no-sync mypy`、`uv run --no-sync pyright --outputjson` 或 `uv run --no-sync basedpyright --outputjson`（輸出格式與 pyright 相同，rule 以 `basedpyright/` 開頭）
+    - mypy 的範圍：mypy 讀到的設定（`mypy.ini`、`.mypy.ini`、`pyproject.toml` 的 `[tool.mypy]`、`setup.cfg` 的 `[mypy]`，依 mypy 的順序只用第一份；元件目錄沒有時往上層找到 repo 根目錄）設了 `files` 時依設定檢查，否則以 `mypy .` 檢查整個元件
 - **自動修正程式碼（`fix --code`）**：
   - `uv run --no-sync ruff check --fix --force-exclude`
   - `uv run --no-sync ruff format --force-exclude`

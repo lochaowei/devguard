@@ -243,6 +243,114 @@ describe("python checker: mypy", () => {
   });
 });
 
+describe("python checker: mypy scope follows the configured files (#110)", () => {
+  const MYPY_ARGS = ["--no-pretty", "--no-error-summary", "--show-error-codes", "--no-color-output"];
+
+  /** Runs only the type check, with `files` (repo-relative path -> text) as the repo's contents. */
+  async function mypyArgs(files: Record<string, string>, dir = "api/") {
+    const { tools, calls } = fakeTools({});
+    const readText = (path: string) => Promise.resolve(files[path]);
+    await pythonChecker.check(target({ dir, categories: only("typecheck") }), { cwd: CWD, tools, readText });
+    return calls.map((c) => c.args);
+  }
+
+  it("passes no path when pyproject.toml's [tool.mypy] sets files", async () => {
+    const pyproject = '[tool.mypy]\nstrict = true\nfiles = ["src"]\n';
+    expect(await mypyArgs({ "api/pyproject.toml": pyproject })).toEqual([MYPY_ARGS]);
+  });
+
+  it("checks the whole component when the mypy settings set no files, or there are none", async () => {
+    expect(await mypyArgs({ "api/pyproject.toml": "[tool.mypy]\nstrict = true\n" })).toEqual([[...MYPY_ARGS, "."]]);
+    expect(await mypyArgs({})).toEqual([[...MYPY_ARGS, "."]]);
+  });
+
+  it("treats an empty files setting as none", async () => {
+    expect(await mypyArgs({ "api/pyproject.toml": "[tool.mypy]\nfiles = []\n" })).toEqual([[...MYPY_ARGS, "."]]);
+    expect(await mypyArgs({ "api/mypy.ini": "[mypy]\nfiles =\n" })).toEqual([[...MYPY_ARGS, "."]]);
+  });
+
+  it.each(["mypy.ini", ".mypy.ini", "setup.cfg"])("recognises files = src, tests in %s", async (name) => {
+    expect(await mypyArgs({ [`api/${name}`]: "[mypy]\nfiles = src, tests\n" })).toEqual([MYPY_ARGS]);
+  });
+
+  it("reads a files list spread over continuation lines and a comma-separated string in pyproject.toml", async () => {
+    expect(
+      await mypyArgs({ "api/setup.cfg": "[metadata]\nname = x\n\n[mypy]\nfiles =\n    src,\n    tests\n" }),
+    ).toEqual([MYPY_ARGS]);
+    expect(await mypyArgs({ "api/pyproject.toml": '[tool.mypy]\nfiles = "src, tests"\n' })).toEqual([MYPY_ARGS]);
+  });
+
+  it("uses only the first config file in mypy's order: mypy.ini, .mypy.ini, pyproject.toml, setup.cfg", async () => {
+    const withFiles = "[mypy]\nfiles = src\n";
+    expect(
+      await mypyArgs({
+        "api/mypy.ini": "[mypy]\nstrict = True\n",
+        "api/.mypy.ini": withFiles,
+        "api/setup.cfg": withFiles,
+      }),
+    ).toEqual([[...MYPY_ARGS, "."]]);
+    expect(await mypyArgs({ "api/.mypy.ini": withFiles, "api/pyproject.toml": "[tool.mypy]\n" })).toEqual([MYPY_ARGS]);
+    expect(await mypyArgs({ "api/pyproject.toml": "[tool.mypy]\n", "api/setup.cfg": withFiles })).toEqual([
+      [...MYPY_ARGS, "."],
+    ]);
+  });
+
+  it("skips pyproject.toml without [tool.mypy] and setup.cfg without [mypy], as mypy does", async () => {
+    const files = {
+      "api/pyproject.toml": "[tool.ruff]\nline-length = 120\n",
+      "api/setup.cfg": "[mypy]\nfiles = src\n",
+    };
+    expect(await mypyArgs(files)).toEqual([MYPY_ARGS]);
+    expect(await mypyArgs({ "api/setup.cfg": "[flake8]\nmax-line-length = 120\n" })).toEqual([[...MYPY_ARGS, "."]]);
+  });
+
+  it("stops at mypy.ini even without a [mypy] section, as mypy does", async () => {
+    const files = {
+      "api/mypy.ini": "[mypy-requests.*]\nignore_missing_imports = True\n",
+      "api/setup.cfg": "[mypy]\nfiles = src\n",
+    };
+    expect(await mypyArgs(files)).toEqual([[...MYPY_ARGS, "."]]);
+  });
+
+  it("skips a config file mypy cannot parse and keeps looking", async () => {
+    expect(
+      await mypyArgs({ "api/pyproject.toml": "[tool.mypy\nfiles = [", "api/setup.cfg": "[mypy]\nfiles = src\n" }),
+    ).toEqual([MYPY_ARGS]);
+    expect(await mypyArgs({ "api/mypy.ini": "files = src\n" })).toEqual([[...MYPY_ARGS, "."]]);
+  });
+
+  it("looks in parent directories up to the repo root when the component has no config, as mypy does", async () => {
+    expect(await mypyArgs({ "pyproject.toml": '[tool.mypy]\nfiles = ["api/src"]\n' }, "api/web/")).toEqual([MYPY_ARGS]);
+    const nearer = {
+      "api/web/setup.cfg": "[mypy]\nstrict = True\n",
+      "pyproject.toml": '[tool.mypy]\nfiles = ["src"]\n',
+    };
+    expect(await mypyArgs(nearer, "api/web/")).toEqual([[...MYPY_ARGS, "."]]);
+  });
+
+  it("does not report files outside the configured files (regression for #110)", async () => {
+    // Behaves like mypy: a path on the command line overrides `files`, so `.` also checks docs/conf.py.
+    const calls: ToolRequest[] = [];
+    const tools: ToolRunner = {
+      run(req) {
+        calls.push(req);
+        const errors = ["src/app.py:2: error: Missing return statement  [return]"];
+        if (req.args?.includes("."))
+          errors.push('docs/conf.py:1: error: Need type annotation for "x"  [var-annotated]');
+        return Promise.resolve({ code: 1, stdout: errors.join("\n"), stderr: "" });
+      },
+    };
+    const readText = (path: string) =>
+      Promise.resolve(path === "api/pyproject.toml" ? '[tool.mypy]\nstrict = true\nfiles = ["src"]\n' : undefined);
+    const findings = await pythonChecker.check(target({ categories: only("typecheck") }), {
+      cwd: CWD,
+      tools,
+      readText,
+    });
+    expect(findings.map((f) => `${f.rule} ${f.file ?? ""}`)).toEqual(["mypy/return api/src/app.py"]);
+  });
+});
+
 describe("python checker: pyright", () => {
   const pyrightTarget = (over: Partial<CodeTarget> = {}) =>
     target({ effective: { "typecheck.tool": "pyright" }, categories: only("typecheck"), ...over });
