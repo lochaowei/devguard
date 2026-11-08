@@ -1,6 +1,12 @@
 import { parseDeclaration } from "../src/declaration/parse.ts";
 import { resolveDeclaration, type Resolution } from "../src/declaration/resolve.ts";
 import type { Finding } from "../src/report/finding.ts";
+import type { GitHookName } from "../src/hooks/file.ts";
+import { readFileSync } from "node:fs";
+
+/** The hook `lefthook install` (2.2.2) wrote, with the machine-specific lefthook path made generic. */
+export const lefthookWrote = (hook: GitHookName): string =>
+  readFileSync(new URL(`./fixtures/lefthook/${hook}`, import.meta.url), "utf8");
 
 export const TODAY = "2026-10-22";
 

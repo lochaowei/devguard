@@ -5,13 +5,13 @@ import {
   frameworkEntry,
   hooksDisabled,
   hooksPathConflict,
-  PRE_COMMIT_INSTALL,
+  frameworkHooksNotInstalled,
   PRE_COMMIT_MIN_VERSION,
-  preCommitHooksNotInstalled,
   readHooksPath,
   staleMinimumVersion,
   type FrameworkEntry,
   type HookFramework,
+  type UnwrittenHooks,
 } from "../hooks/frameworks.ts";
 import { hookFilePath, INSTALLED_HOOKS, installedHook, type InstalledHook } from "../hooks/location.ts";
 import { PRE_PUSH_ENV, prePushRunsTests } from "../hooks/pre-push.ts";
@@ -98,18 +98,15 @@ async function preCommitVersionProblem(cwd: string, file: string): Promise<Findi
 }
 
 /**
- * §7.4 step 2 with the pre-commit framework: the entry alone does nothing until `pre-commit install` (with
- * `--hook-type pre-push` for the push hook) has written the hook into the hooks directory. `unwritten` is
- * `preCommitHooksNotInstalled`, which `install` also reads for its next step.
+ * §7.4 step 2 with a framework that writes its own hooks (pre-commit, lefthook): the entry alone does nothing until
+ * the framework's command has written the hook into the hooks directory. `unwritten` is `frameworkHooksNotInstalled`,
+ * which `install` also reads for its next step.
  */
-function preCommitInstalledProblem(
-  hook: GitHookName,
-  unwritten: ReadonlyMap<GitHookName, InstalledHook>,
-): Finding | undefined {
-  const installed = unwritten.get(hook);
-  if (!installed) return undefined;
-  const message = `pre-commit 的 ${hook} hook 沒有安裝（${installed.path}）；設定中的 devguard 項目不會執行`;
-  return problem("framework-not-installed", message, PRE_COMMIT_INSTALL);
+function frameworkInstalledProblem(hook: GitHookName, unwritten: UnwrittenHooks | undefined): Finding | undefined {
+  const installed = unwritten?.hooks.get(hook);
+  if (!unwritten || !installed) return undefined;
+  const message = `${unwritten.framework} 的 ${hook} hook 沒有安裝（${installed.path}）；設定中的 devguard 項目不會執行`;
+  return problem("framework-not-installed", message, unwritten.command);
 }
 
 /**
@@ -127,10 +124,10 @@ function asHint(finding: Finding): Finding {
 /** The hook framework's devguard entry for a hook (`frameworkEntry`); undefined when no framework is used. */
 export type FrameworkEntryProbe = (cwd: string, hook: GitHookName) => Promise<FrameworkEntry | undefined>;
 
-/** What `hookProblem` reads besides the hook: the framework probe and the hooks pre-commit has not written. */
+/** What `hookProblem` reads besides the hook: the framework probe and the hooks the framework has not written. */
 interface HookProbes {
   entryFor: FrameworkEntryProbe;
-  unwritten: ReadonlyMap<GitHookName, InstalledHook>;
+  unwritten: UnwrittenHooks | undefined;
   exec: Exec;
 }
 
@@ -138,9 +135,7 @@ interface HookProbes {
 async function hookProblem(cwd: string, hook: GitHookName, probes: HookProbes): Promise<Finding | undefined> {
   const entry = await probes.entryFor(cwd, hook);
   if (!entry) return hookFileProblem(hook, await installedHook(cwd, hook, probes.exec));
-  const found = frameworkProblem(hook, entry);
-  if (found || entry.framework !== "pre-commit") return found;
-  return preCommitInstalledProblem(hook, probes.unwritten);
+  return frameworkProblem(hook, entry) ?? frameworkInstalledProblem(hook, probes.unwritten);
 }
 
 export interface GitHooksCheckOptions {
@@ -166,7 +161,7 @@ export function createGitHooksCheck(options: GitHooksCheckOptions = {}): Environ
         const stale = await preCommitVersionProblem(cwd, framework.file);
         if (stale) findings.push(stale);
       }
-      const probes = { entryFor, unwritten: await preCommitHooksNotInstalled(cwd, exec), exec };
+      const probes = { entryFor, unwritten: await frameworkHooksNotInstalled(cwd, exec), exec };
       for (const hook of INSTALLED_HOOKS) {
         const found = await hookProblem(cwd, hook, probes);
         if (found) findings.push(hook === "pre-push" && !prePushRunsTests(env) ? asHint(found) : found);

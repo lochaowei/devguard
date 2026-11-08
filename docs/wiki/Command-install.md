@@ -53,13 +53,19 @@ devguard install [--yes] [--cwd <dir>]
    ```
 
 4. 合併計畫，依互動規則預覽並套用。
-5. **提示下一步**：用 pre-commit 框架時，pre-commit 的 hook 要等 `pre-commit install` 才會寫進 hooks 目錄，`install` 只把項目加進設定。所以結束時（預覽與套用都一樣），`install` 用與 [`doctor`](Command-doctor.md) 的 `framework-not-installed` 相同的判斷檢查；`pre-commit` 或 `pre-push` 的 hook 還不是 pre-commit 產生的，就印出：
+5. **提示下一步**：用 pre-commit 或 lefthook 框架時，框架的 hook 要等 `pre-commit install`／`lefthook install` 才會寫進 hooks 目錄，`install` 只把項目加進設定。所以結束時（預覽與套用都一樣），`install` 用與 [`doctor`](Command-doctor.md) 的 `framework-not-installed` 相同的判斷檢查；`pre-commit` 或 `pre-push` 的 hook 還不是該框架產生的（同名但不是框架寫的 hook 也算），就印出框架的安裝指令。pre-commit：
 
    ```text
    下一步：執行 pre-commit install --hook-type pre-commit --hook-type pre-push，hook 框架才會把 hook 寫進 hooks 目錄（install 不會自動執行）。
    ```
 
-   `install` 不會自己執行這條指令，這則提示也不改變 exit code。hook 已經安裝、或不使用 hook 框架時，不會印出。設定了 `core.hooksPath` 時也不會印出：pre-commit 這時拒絕安裝，`install` 改為列出這個衝突（與 `doctor` 回報 `hooks-path-conflict` 而非 `framework-not-installed` 一致）。
+   lefthook：
+
+   ```text
+   下一步：執行 lefthook install，hook 框架才會把 hook 寫進 hooks 目錄（install 不會自動執行）。
+   ```
+
+   `install` 不會自己執行這條指令，這則提示也不改變 exit code。hook 已經安裝、或不使用 hook 框架（或用 husky，見下方 `core.hooksPath` 的說明）時，不會印出。hooks 目錄依 `core.hooksPath` 決定：lefthook 會把 hook 寫進 `core.hooksPath` 指向的目錄，所以照常檢查。用 pre-commit 框架而設定了 `core.hooksPath` 時則不會印出：pre-commit 這時拒絕安裝，`install` 改為列出這個衝突（與 `doctor` 回報 `hooks-path-conflict` 而非 `framework-not-installed` 一致）。
 
 ### 產生的 hook 檔
 
@@ -143,7 +149,7 @@ $ devguard install --yes
 | `這個 hook 不是 devguard 產生的，不會覆寫；請在其中加上：…` | 已經有手寫或其他工具的 hook 檔。把印出的那一行加進去，或改用 hook 框架 |
 | `core.hooksPath = … ：pre-commit 在 core.hooksPath 有設定時拒絕安裝 hook` | 照訊息移除 `core.hooksPath`，再執行 `pre-commit install` 與 `pre-commit install --hook-type pre-push` |
 | `core.hooksPath 未設定，husky 的 hook 沒有安裝；請執行 npx husky` | husky 的 hook 要靠 `core.hooksPath` 生效。執行 `npx husky` |
-| `下一步：執行 pre-commit install --hook-type pre-commit --hook-type pre-push…`，或 `doctor` 說 pre-commit 的 hook 沒有安裝 | 框架設定中有項目還不夠，要執行這條指令把 hook 寫進 hooks 目錄 |
+| `下一步：執行 pre-commit install --hook-type pre-commit --hook-type pre-push…`／`下一步：執行 lefthook install…`，或 `doctor` 說 pre-commit／lefthook 的 hook 沒有安裝 | 框架設定中有項目還不夠，要執行這條指令把 hook 寫進 hooks 目錄 |
 | commit 時 pre-commit 說需要較新的版本（`minimum_pre_commit_version`），或說不認得 `unsupported` | 本機的 pre-commit 低於 4.4.0。升級 pre-commit（例如 `pip install -U pre-commit`）；後者表示設定還沒有 `minimum_pre_commit_version`，再執行一次 `devguard install` |
 | commit 時出現 `devguard：找不到 CLI（devguard），已擋下這次 git commit` | `devguard`（Windows 為 `devguard.exe`）不在 PATH 上。照訊息安裝；緊急時可用 `git commit --no-verify` 暫時略過 |
 

@@ -462,7 +462,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
   - pre-commit：一條 `language: unsupported` 的 local hook。`unsupported` 是 pre-commit 4.4.0 加入的值（`system` 的新名稱），所以需要 pre-commit 4.4.0 以上；CLI 同時確保頂層的 `minimum_pre_commit_version` 至少為 `"4.4.0"`：沒有就加上，較低就調高，較高就保留。版本不夠時，pre-commit 會自己回報需要的最低版本，而不是只說不認得 `unsupported`。
   - husky：`.husky/pre-commit` 中加一行
   - lefthook：加一個 job（YAML、TOML、JSON / JSONC 設定檔都支援）
-  - pre-commit 的項目要等 `pre-commit install --hook-type pre-commit --hook-type pre-push` 把 hook 寫進 hooks 目錄才會執行。`install` 結束時（預覽與套用都一樣）用與「已安裝」環境檢查相同的判斷確認；還沒寫入時印出這條指令作為下一步。`install` 不自己執行它，這則提示也不影響 exit code。
+  - pre-commit 與 lefthook 的項目要等框架的安裝指令（`pre-commit install --hook-type pre-commit --hook-type pre-push`、`lefthook install`）把 hook 寫進 hooks 目錄才會執行。`install` 結束時（預覽與套用都一樣）用與「已安裝」環境檢查相同的判斷確認；還沒寫入時印出這條指令作為下一步。`install` 不自己執行它，這則提示也不影響 exit code。
 - **找不到 CLI**：擋下 commit。錯誤訊息附上安裝指令，並提示可用 `--no-verify` 暫時略過。
 - **部分 staged 的檔案**：不做 stash，也不還原任何檔案。
   - formatter 與單檔 linter 改用 `git show :<path>` 取出 **staged 版本**，再以 stdin 交給工具檢查，例如 `ruff check|format --stdin-filename`、`eslint --stdin --stdin-filename`、`prettier --stdin-filepath`、`biome format --stdin-file-path`，以及 Go 的格式檢查 `golangci-lint fmt --stdin`（套用設定中的 gofumpt、goimports）。這可以避免最常見的誤判：工作目錄已經格式化，但 commit 進去的版本沒有。
@@ -474,10 +474,10 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 - **pre-push 的完整測試由開發者開啟**：`install` 照常安裝 pre-push hook，但 hook 只在環境變數 `DEVGUARD_PRE_PUSH` 為 `full` 時，才執行 `check --full` 中的測試與覆蓋率；未設定或其他值時直接放行，什麼都不印。開關放在開發者的環境而不是專案宣告，所以不改變 §4 的格式，切換時也不需要重新執行 `install`。
 - **「已安裝」的環境檢查**
   1. 讀取 `core.hooksPath` 及其設定來源。
-  2. 若使用既有框架，確認其設定中有呼叫 CLI 的項目；使用 pre-commit 框架時，另外確認 `pre-commit install --hook-type pre-commit --hook-type pre-push` 已執行（hooks 目錄中有 pre-commit 產生的 hook），且設定的 `minimum_pre_commit_version` 至少為 `"4.4.0"`（缺少或較低都是錯誤，`devguard install` 會修正）。沒有使用框架時，確認 hook 檔存在、有 CLI 標記，且 checksum 正確。
+  2. 若使用既有框架，確認其設定中有呼叫 CLI 的項目；使用 pre-commit 或 lefthook 框架時，另外確認 `pre-commit install --hook-type pre-commit --hook-type pre-push`／`lefthook install` 已執行（hooks 目錄中有該框架為 pre-commit、pre-push 產生的 hook）；使用 pre-commit 框架時，也確認設定的 `minimum_pre_commit_version` 至少為 `"4.4.0"`（缺少或較低都是錯誤，`devguard install` 會修正）。沒有使用框架時，確認 hook 檔存在、有 CLI 標記，且 checksum 正確。
   3. `core.hooksPath` 指向 `/dev/null` 或不存在的目錄時，回報錯誤。
 
-  步驟 2 中 pre-push 的問題（hook 不存在或被修改、框架設定缺項目、尚未以 `--hook-type pre-push` 執行 `pre-commit install`），在沒有設定 `DEVGUARD_PRE_PUSH=full` 時只列為**提示**，因為這時 pre-push 本來就不跑任何檢查；設定之後才算錯誤。
+  步驟 2 中 pre-push 的問題（hook 不存在或被修改、框架設定缺項目、框架尚未寫入 pre-push hook），在沒有設定 `DEVGUARD_PRE_PUSH=full` 時只列為**提示**，因為這時 pre-push 本來就不跑任何檢查；設定之後才算錯誤。
 - **促使開發者安裝**：VS Code 的 folderOpen task 與 Claude Code 的 SessionStart 都會執行 doctor。doctor 只回報問題並附上 `devguard install` 指令，不會自動安裝。
 
 來源：[pre-commit 框架比較研究](.scratch/coding-standards-guard/research/02-precommit-framework-options.md)、[CLI 實作語言與分發方式決策](.scratch/coding-standards-guard/issues/05-cli-runtime-decision.md)
