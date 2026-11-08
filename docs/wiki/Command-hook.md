@@ -36,9 +36,9 @@ git 執行 hook 時會匯出 `GIT_DIR`、`GIT_INDEX_FILE` 等 repo 定位變數�
 
 1. 以 `git diff --cached --name-status` 列出 staged 的變更。沒有 staged 任何東西就直接通過。
 2. 執行 `declaration` 與 `code` 兩層，只檢查 staged 的檔案（刪除的不算）。有依賴檔（`package.json`、lockfile、`go.mod`、`pom.xml` 等）被 staged 時加上 `deps` 層。TypeScript 元件內的非原始碼檔案（`.mjs`、`package.json`、`.prettierrc` 等）也交給 ESLint 與 Prettier（或 Biome），由工具決定是否處理；`LICENSE` 這類工具不處理的檔案不產生 finding。
-3. 檢查的是 **staged 版本**：formatter 與單檔 linter（`ruff`、`eslint`、`prettier`、`biome`、`golangci-lint fmt`）用 `git show :<path>` 讀取 staged 內容，從 stdin 檢查。過程中不做 `git stash`。
-4. 沒有 stdin 模式的工具（`tsc`、`mypy`、`pyright`、`golangci-lint run`、Java 的 wrapper）只能檢查工作目錄。檔案有未 staged 的修改時，會印出提示說明哪些工具看的是工作目錄版本；宣告的 `ignore` 排除的檔案不會列入提示。
-5. 有任何發現就印出報告。有錯誤時最後再加一行 `修正程式碼：devguard fix --code <檔案…>`，並以 exit `1` 擋下 commit。
+3. 檢查的是 **staged 版本**：formatter 與單檔 linter（`ruff`、`eslint`、`prettier`、`biome format`、`golangci-lint fmt`）用 `git show :<path>` 讀取 staged 內容，從 stdin 檢查。過程中不做 `git stash`。
+4. 沒有可用 stdin 模式的工具（`tsc`、`mypy`、`pyright`、`golangci-lint run`、Java 的 wrapper，以及 `biome lint`：Biome 2.x 從 stdin 讀取時不回報 lint 診斷）只能檢查工作目錄。檔案有未 staged 的修改時，會印出提示說明哪些工具看的是工作目錄版本；宣告的 `ignore` 排除的檔案不會列入提示。
+5. 有任何發現就印出報告。有錯誤時以 exit `1` 擋下 commit，最後再加一行 `修正程式碼：devguard fix --code <檔案…>`。這一行只列出 staged、而且有 `fix --code` 能自動修正的發現（格式、可自動修正的 lint）的檔案；只有型別錯誤（`tsc`、`mypy`、`pyright`、`basedpyright`）或其他需手動修正的發現的檔案不列入，沒有 staged 的檔案也不列入。沒有這種檔案時不印這一行，commit 一樣被擋下。
 
 只檢查、不修正。偏離不會擋下 commit。`devguard check --staged` 執行的是同一套檢查，只是報告印到 stdout。
 
@@ -60,7 +60,7 @@ $ git commit -m "add mul"
 
 ```text
 $ devguard check --staged
-注意：src/neg.ts 有未 staged 的修改。lint 與格式檢查用的是 staged 版本，但 tsc 沒有 stdin 模式，檢查的是工作目錄版本。
+注意：src/neg.ts 有未 staged 的修改。其他檢查用的是 staged 版本，但 tsc 沒有可用的 stdin 模式，檢查的是工作目錄版本。
 標準：team@1.0.0
 …
 ```
@@ -178,7 +178,7 @@ $ echo '{"stop_hook_active":true}' | devguard hook claude-stop
 | 想暫時略過 git hook | `git commit --no-verify` / `git push --no-verify`。CI 仍會用 `check` 與 `check --full` 檢查 |
 | pre-push 很慢 | 設定了 `DEVGUARD_PRE_PUSH=full`：它會跑所有元件的完整測試，與這次 push 的內容無關。不需要時移除這個環境變數，交給 CI 的 `check --full` |
 | pre-push 沒有跑測試 | 預設就是如此。要在 push 前把關，設定 `DEVGUARD_PRE_PUSH=full`，或在 push 前自己執行 `devguard check --full` |
-| pre-commit 印出的 `修正程式碼：devguard fix --code …` 列出 `node_modules/` 下的檔案 | `tsc` 檢查整個元件，依賴本身的型別錯誤也會被回報。通常表示依賴沒裝完整（例如缺 peer dependency），重新安裝依賴 |
+| pre-commit 回報 `node_modules/` 下檔案的 `tsc` 錯誤 | `tsc` 檢查整個元件，依賴本身的型別錯誤也會被回報。通常表示依賴沒裝完整（例如缺 peer dependency），重新安裝依賴 |
 | Claude Code 的 hook 似乎沒有執行 | 執行 `devguard doctor`。`environment/claude-never-ran` 表示還沒信任此資料夾，或 hook 從未執行過 |
 
 ---

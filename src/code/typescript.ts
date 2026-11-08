@@ -149,33 +149,33 @@ const BIOME_UNKNOWN = [BIOME_SKIP_UNKNOWN, "--no-errors-on-unmatched"];
 /** `::error title=lint/x/y,file=src/a.ts,line=4,...::message` from `biome --reporter=github`. */
 const GITHUB_ANNOTATION = /^::(error|warning|notice) (.*?)::(.*)$/;
 
+const ANNOTATION_ESCAPES: Record<string, string> = { "%25": "%", "%0D": "\r", "%0A": "\n", "%3A": ":", "%2C": "," };
+
+/** Undoes the workflow-command escaping: Biome 2 writes `C%3A/x/a.ts` for an absolute Windows path. */
+const unescapeAnnotation = (text: string) =>
+  text.replace(/%(?:25|0D|0A|3A|2C)/gi, (code) => ANNOTATION_ESCAPES[code.toUpperCase()] ?? code);
+
 function annotationFields(text: string): Record<string, string> {
   return Object.fromEntries(
     text.split(",").map((pair) => {
       const eq = pair.indexOf("=");
-      return [pair.slice(0, eq), pair.slice(eq + 1)];
+      return [pair.slice(0, eq), unescapeAnnotation(pair.slice(eq + 1))];
     }),
   );
 }
 
-/** Biome's GitHub annotations in `text`; `stdinFile` is the file when Biome read it from stdin. */
-function biomeAnnotations(
-  target: CodeTarget,
-  ctx: CodeCheckContext,
-  text: string,
-  command: string,
-  stdinFile?: string,
-) {
+/** Biome's GitHub annotations in `text`. */
+function biomeAnnotations(target: CodeTarget, ctx: CodeCheckContext, text: string, command: string) {
   return text.split(/\r?\n/).flatMap((line) => {
     const m = GITHUB_ANNOTATION.exec(line);
     if (!m) return [];
     const fields = annotationFields(m[2] ?? "");
-    const named = fields.file ?? stdinFile;
+    const named = fields.file;
     return [
       codeFinding(target, {
         level: m[1] === "error" ? "error" : "hint",
         rule: `biome/${fields.title ?? command}`,
-        message: m[3] ?? "",
+        message: unescapeAnnotation(m[3] ?? ""),
         file: named === undefined ? undefined : toRepoPath(ctx.cwd, target.dir, named),
         line: fields.line === undefined ? undefined : Number(fields.line),
         column: fields.col === undefined ? undefined : Number(fields.col),
@@ -184,53 +184,54 @@ function biomeAnnotations(
   });
 }
 
-/**
- * A staged file through `--stdin-file-path` (SPEC §7.4): `format` prints the formatted text (any difference is a
- * finding); `lint` echoes the code and reports its diagnostics, read from both streams.
- */
-async function biomeStaged(
+/** A staged file through `--stdin-file-path` (SPEC §7.4): Biome prints the formatted text; any difference is a finding. */
+async function biomeFormatStaged(
   target: CodeTarget,
   ctx: CodeCheckContext,
-  command: "lint" | "format",
   { file, text }: { file: string; text: string },
 ): Promise<Finding[]> {
-  const request = { language: "typescript", tool: "biome", dir: target.dir, stdin: text } as const;
   // A file Biome does not handle comes back unchanged, exit 0.
-  const stdinArgs = [`--stdin-file-path=${file}`, BIOME_SKIP_UNKNOWN];
-  if (command === "format") {
-    const result = await ctx.tools.run({ ...request, args: ["format", ...stdinArgs] });
-    if (result.code !== 0) return [toolFailed(target, "biome", result)];
-    if (result.stdout === text) return [];
-    const at = { file: toRepoPath(ctx.cwd, target.dir, file), line: firstDifferentLine(text, result.stdout) };
-    return [codeFinding(target, { rule: "biome/format", message: "格式不符合 Biome", ...at })];
-  }
-  const result = await ctx.tools.run({ ...request, args: ["lint", "--reporter=github", ...stdinArgs] });
-  const findings = biomeAnnotations(target, ctx, `${result.stdout}\n${result.stderr}`, command, file);
-  return findings.length === 0 && result.code !== 0 ? [toolFailed(target, "biome", result)] : findings;
+  const args = ["format", `--stdin-file-path=${file}`, BIOME_SKIP_UNKNOWN];
+  const result = await ctx.tools.run({ language: "typescript", tool: "biome", dir: target.dir, args, stdin: text });
+  if (result.code !== 0) return [toolFailed(target, "biome", result)];
+  if (result.stdout === text) return [];
+  const at = { file: toRepoPath(ctx.cwd, target.dir, file), line: firstDifferentLine(text, result.stdout) };
+  return [codeFinding(target, { rule: "biome/format", message: "格式不符合 Biome", ...at })];
 }
 
+/**
+ * Biome 2 reports no lint diagnostics for stdin (only "The contents aren't fixed", exit 1, whatever the code), so
+ * `lint` checks every file on disk, staged or not: the working-tree version (SPEC §7.4). `format` reads the staged
+ * version through stdin.
+ */
 async function biome(target: CodeTarget, ctx: CodeCheckContext, command: "lint" | "format"): Promise<Finding[]> {
   const request = { language: "typescript", tool: "biome", dir: target.dir } as const;
-  const { staged, onDisk } = await splitStaged(target, ctx);
+  const { staged, onDisk } = command === "lint" ? { staged: [], onDisk: target.files } : await splitStaged(target, ctx);
   const results = await runBatched(ctx.tools, request, [command, "--reporter=github", ...BIOME_UNKNOWN], onDisk);
   const findings = results.flatMap((result) => {
     const found = biomeAnnotations(target, ctx, result.stdout, command);
     return found.length === 0 && result.code !== 0 ? [toolFailed(target, "biome", result)] : found;
   });
-  for (const file of staged) findings.push(...(await biomeStaged(target, ctx, command, file)));
+  for (const file of staged) findings.push(...(await biomeFormatStaged(target, ctx, file)));
   return findings;
 }
+
+/** Whether the target's `lint.tool` is Biome, which then also formats. */
+const usesBiome = (target: CodeTarget) => target.effective["lint.tool"] === "biome";
 
 /** ESLint + Prettier (or Biome) and `tsc --noEmit`, run from the component's node_modules (SPEC §6.3). */
 export const typescriptChecker: CodeChecker = {
   language: "typescript",
-  // ESLint, Prettier and Biome read the staged version from stdin; tsc reads the whole project from disk.
-  workingTreeTools: (target) => (target.categories.has("typecheck") ? ["tsc"] : []),
+  // ESLint, Prettier and Biome's formatter read the staged version from stdin; Biome's linter and tsc read the disk.
+  workingTreeTools: (target) => [
+    ...(target.categories.has("lint") && usesBiome(target) ? ["biome lint"] : []),
+    ...(target.categories.has("typecheck") ? ["tsc"] : []),
+  ],
   // `--no-warn-ignored`, `--ignore-unknown` and `--files-ignore-unknown=true` let the tools skip what they don't handle.
   takesEveryFile: true,
   async check(target, ctx) {
     const findings: Finding[] = [];
-    const useBiome = target.effective["lint.tool"] === "biome";
+    const useBiome = usesBiome(target);
     if (target.categories.has("lint")) {
       findings.push(...(await (useBiome ? biome(target, ctx, "lint") : lint(target, ctx))));
     }
@@ -243,7 +244,7 @@ export const typescriptChecker: CodeChecker = {
   /** Lint fixes first, then the formatter, so the formatter has the last word on layout. */
   fixSteps(target) {
     const files = target.files ?? ["."];
-    const biome = target.effective["lint.tool"] === "biome";
+    const biome = usesBiome(target);
     const lintFix = biome
       ? { tool: "biome", args: ["lint", "--write", ...BIOME_UNKNOWN], files, okUpTo: 1 }
       : { tool: "eslint", args: ["--fix", "--no-warn-ignored"], files, okUpTo: 1 };

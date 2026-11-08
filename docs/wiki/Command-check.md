@@ -61,7 +61,7 @@ devguard check [檔案…] [--staged] [--only lint|format|typecheck] [--full]
 
 各種範圍選項的影響：
 
-- **指定檔案**：設定檢查（1–13）照常跑整個專案；`code` 層只檢查這些檔案。`tsc`、`mypy`、`pyright`、`basedpyright` 這類無法只檢查單一檔案的工具，仍會檢查檔案所屬的整個元件。
+- **指定檔案**：設定檢查（1–12）照常跑整個專案；`code` 層只檢查這些檔案。`tsc`、`mypy`、`pyright`、`basedpyright` 這類無法只檢查單一檔案的工具，仍會檢查檔案所屬的整個元件（mypy 設定了 `files` 時依設定，見[語言標準](Language-Standards.md)）。
 - **指定的檔案不是原始碼**：TypeScript 元件內的檔案（`.js`、`.mjs`、`.json`、`.md`、`.prettierrc`、`LICENSE` 等）都交給元件的 linter 與 formatter，由工具決定是否處理（ESLint `--no-warn-ignored`、Prettier `--ignore-unknown`、Biome `--files-ignore-unknown=true`），回報的問題與全專案檢查一致。工具不處理的檔案不產生 finding。只有這類檔案時，不跑型別檢查。
 - **`--staged`**：只跑 `declaration`、`code` 兩層；有依賴檔（`package.json`、lockfile 等）被 staged 時再加上 `deps`。細節見 [hook 頁的 git-pre-commit](Command-hook.md#git-pre-commit)。
 - **宣告的 `ignore`**：符合的檔案從檔案清單中排除，不會觸發 `uncovered-files` 提示，也不會交給 `code`、`tests` 層，即使在命令列上指定或已 staged 也一樣（格式見[專案宣告](Project-Declaration.md#排除路徑ignore)）。以整個目錄為單位執行的工具（元件的 `eslint .`、`prettier .`、`tsc`、`mypy` 等）仍依各自的設定決定範圍；元件目錄內要排除的檔案，也要在該工具的設定中排除。

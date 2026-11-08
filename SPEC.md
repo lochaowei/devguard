@@ -375,6 +375,8 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 
 指定檔案時（檔案參數、`--staged`、pre-commit、Claude 的兩個 hook、`fix --code`），TypeScript 元件內的非原始碼檔案（`.js`、`.mjs`、`.json`、`.md`、`.prettierrc`、`LICENSE` 等）也交給最深的 TypeScript 元件的 linter 與 formatter，由工具決定處理哪些：ESLint 用 `--no-warn-ignored`，Prettier 用 `--ignore-unknown`，Biome 用 `--files-ignore-unknown=true` 與 `--no-errors-on-unmatched`。工具設定的 ignore（`.prettierignore`、ESLint 的 `ignores`、Biome 的 `files`）照常生效；工具不處理的檔案不產生 finding，staged（stdin）時也一樣。因此回報的 lint 與格式問題，與整個元件的檢查對同一組檔案回報的相同。其他語言的原始碼仍歸各自的元件。型別檢查不變：只有元件內有原始碼檔案時才跑。
 
+型別檢查的範圍是整個元件，由型別檢查器的設定決定。mypy 在元件目錄執行：mypy 實際讀到的設定（依 mypy 的順序找 `mypy.ini`、`.mypy.ini`、有 `[tool.mypy]` 的 `pyproject.toml`、有 `[mypy]` 的 `setup.cfg`，元件目錄沒有時往上層目錄找到 repo 根目錄為止，只用第一份）設了 `files` 時，devguard 不傳路徑，依設定檢查；否則傳 `.` 檢查整個元件。上層目錄的設定一樣套用在元件目錄執行的 mypy，所以其中的 `files` 路徑是相對於元件目錄解析。命令列有路徑時 mypy 會忽略設定中的 `files`。pyright 與 basedpyright 本來就不傳路徑。
+
 ### 7.2 第一道：VS Code
 
 CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放一份 `.vscode/`。
@@ -463,10 +465,11 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
   - pre-commit 的項目要等 `pre-commit install --hook-type pre-commit --hook-type pre-push` 把 hook 寫進 hooks 目錄才會執行。`install` 結束時（預覽與套用都一樣）用與「已安裝」環境檢查相同的判斷確認；還沒寫入時印出這條指令作為下一步。`install` 不自己執行它，這則提示也不影響 exit code。
 - **找不到 CLI**：擋下 commit。錯誤訊息附上安裝指令，並提示可用 `--no-verify` 暫時略過。
 - **部分 staged 的檔案**：不做 stash，也不還原任何檔案。
-  - formatter 與單檔 linter 改用 `git show :<path>` 取出 **staged 版本**，再以 stdin 交給工具檢查，例如 `ruff check|format --stdin-filename`、`eslint --stdin --stdin-filename`、`prettier --stdin-filepath`、`biome lint|format --stdin-file-path`，以及 Go 的格式檢查 `golangci-lint fmt --stdin`（套用設定中的 gofumpt、goimports）。這可以避免最常見的誤判：工作目錄已經格式化，但 commit 進去的版本沒有。
+  - formatter 與單檔 linter 改用 `git show :<path>` 取出 **staged 版本**，再以 stdin 交給工具檢查，例如 `ruff check|format --stdin-filename`、`eslint --stdin --stdin-filename`、`prettier --stdin-filepath`、`biome format --stdin-file-path`，以及 Go 的格式檢查 `golangci-lint fmt --stdin`（套用設定中的 gofumpt、goimports）。這可以避免最常見的誤判：工作目錄已經格式化，但 commit 進去的版本沒有。
   - 型別檢查（mypy、pyright、tsc）、golangci-lint 與 Java 工具（Spotless、Checkstyle、PMD）沒有 stdin 模式，而且本來就會讀磁碟上的其他檔案，所以仍然檢查工作目錄的版本。
+  - `biome lint` 也檢查工作目錄的版本，與未 staged 的檔案一樣以檔案路徑執行：Biome 2.x 從 stdin 讀取時不回報任何 lint 診斷（不論內容，一律 exit 1 並只印出 `The contents aren't fixed`），`--write` 則會吞掉錯誤。不把 staged 內容寫成暫存檔再檢查，因為 Biome 依路徑套用 `includes` 與 `overrides`。
   - 印出的警告要說明哪些檢查用的是工作目錄版本。
-- **hook 只做檢查、不做修正**：失敗時印出 `devguard fix --code <files>`。
+- **hook 只做檢查、不做修正**：失敗時印出 `devguard fix --code <files>`。`<files>` 只列出同時符合兩個條件的檔案：這次 commit 有 stage（刪除的檔案不算），而且至少有一個 `fix --code` 能修正的程式碼層 finding（`Finding.fixable`）。只有型別檢查（tsc、mypy、pyright、basedpyright）或其他需手動修正的 finding 的檔案不列入；沒有符合的檔案時不印這一行，commit 仍然被擋下。
 - **專案工具不繼承 git 的 repo 定位變數**：git 執行 hook 前會匯出 `GIT_DIR`、`GIT_WORK_TREE`、`GIT_INDEX_FILE` 等變數（`githooks(5)`），在 worktree 中 `GIT_DIR` 是絕對路徑。CLI 代為執行的專案工具（測試、linter、formatter、型別檢查、套件管理指令）的環境中移除 `GIT_DIR`、`GIT_WORK_TREE`、`GIT_INDEX_FILE`、`GIT_OBJECT_DIRECTORY`、`GIT_ALTERNATE_OBJECT_DIRECTORIES`、`GIT_COMMON_DIR`、`GIT_PREFIX`，其餘變數照常傳遞；否則專案測試在暫存目錄中執行的 `git init`、`git commit` 會寫進外層的 repo。CLI 自己執行的 git 指令保留這些變數，例如 pre-commit 用 `git show :<path>` 讀 staged 版本時仍使用 git 提供的 index。
 - **pre-push 的完整測試由開發者開啟**：`install` 照常安裝 pre-push hook，但 hook 只在環境變數 `DEVGUARD_PRE_PUSH` 為 `full` 時，才執行 `check --full` 中的測試與覆蓋率；未設定或其他值時直接放行，什麼都不印。開關放在開發者的環境而不是專案宣告，所以不改變 §4 的格式，切換時也不需要重新執行 `install`。
 - **「已安裝」的環境檢查**

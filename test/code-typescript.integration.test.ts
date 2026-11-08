@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -155,5 +155,66 @@ describe("TypeScript code checks with the real tools", { timeout: 120_000 }, () 
     expect(brief(await check({ files: ["messy.ts"], only: "format", full: false }))).toEqual([
       "prettier/format messy.ts:2",
     ]);
+  });
+});
+
+/** Biome is not a dependency of this repo: these run only where `@biomejs/biome` is installed in its node_modules. */
+const biomeInstalled = existsSync(join(import.meta.dirname, "..", "node_modules", "@biomejs", "biome", "package.json"));
+
+describe.runIf(biomeInstalled)("TypeScript code checks with the real Biome (#120)", { timeout: 120_000 }, () => {
+  let biomeDir = "";
+  const files: Record<string, string> = {
+    ".devguard.yaml":
+      "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: typescript\n    overrides:\n      lint.tool: biome\n",
+    "package.json": '{\n  "type": "module"\n}\n',
+    "biome.json": '{ "formatter": { "lineWidth": 120 } }\n',
+    "clean.ts": "export const clean = 1;\n",
+    "bad.ts": "export const bad = 1;\ndebugger;\n",
+    "tidy.ts": "export const tidy = 1;\n",
+  };
+
+  beforeAll(() => {
+    biomeDir = mkdtempSync(join(tmpdir(), "devguard-biome-"));
+    symlinkSync(join(import.meta.dirname, "..", "node_modules"), join(biomeDir, "node_modules"), "junction");
+    for (const [name, text] of Object.entries(files)) writeFileSync(join(biomeDir, name), text);
+  });
+
+  afterAll(() => {
+    rmSync(biomeDir, { recursive: true, force: true });
+  });
+
+  /** Only the files in `staged` are checked, with those staged versions. */
+  const checkStaged = (only: "lint" | "format", staged: Record<string, string>) =>
+    runCheck(
+      {
+        cwd: biomeDir,
+        today: TODAY,
+        listFiles: () => Promise.resolve(Object.keys(staged)),
+        scope: { files: Object.keys(staged), only, full: false },
+        stagedText: (path) => Promise.resolve(staged[path]),
+      },
+      [declarationLayer, codeLayer],
+    ).then((r) => brief(r.findings));
+
+  it("passes a staged file without lint problems", async () => {
+    expect(await checkStaged("lint", { "clean.ts": "export const clean = 1;\n" })).toEqual([]);
+  });
+
+  it("reports a staged lint error with file and line", async () => {
+    expect(await checkStaged("lint", { "bad.ts": "export const bad = 1;\ndebugger;\n" })).toEqual([
+      "biome/lint/suspicious/noDebugger bad.ts:2",
+    ]);
+  });
+
+  it("checks the format of the staged version, not the working tree", async () => {
+    expect(await checkStaged("format", { "tidy.ts": "export   const tidy = 1;\n" })).toEqual([
+      "biome/format tidy.ts:1",
+    ]);
+  });
+
+  it("lints nothing for a staged file deleted from the working tree but still checks its staged format", async () => {
+    const staged = { "clean.ts": "export const clean = 1;\n", "gone.ts": "export   const gone = 1;\n" };
+    expect(await checkStaged("lint", staged)).toEqual([]);
+    expect(await checkStaged("format", staged)).toEqual(["biome/format gone.ts:1"]);
   });
 });

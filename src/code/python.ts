@@ -1,5 +1,5 @@
 import type { Finding } from "../report/finding.ts";
-import { isPyrightTool, type PyrightTool } from "../settings/type-checkers.ts";
+import { isPyrightTool, mypyConfigSetsFiles, type PyrightTool } from "../settings/type-checkers.ts";
 import { pythonToolRequest, type ToolResult } from "../tools/runner.ts";
 import { codeFinding, firstDifferentLine, runBatched, splitStaged, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
@@ -125,9 +125,19 @@ function mypyFinding(target: CodeTarget, ctx: CodeCheckContext, text: string): F
   });
 }
 
-/** mypy checks the whole component ("."), honouring its configured excludes (SPEC §7.1). */
+/**
+ * mypy checks the `files` its configuration sets, or else the whole component ("."), honouring its configured
+ * excludes (SPEC §7.1). A path on the command line would make mypy ignore `files` (#110).
+ */
 async function mypy(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
-  const args = ["--no-pretty", "--no-error-summary", "--show-error-codes", "--no-color-output", "."];
+  const configSetsFiles = await mypyConfigSetsFiles(target.dir, ctx.readText);
+  const args = [
+    "--no-pretty",
+    "--no-error-summary",
+    "--show-error-codes",
+    "--no-color-output",
+    ...(configSetsFiles ? [] : ["."]),
+  ];
   const result = await ctx.tools.run({ ...pythonToolRequest(target, "mypy"), args });
   if (result.code === 0) return [];
   const findings = result.stdout.split(/\r?\n/).flatMap((text) => mypyFinding(target, ctx, text) ?? []);
