@@ -10,6 +10,10 @@ export const EOL_RULE = "* text=auto eol=lf";
 
 const normalize = (line: string): string => line.trim().replace(/\s+/g, " ");
 
+/** Whether a `.gitattributes` text has the LF rule. */
+export const hasEolRule = (text: string | undefined): boolean =>
+  text?.split(/\r?\n/).some((l) => normalize(l) === EOL_RULE) ?? false;
+
 /** Repo-wide settings check: `.gitattributes` must contain `* text=auto eol=lf` (SPEC §5.1). */
 export const gitattributesLayer: CheckLayer = {
   id: "gitattributes",
@@ -17,7 +21,7 @@ export const gitattributesLayer: CheckLayer = {
   async run({ cwd, resolution }) {
     if (!resolution?.standard) return { findings: [] };
     const text = await readIfExists(join(cwd, GITATTRIBUTES));
-    if (text?.split(/\r?\n/).some((l) => normalize(l) === EOL_RULE)) return { findings: [] };
+    if (hasEolRule(text)) return { findings: [] };
     const repairs: Repair[] = [{ op: "line", file: GITATTRIBUTES, value: EOL_RULE }];
     return {
       findings: [
