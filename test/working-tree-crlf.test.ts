@@ -147,6 +147,34 @@ describe("fix: hint to check out again after adding the eol rule (#84)", () => {
     expect(deleted).toBe(1);
   });
 
+  it("keeps a tsconfig.json stored as CRLF in the index (no eol rule) in CRLF, so git diff shows only the added settings", async () => {
+    const tsconfig = [
+      "{",
+      '  "compilerOptions": {',
+      '    "target": "es2022",',
+      '    "module": "nodenext",',
+      '    "outDir": "dist",',
+      '    "rootDir": "src",',
+      '    "declaration": true',
+      "  }",
+      "}",
+      "",
+    ].join("\r\n");
+    const decl = "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: typescript\n";
+    const dir = repo({ ".devguard.yaml": decl, "tsconfig.json": tsconfig });
+    const eol = execFileSync("git", ["ls-files", "--eol", "--", "tsconfig.json"], { cwd: dir, encoding: "utf8" });
+    expect(eol).toMatch(/^i\/crlf\s/);
+    await fixYes(dir);
+    const after = readFileSync(join(dir, "tsconfig.json"), "utf8");
+    expect(after).not.toBe(tsconfig);
+    expect(after.split("\n").length - 1).toBe(after.split("\r\n").length - 1);
+    const numstat = execFileSync("git", ["diff", "--numstat", "--", "tsconfig.json"], { cwd: dir, encoding: "utf8" });
+    const [added, deleted] = numstat.trim().split(/\s+/).map(Number);
+    expect(added).toBeGreaterThan(0);
+    // Only the line that gains a trailing comma is replaced; the rest of the file is untouched.
+    expect(deleted).toBe(1);
+  });
+
   it("prints no hint when .gitattributes already has the rule (nothing written to it)", async () => {
     const files = { ".devguard.yaml": DECL, ".gitattributes": "* text=auto eol=lf\n", "app.py": "x = 1\n" };
     const dir = repo(files, ["app.py"]);

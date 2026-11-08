@@ -1,14 +1,13 @@
 import { parse as parseToml, patch as patchToml, stringify as stringifyToml } from "@decimalturn/toml-patch";
 import { applyEdits, modify, parse as parseJsoncTree, type FormattingOptions, type ParseError } from "jsonc-parser";
 import { isScalar, isSeq, parse as parseYaml, parseDocument, type Document, type YAMLSeq } from "yaml";
+import { baseName } from "../repo/paths.ts";
 import type { KeyEdit, KeyPath } from "./repair.ts";
 
 /** How a structured shared file is read and written. */
 export type EditFormat = "toml" | "jsonc" | "yaml" | "lines";
 
 const LINE_FILES = new Set([".gitattributes", ".gitignore", "lombok.config"]);
-
-const baseName = (file: string): string => file.slice(file.lastIndexOf("/") + 1);
 
 /** The format of a file whose managed keys the CLI may edit; undefined when it is not a structured file it can edit. */
 export function editFormat(file: string, text = ""): EditFormat | undefined {
@@ -140,15 +139,34 @@ function editToml(text: string, edits: readonly KeyEdit[]): string {
   return out;
 }
 
+/** One TOML key segment: bare, "basic" (with escapes) or 'literal'. */
+const KEY_SEGMENT = String.raw`(?:[A-Za-z0-9_-]+|"(?:[^"\\\n]|\\.)*"|'[^'\n]*')`;
+/** A whole `[table]` or `[[array]]` header line, whose key may hold quoted segments with brackets in them. */
+const TABLE_HEADER = new RegExp(
+  String.raw`^(\[\[?)[ \t]*(${KEY_SEGMENT}(?:[ \t]*\.[ \t]*${KEY_SEGMENT})*)[ \t]*(\]\]?)[ \t]*$`,
+);
+
+/** Whether a line opens or closes a multi-line string: an odd number of `"""` or `'''` delimiters on it. */
+const togglesMultiline = (line: string): boolean => ((line.match(/"""|'''/g) ?? []).length & 1) === 1;
+
 /**
  * stringify writes the sub-tables of a section's values (`rules.main` under `[linters.settings.depguard]`) with
- * headers relative to the root, so they get the section's name in front.
+ * headers relative to the root, so they get the section's name in front. Only real header lines are renamed: a line
+ * inside a multi-line string that merely looks like `[x]` is left alone.
  */
 function underTable(toml: string, name: string): string {
   if (name === "") return toml;
-  return toml.replace(/^(\[\[?)([^\]\n]+)(\]\]?)[ \t]*$/gm, (_, open: string, key: string, close: string) => {
-    return `${open}${name}.${key}${close}`;
-  });
+  let inString = false;
+  return toml
+    .split("\n")
+    .map((line) => {
+      const header = inString ? null : TABLE_HEADER.exec(line);
+      if (togglesMultiline(line)) inString = !inString;
+      if (!header) return line;
+      const [, open = "", key = "", close = ""] = header;
+      return `${open}${name}.${key}${close}`;
+    })
+    .join("\n");
 }
 
 function jsonFormatting(text: string): FormattingOptions {

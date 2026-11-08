@@ -123,6 +123,18 @@ describe("editConfigText: TOML (SPEC §13 T1)", () => {
       linters: { enable: ["gosec"], settings: { depguard: { rules } } },
     });
   });
+
+  it("puts nested tables with bracketed quoted keys and bracketed string lines under the section (#85)", () => {
+    const text = 'version = "2"\n';
+    const rules = { "main]x": { desc: "line\n[other]\n[[more]]", deny: [{ pkg: "io/ioutil" }] }, "[odd]": { k: 1 } };
+    const out = editConfigText(".golangci.toml", text, [
+      { op: "set", path: ["linters", "settings", "depguard", "rules"], value: rules },
+    ]);
+    expect(parseConfigText(".golangci.toml", out)).toEqual({
+      version: "2",
+      linters: { settings: { depguard: { rules } } },
+    });
+  });
 });
 
 describe("editConfigText: JSONC", () => {
