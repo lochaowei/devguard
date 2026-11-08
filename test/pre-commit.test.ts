@@ -35,6 +35,19 @@ function repo(): { dir: string; git: (...args: string[]) => string; write: (name
   return { dir, git, write };
 }
 
+/** A git repo with one commit at `path` under `dir`: staged in `dir`, it is a submodule (gitlink). */
+function nestedRepo(dir: string, path: string): void {
+  const sub = join(dir, path);
+  mkdirSync(sub, { recursive: true });
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: sub, encoding: "utf8" });
+  git("init", "-q");
+  git("config", "user.email", "t@example.com");
+  git("config", "user.name", "t");
+  writeFileSync(join(sub, "x.py"), "import os\n");
+  git("add", ".");
+  git("commit", "-q", "--no-verify", "-m", "sub");
+}
+
 interface FakeOptions {
   /** Ruff offers a safe fix for F401, so `devguard fix --code` resolves it. */
   safeFix?: boolean;
@@ -107,15 +120,7 @@ describe("runPreCommit (SPEC §7.4)", () => {
     );
     git("add", ".devguard.yaml");
     git("commit", "-q", "--no-verify", "-m", "web");
-    const sub = join(dir, "web", "sub");
-    mkdirSync(sub, { recursive: true });
-    const subGit = (...args: string[]) => execFileSync("git", args, { cwd: sub, encoding: "utf8" });
-    subGit("init", "-q");
-    subGit("config", "user.email", "t@example.com");
-    subGit("config", "user.name", "t");
-    writeFileSync(join(sub, "x.py"), "import os\n");
-    subGit("add", ".");
-    subGit("commit", "-q", "--no-verify", "-m", "sub");
+    nestedRepo(dir, "web/sub");
     git("add", "web/sub");
     write("app.py", "import os\n");
     git("add", "app.py");
@@ -129,6 +134,20 @@ describe("runPreCommit (SPEC §7.4)", () => {
     expect(out).toContain("app.py");
     expect(out).not.toContain("sub");
     expect(fake.calls.filter((c) => c.dir === "web")).toEqual([]);
+  });
+
+  it("checks a file staged in place of a submodule (#147)", async () => {
+    const { dir, git, write } = repo();
+    nestedRepo(dir, "tool.py");
+    git("add", "tool.py");
+    git("commit", "-q", "--no-verify", "-m", "submodule");
+    git("rm", "-q", "--cached", "tool.py");
+    rmSync(join(dir, "tool.py"), { recursive: true, force: true });
+    write("tool.py", "import os\n");
+    git("add", "tool.py");
+    const { code, out } = await preCommit(dir, fakeTools().tools);
+    expect(code).toBe(1);
+    expect(out).toContain("tool.py");
   });
 
   it("skips staged files the declaration ignores", async () => {

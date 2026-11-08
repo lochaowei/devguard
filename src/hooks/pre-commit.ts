@@ -43,17 +43,27 @@ const nulList = (out: string) => out.split("\0").filter((p) => p !== "");
 const GITLINK_MODE = "160000";
 
 /**
- * `git diff --cached --raw -z`: status and path of each staged change (renames as delete + add). A submodule (gitlink)
- * is left out: its files are not this repo's, and it has no staged text to read (#147).
+ * A staged change as `stagedEntries` keeps it, given its `--raw` modes. A submodule (gitlink) has no staged text and
+ * its files are not this repo's (#147): one staged as a submodule is left out, or counts as deleting the file it
+ * replaced; a file staged in place of a submodule is checked like any other.
  */
+function withoutGitlink(oldMode: string, newMode: string, status: string, path: string): StagedEntry | undefined {
+  const wasFile = oldMode !== GITLINK_MODE && !/^0+$/.test(oldMode);
+  if (newMode === GITLINK_MODE) return wasFile ? { status: "D", path } : undefined;
+  // A deleted or unmerged submodule has no file to check either.
+  if (oldMode === GITLINK_MODE && (status === "D" || status === "U")) return undefined;
+  return { status, path };
+}
+
+/** `git diff --cached --raw -z`: status and path of each staged change (renames as delete + add). */
 async function stagedEntries(ctx: Pick<HookContext, "cwd" | "exec">): Promise<StagedEntry[]> {
-  const parts = nulList(await git(ctx, ["diff", "--cached", "--raw", "-z", "--no-renames", "--no-abbrev"]));
+  const parts = nulList(await git(ctx, ["diff", "--cached", "--raw", "-z", "--no-renames"]));
   const entries: StagedEntry[] = [];
   for (let i = 0; i + 1 < parts.length; i += 2) {
     // `:<old mode> <new mode> <old sha> <new sha> <status>`, then the path.
-    const [oldMode, newMode, , , status = ""] = (parts[i] ?? "").slice(1).split(" ");
-    if (oldMode === GITLINK_MODE || newMode === GITLINK_MODE) continue;
-    entries.push({ status, path: parts[i + 1] ?? "" });
+    const [oldMode = "", newMode = "", , , status = ""] = (parts[i] ?? "").slice(1).split(" ");
+    const entry = withoutGitlink(oldMode, newMode, status, parts[i + 1] ?? "");
+    if (entry) entries.push(entry);
   }
   return entries;
 }
