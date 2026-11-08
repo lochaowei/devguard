@@ -280,3 +280,43 @@ describe("devguard install: a type checker the project already configures (#68)"
     expect(mypy).toContain("typecheck.tool: mypy");
   });
 });
+
+describe("a write path blocked by a file (#129)", () => {
+  // Windows checks a git symlink out as a plain file holding its target when core.symlinks is false.
+  const blocked = () => repo({ ".devguard.yaml": DECL, ".claude/skills": "../.agents/skills" });
+
+  it("install writes everything else, reports the blocked path and exits 1", async () => {
+    const dir = blocked();
+    const out = io();
+    expect(await runInstall({ cwd: dir, today: TODAY, io: out })).toBe(1);
+    expect(inspectHookFile(read(dir, ".git/hooks/pre-commit")).kind).toBe("devguard");
+    expect(inspectHookFile(read(dir, ".git/hooks/pre-push")).kind).toBe("devguard");
+    expect(read(dir, ".claude/settings.json")).toContain("devguard");
+    expect(read(dir, ".claude/skills")).toBe("../.agents/skills");
+    expect(out.out).toContain(".claude/skills/standards-doctor/SKILL.md：錯誤：");
+    expect(out.out).toContain(".claude/skills 是檔案，不是目錄");
+    expect(out.out).not.toContain("core.symlinks");
+  });
+
+  it("fix repairs the other settings, reports the same blocked path and exits 1", async () => {
+    const dir = blocked();
+    await runInstall({ cwd: dir, today: TODAY, io: io() });
+    rmSync(join(dir, "pyproject.toml"));
+    const out = io();
+    expect(await runFix({ cwd: dir, today: TODAY, io: out })).toBe(1);
+    expect(read(dir, "pyproject.toml")).toContain("[tool.ruff]");
+    expect(read(dir, ".claude/skills")).toBe("../.agents/skills");
+    expect(out.out).toContain(".claude/skills/standards-doctor/SKILL.md：錯誤：");
+    expect(out.out).toContain(".claude/skills 是檔案，不是目錄");
+  });
+
+  it("names an unexpanded git symlink and core.symlinks when the index has the path as a symlink", async () => {
+    const dir = blocked();
+    const blob = execFileSync("git", ["hash-object", "-w", ".claude/skills"], { cwd: dir, encoding: "utf8" }).trim();
+    execFileSync("git", ["update-index", "--add", "--cacheinfo", `120000,${blob},.claude/skills`], { cwd: dir });
+    const out = io();
+    expect(await runInstall({ cwd: dir, today: TODAY, io: out })).toBe(1);
+    expect(out.out).toContain("symlink");
+    expect(out.out).toContain("core.symlinks");
+  });
+});

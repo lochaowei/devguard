@@ -7,7 +7,14 @@ import { normalizeDir } from "../declaration/path.ts";
 import type { EffectiveItem, ResolvedComponent } from "../declaration/resolve.ts";
 import { DECLARATION_FILE, type Declaration, type RawOverride } from "../declaration/types.ts";
 import { writesItself } from "../fix/category.ts";
-import { applyPlan, planChanges, renderPlan, type ChangePlan } from "../fix/plan.ts";
+import {
+  applyPlan,
+  hasBlockedWrites,
+  planChanges,
+  renderPlan,
+  withoutBlockedWrites,
+  type ChangePlan,
+} from "../fix/plan.ts";
 import type { KeyPath, Repair } from "../fix/repair.ts";
 import { createDeclarationLayer, readDeclaration } from "../layers/declaration.ts";
 import { rangeInForce } from "../layers/tool-versions.ts";
@@ -313,7 +320,10 @@ export async function planStandardUpgrade(options: UpgradeOptions): Promise<Upgr
     newFindings,
     tools,
     commands: commandsFor(tools, (file) => existsSync(join(options.cwd, file))),
-    changes: await planChanges(options.cwd, [...declarationEdits, ...configRepairs]),
+    changes: await withoutBlockedWrites(
+      options.cwd,
+      await planChanges(options.cwd, [...declarationEdits, ...configRepairs]),
+    ),
   };
 }
 
@@ -405,7 +415,8 @@ export async function runStandardUpgrade(options: UpgradeOptions): Promise<numbe
     return plan.code;
   }
   options.write(renderUpgrade(plan));
-  if (plan.changes.writes.length === 0 && !plan.commands.some((c) => c.request)) return 0;
+  const blocked = hasBlockedWrites(plan.changes);
+  if (plan.changes.writes.length === 0 && !plan.commands.some((c) => c.request)) return blocked ? 1 : 0;
   if (!options.apply) {
     options.write("只預覽，沒有套用。加上 --apply 才會套用。\n");
     return 1;
@@ -413,5 +424,5 @@ export async function runStandardUpgrade(options: UpgradeOptions): Promise<numbe
   await applyPlan(options.cwd, plan.changes);
   await runCommands(options.tools ?? createToolRunner({ cwd: options.cwd }), plan.commands, options.write);
   options.write("已套用。\n");
-  return 0;
+  return blocked ? 1 : 0;
 }

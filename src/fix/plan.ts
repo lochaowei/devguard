@@ -1,5 +1,7 @@
-import { chmod, mkdir, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { chmod, mkdir, stat, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { normalizePath } from "../declaration/path.ts";
+import { nodeExec, type Exec } from "../process/exec.ts";
 import { redactSecrets } from "../report/redact.ts";
 import { fileCategory, type FileCategory } from "./category.ts";
 import { editConfigText, editFormat, parseConfigText } from "./edit.ts";
@@ -25,9 +27,10 @@ export interface Printed {
    * `conflict`: a setting that stops the git hooks from running (`core.hooksPath`, SPEC §7.4). `typecheck`: the
    * project already configures a type checker other than the declared one (#68). `unparseable`: editing a shared TOML
    * file would leave it unparseable, so it is not written (#105). `foreign`: a CLI-owned file devguard did not generate,
-   * so it is not overwritten (#100).
+   * so it is not overwritten (#100). `blocked`: a file sits where the path needs a directory, so it cannot be written
+   * (#129).
    */
-  category: "snippet" | "user" | "conflict" | "typecheck" | "unparseable" | "foreign";
+  category: "snippet" | "user" | "conflict" | "typecheck" | "unparseable" | "foreign" | "blocked";
   lines: string[];
 }
 
@@ -233,6 +236,7 @@ const PRINT_LABEL = {
   typecheck: "警告：已有宣告以外的型別檢查器設定，不會修改宣告；請自行決定",
   unparseable: "錯誤：修改後不是合法的 TOML，不會修改；請自行套用",
   foreign: "這份檔案不是 devguard 產生的，不會覆寫；請自行加入以下內容",
+  blocked: "錯誤：路徑上有檔案而不是目錄，無法寫入；請自行處理",
 } as const;
 
 /** A diff line (`-` / `+` / ` ` marker) with any credential it shows masked (SPEC §10.3). */
@@ -259,6 +263,59 @@ export function renderPlan(plan: ChangePlan): string {
   if (out.length === 0) return "沒有需要修正的設定。\n";
   return out.join("\n");
 }
+
+/** The closest existing ancestor of `path` when it is a file rather than a directory; undefined otherwise. */
+async function fileInTheWay(path: string): Promise<string | undefined> {
+  for (let dir = dirname(path); ; dir = dirname(dir)) {
+    try {
+      return (await stat(dir)).isDirectory() ? undefined : dir;
+    } catch {
+      // Missing (or under a file, ENOTDIR): look one level up.
+    }
+    if (dirname(dir) === dir) return undefined;
+  }
+}
+
+/** Whether `rel` (relative to `cwd`) is a symlink in the git index (mode 120000). */
+async function isGitSymlink(cwd: string, rel: string, exec: Exec): Promise<boolean> {
+  try {
+    const result = await exec({ file: "git", args: ["ls-files", "-s", "--", rel], cwd });
+    return result.code === 0 && result.stdout.startsWith("120000 ");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Takes out of the plan each write whose path runs through a file where a directory is needed, such as a git symlink
+ * Windows checked out as a plain file (#129), and prints it as `blocked` instead. The other writes stay.
+ */
+export async function withoutBlockedWrites(cwd: string, plan: ChangePlan, exec: Exec = nodeExec): Promise<ChangePlan> {
+  const writes: FileWrite[] = [];
+  const blocked: Printed[] = [];
+  for (const w of plan.writes) {
+    const file = await fileInTheWay(resolve(cwd, w.file));
+    if (file === undefined) {
+      writes.push(w);
+      continue;
+    }
+    const rel = relative(cwd, file);
+    const inside = rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+    const shown = normalizePath(inside ? rel : file);
+    const lines = [`${shown} 是檔案，不是目錄`];
+    if (inside && (await isGitSymlink(cwd, rel, exec))) {
+      lines.push(
+        `${shown} 在 git 中是 symlink（mode 120000），checkout 時沒有展開成 symlink（core.symlinks 為 false，Windows 上常見）；`,
+        `請先讓系統允許建立 symlink（Windows：開啟開發人員模式），執行 git config core.symlinks true，再重新 checkout ${shown}`,
+      );
+    }
+    blocked.push({ file: w.file, category: "blocked", lines });
+  }
+  return { writes, printed: [...plan.printed, ...blocked] };
+}
+
+/** Whether the plan has writes that cannot be made (#129): the command then exits 1. */
+export const hasBlockedWrites = (plan: ChangePlan): boolean => plan.printed.some((p) => p.category === "blocked");
 
 /** Writes the planned files: repo-relative, or absolute (a hooks directory outside the work tree). Printed items are never written. */
 export async function applyPlan(cwd: string, plan: ChangePlan): Promise<void> {

@@ -94,7 +94,7 @@ command -v devguard >/dev/null 2>&1 || { echo 'devguard：找不到 CLI（devgua
 | Exit code | 情況 |
 |---|---|
 | `0` | 已套用，或沒有需要寫入的檔案 |
-| `1` | 有需要寫入的檔案但沒有套用（拒絕、非互動環境沒有 `--yes`） |
+| `1` | 有需要寫入的檔案但沒有套用（拒絕、非互動環境沒有 `--yes`）；或有檔案因為路徑上有檔案而不是目錄而無法寫入（例如 Windows 上未展開成 symlink 的 `.claude/skills`），即使其他檔案與 git hook 已經套用。見 [fix 的路徑上有檔案而不是目錄](Command-fix.md#路徑上有檔案而不是目錄) |
 | `2` | 沒有 hook 框架且不是 git repo：`<dir> 不是 git repo，無法安裝 git hook`；或其他 CLI 失敗 |
 
 「下一步」的提示不影響 exit code。

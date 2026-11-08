@@ -6,7 +6,7 @@ import type { Exec } from "../process/exec.ts";
 import { crlfWorkingTreeFiles, RECHECKOUT_HINT } from "../repo/eol.ts";
 import { renderText } from "../report/render.ts";
 import { previewThenApply, type Interaction } from "./interaction.ts";
-import { applyPlan, planChanges, renderPlan, type ChangePlan } from "./plan.ts";
+import { applyPlan, hasBlockedWrites, planChanges, renderPlan, withoutBlockedWrites, type ChangePlan } from "./plan.ts";
 
 export interface FixOptions extends CheckOptions {
   io: Interaction;
@@ -50,7 +50,11 @@ export async function runFix(options: FixOptions, layers: readonly CheckLayer[] 
     return 1;
   }
   const hooks = await planFixHooks(options.cwd, options.exec);
-  const plan: ChangePlan = { writes: [...config.writes, ...hooks.writes], printed: config.printed };
+  const plan = await withoutBlockedWrites(
+    options.cwd,
+    { writes: [...config.writes, ...hooks.writes], printed: config.printed },
+    options.exec,
+  );
   // An object, not a `let`: TypeScript does not see the assignment inside `apply` and would narrow it to false.
   const applyOutcome = { applied: false };
   const code = await previewThenApply(options.io, {
@@ -65,7 +69,7 @@ export async function runFix(options: FixOptions, layers: readonly CheckLayer[] 
     options.io.write(`\n${GITATTRIBUTES} 的換行規則只影響之後 checkout 的檔案，工作目錄裡已經是 CRLF 的檔案不會變。\n`);
     options.io.write(`${RECHECKOUT_HINT}\n`);
   }
-  return code;
+  return hasBlockedWrites(plan) ? 1 : code;
 }
 
 /**
