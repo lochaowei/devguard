@@ -14,6 +14,10 @@ Default labels: needs-triage, needs-info, ready-for-agent, ready-for-human, wont
 
 Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
+### Testing
+
+Real-project test rounds follow `docs/testing/procedure.md`. Throwaway repos for reproducing a bug go under `.scratch/repro/<name>/` (gitignored); temp dirs outside the worktree may be blocked.
+
 ### Wiki
 
 `docs/wiki/` is the source of truth for the GitHub Wiki; `.github/workflows/wiki.yml` publishes it on every push to main, overwriting edits made on the wiki itself. Link pages as `Page.md` and repo files as `../../path` — the sync rewrites both for the wiki. When a change alters a command's behaviour, flags or exit codes, update the matching `docs/wiki/` page in the same PR.
