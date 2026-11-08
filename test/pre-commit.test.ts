@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runPreCommit } from "../src/hooks/pre-commit.ts";
-import { ToolMissingError, type ToolRequest, type ToolRunner } from "../src/tools/runner.ts";
+import { ToolMissingError, type ToolRequest, type ToolResult, type ToolRunner } from "../src/tools/runner.ts";
 import { TODAY } from "./helpers.ts";
 import { isolateGit } from "./git-isolation.ts";
 
@@ -35,19 +35,46 @@ function repo(): { dir: string; git: (...args: string[]) => string; write: (name
   return { dir, git, write };
 }
 
-/** Ruff reports F401 for any stdin containing "import os"; everything else is clean. */
-function fakeTools() {
+interface FakeOptions {
+  /** Ruff offers a safe fix for F401, so `devguard fix --code` resolves it. */
+  safeFix?: boolean;
+  /** Extra files Ruff reports a safe-fix F401 for, whatever it is asked to check. */
+  ruffAlso?: string[];
+  /** mypy's error lines; mypy passes when there are none. */
+  mypy?: string[];
+}
+
+const unusedImport = (filename: string, safe: boolean) => ({
+  code: "F401",
+  message: "unused",
+  filename,
+  location: { row: 1 },
+  fix: safe ? { applicability: "safe" } : null,
+});
+
+/** `ruff check` on one staged file's stdin: F401 when it contains "import os", plus `ruffAlso`. */
+function ruffCheck(req: ToolRequest, options: FakeOptions): ToolResult {
+  const args = req.args ?? [];
+  const file = args[args.indexOf("--stdin-filename") + 1] ?? "app.py";
+  const unused = req.stdin?.includes("import os") === true;
+  const diagnostics = [
+    ...(unused ? [unusedImport(file, options.safeFix === true)] : []),
+    ...(options.ruffAlso ?? []).map((f) => unusedImport(f, true)),
+  ];
+  return { code: diagnostics.length > 0 ? 1 : 0, stdout: JSON.stringify(diagnostics), stderr: "" };
+}
+
+/** Ruff reports F401 for any stdin containing "import os"; mypy prints the given lines; everything else is clean. */
+function fakeTools(options: FakeOptions = {}) {
   const calls: ToolRequest[] = [];
   const tools: ToolRunner = {
     run(req) {
       calls.push(req);
-      const unused = req.stdin?.includes("import os") === true && req.args?.[0] === "check";
-      const filename = join("C:", "x", "app.py");
-      const stdout =
-        req.args?.[0] === "check"
-          ? JSON.stringify(unused ? [{ code: "F401", message: "unused", filename, location: { row: 1 } }] : [])
-          : (req.stdin ?? "");
-      return Promise.resolve({ code: unused ? 1 : 0, stdout, stderr: "" });
+      const mypy = options.mypy ?? [];
+      if (req.tool === "mypy")
+        return Promise.resolve({ code: mypy.length > 0 ? 1 : 0, stdout: mypy.join("\n"), stderr: "" });
+      if (req.args?.[0] === "check") return Promise.resolve(ruffCheck(req, options));
+      return Promise.resolve({ code: 0, stdout: req.stdin ?? "", stderr: "" });
     },
   };
   return { tools, calls };
@@ -117,14 +144,55 @@ describe("runPreCommit (SPEC §7.4)", () => {
     write("app.py", "import os\n");
     git("add", "app.py");
     write("app.py", "x = 2\n");
-    const { tools, calls } = fakeTools();
+    const { tools, calls } = fakeTools({ safeFix: true });
     const { code, out } = await preCommit(dir, tools);
     expect(code).toBe(1);
     expect(calls.find((c) => c.args?.[0] === "check")?.stdin).toBe("import os\n");
     expect(calls.some((c) => c.tool === "mypy")).toBe(true);
     expect(out).toContain("mypy");
     expect(out).toContain("工作目錄版本");
-    expect(out).toContain("devguard fix --code ");
+    expect(out).toContain("修正程式碼：devguard fix --code app.py\n");
+  });
+
+  it("prints no fix command when only the type checker finds errors, and still blocks (#123)", async () => {
+    const { dir, git, write } = repo();
+    write("app.py", "y = 1\n");
+    git("add", "app.py");
+    const mypy = ["app.py:1: error: Bad type  [assignment]", "other.py:3: error: Bad type  [assignment]"];
+    const { code, out } = await preCommit(dir, fakeTools({ mypy }).tools);
+    expect(code).toBe(1);
+    expect(out).toContain("mypy/assignment");
+    expect(out).not.toContain("修正程式碼：");
+  });
+
+  it("lists the staged file with a fixable finding, not an unstaged file with type errors (#123)", async () => {
+    const { dir, git, write } = repo();
+    write("app.py", "import os\n");
+    git("add", "app.py");
+    const mypy = ["other.py:3: error: Bad type  [assignment]"];
+    const { code, out } = await preCommit(dir, fakeTools({ safeFix: true, mypy }).tools);
+    expect(code).toBe(1);
+    expect(out).toContain("修正程式碼：devguard fix --code app.py\n");
+  });
+
+  it("leaves out unstaged files even when their findings are fixable (#123)", async () => {
+    const { dir, git, write } = repo();
+    write("app.py", "import os\n");
+    git("add", "app.py");
+    const { code, out } = await preCommit(dir, fakeTools({ safeFix: true, ruffAlso: ["other.py"] }).tools);
+    expect(code).toBe(1);
+    expect(out).toContain("other.py:1");
+    expect(out).toContain("修正程式碼：devguard fix --code app.py\n");
+  });
+
+  it("prints no fix command when the staged file's findings all need a manual fix (#123)", async () => {
+    const { dir, git, write } = repo();
+    write("app.py", "import os\n");
+    git("add", "app.py");
+    const { code, out } = await preCommit(dir, fakeTools().tools);
+    expect(code).toBe(1);
+    expect(out).toContain("ruff/F401");
+    expect(out).not.toContain("修正程式碼：");
   });
 
   it("says nothing about the working tree when staged and working versions match", async () => {
