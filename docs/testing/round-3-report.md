@@ -31,7 +31,7 @@ flowchart LR
 
 ## 2. 受測專案總覽
 
-格內記號：`E` 錯誤、`D` 偏離、`H` 提示。各步驟的 exit code 與完整觀察見第 5 節。
+格內記號：`E` 錯誤、`D` 偏離、`H` 提示。各步驟的 exit code 與完整觀察見第 6 節。
 
 | 語言 | 專案 | 結構／工具鏈特徵 | 標準 | 主要結果 |
 | :--- | :--- | :--- | :--- | :--- |
@@ -62,6 +62,9 @@ flowchart LR
 - Python：5 個都有執行，3 個先因缺 pytest-cov 得到沒有提示的 exit 4（#109），補上後測試都能跑完。
 - Go：5 個都有執行，失敗的測試都和直接執行 `go test` 一致（資料庫、Windows symlink 權限、不支援 Windows 的範例）。
 - Java：4 個實際呼叫了 Maven 或 Gradle，但**只有 java-jwt 與 jackson-databind 真的跑了測試**。pf4j 與 disruptor 沒有 JaCoCo，在測試前就失敗（#99）；JSON-java 被 #96 擋住。
+
+> [!IMPORTANT]
+> #82 的驗收條件「Java 專案至少有 3 個跑完 `check --full`」**只達成 2 個**。另外兩個雖然實際執行了 Maven／Gradle，但因 #99 在測試前就失敗。
 
 ---
 
@@ -145,7 +148,7 @@ devguard 回報「沒問題」，實際上標準要求的檢查沒有執行。
 
 ### 6.1 TypeScript
 
-devguard 0.3.1，Windows 11、Git for Windows（`core.autocrlf=true`、`core.symlinks=false`）、Node 24.21.0、npm 11.19.0、Bun 1.4.4。五個專案的 `draft` 都寫入 `standard: team@1.3.0`（沒有改用 legacy）。
+devguard 0.3.1，Windows 11、Git for Windows（`core.autocrlf=true`、`core.symlinks=false`）、Node 24.21.0、npm 11.19.0、Bun 1.4.4。五個專案的 `draft` 都寫入 `standard: team@1.3.0`（沒有改用基線標準 `legacy@1.0.0`）。
 流程：clone → `draft` → **安裝依賴前**先跑一次 `doctor`（記錄缺工具的回報）→ 安裝依賴 → `check` → `fix --yes` → `check` → `check --full` → `install --yes` → `doctor` → 修改一個原始檔並 `git commit`（pre-commit）→ `git push local`（pre-push，預設與 `DEVGUARD_PRE_PUSH=full` 各一次，推到本機 bare remote）。
 格內 `exit｜E 錯誤 D 偏離 H 提示`。所有 `check`／`doctor` 的錯誤數都被 Windows CRLF 造成的格式錯誤灌大（見 #84 留言），表中註明。
 
@@ -155,7 +158,7 @@ devguard 0.3.1，Windows 11、Git for Windows（`core.autocrlf=true`、`core.sym
 | 2 | vercel/ms | `4ff48cec099f0514c3e9bbca18706c9c21122bfb` | **Biome 2.1.3** + **Jest 30**（`preset: 'ts-jest'`）、pnpm 10、husky 9、`engines.node >=20` | team@1.3.0 | 0｜1 元件，`lint.tool: biome`、`test.tool: jest`、`deps.manager: pnpm`、`coverage.lines: 100` | 1｜14E 0D 0H（9 筆 biome/format 主因 CRLF） | 0｜tsconfig、`biome.json` 加 cognitive complexity、`.gitattributes`、`.vscode/` | 1｜9E（typescript 5.8.3 超界 + 8 筆 CRLF 格式） | 1｜9E；Jest 測試與覆蓋率通過 | 0｜注入 `.husky/pre-commit`、新增 `.husky/pre-push` | 1｜9E 0D 2H | 1｜**擋下：biome `code/tool-failed`（#120，任何 commit 都會）** | 0 放行；full：0（Jest 通過，約 5 秒） |
 | 3 | typestack/class-validator | `2e1a5c27dbd65b80e27fe96b49bd6e6641fa3603` | **npm** + **Jest 29**（`preset: 'ts-jest'`、無 `coverageThreshold`）、`.eslintrc.yml` + ESLint 8、Prettier 2、husky **v4** 的 hook 已在 `.git/hooks/` | team@1.3.0 | 0｜1 元件，`test.tool: jest` | 1｜250E 0D 2H（203 筆 prettier 主因 CRLF、45 筆 tsc） | 0｜tsconfig 加 3 選項（整檔 CRLF→LF）、`.gitattributes`、`.vscode/` | 1｜251E 0D 2H | 1｜251E；Jest 測試與覆蓋率沒有 finding（4 分鐘） | 0｜**hook 沒裝**：既有 husky v4 hook「不會覆寫」，但印「已套用。」 | 1｜253E 0D 5H（`hook-foreign`） | 0｜devguard 沒執行（husky v4 hook）；照提示把那行加在結尾仍 0、doctor 卻不再報錯（#126）；手動移到開頭後 1｜44E 擋下 | 0 放行；full：0（devguard 沒執行，hook 是 husky v4） |
 | 4 | remeda/remeda | `004b09194f6d39f727118c0a71adc9986bcc13e1` | **npm workspaces** monorepo、`prettier.config.js`（plugin-pkg／sh）、ESLint 10 `eslint.config.ts`、Vitest 5、husky 9、`.claude/skills` 是 git symlink | team@1.3.0 | 0｜6 元件（含只有設定檔的 `./` 與 `.claude/hooks/`），2 個 TODO 理由（`complexity.cyclomatic: 20`、`typecheck.strict: false`，後者是誤推，#124）；理由填成「Round 3 實測：沿用上游設定」 | 1｜427E 2D 15H（大量 typescript-eslint 錯誤來自 docs 需先 build remeda／`astro sync`） | 0｜建根目錄 `tsconfig.json`（無 include）、改 solution-style tsconfig、`.vscode/` 合併保留註解 | 1｜723E 2D 15H（根元件 26→341，#125） | 1｜727E：根元件在根目錄跑 vitest 收進所有 package 的測試並失敗；stackblitz-template `test/failed` + `coverage/no-report`；`packages/remeda` 自己通過 | **2｜`ENOTDIR` 內部錯誤（#129）**，寫了一半、husky hook 沒裝；重跑一樣 | 1｜726E 2D 18H（`framework-entry-missing`、SKILL 缺）；之後 `fix --yes` 也 exit 2 | 0｜只跑 lint-staged，devguard 沒有被呼叫（install 失敗） | 0 放行；full：0（devguard 沒有被呼叫） |
-| 5 | elysiajs/elysia | `1cf5ce15dc4de23a96c769b5500a8d6fac8a8373` | **Bun**（`bun.lock`、`bun test`，沒有 Vitest／Jest）、`.eslintrc.json`、`tsc --init` 風格、滿是註解的 tsconfig、`test/cloudflare/` 子專案（npm） | team@1.3.0 | 0｜2 元件（`./`、`test/cloudflare/`），`printWidth: 80` | **2｜`找不到 eslint` 中止**：Bun 在 Windows 產生 `.exe` shim，devguard 只找 `.cmd`（#122）；`--only typecheck`／`format` 也 2 | 0｜兩個 tsconfig 加 3 選項，**行尾註解被移到新行**（#121）、`.gitattributes`、`.vscode/` | 2｜同上 | 2｜同上 | 0｜`.git/hooks/` 兩個 hook + `.claude/` | 1｜7E 0D 2H（`deps/lockfile-missing` 說缺 package-lock.json、tool-missing 提示 `npm ci`） | 1｜擋下：`environment/tool-missing` eslint | 0 放行；full：1｜`找不到 vitest` |
+| 5 | elysiajs/elysia | `1cf5ce15dc4de23a96c769b5500a8d6fac8a8373` | **Bun**（`bun.lock`、`bun test`，沒有 Vitest／Jest）、`.eslintrc.json`、`tsc --init` 風格、滿是註解的 tsconfig、`test/cloudflare/` 子目錄（自己的 npm 專案） | team@1.3.0 | 0｜2 元件（`./`、`test/cloudflare/`），`printWidth: 80` | **2｜`找不到 eslint` 中止**：Bun 在 Windows 產生 `.exe` shim，devguard 只找 `.cmd`（#122）；`--only typecheck`／`format` 也 2 | 0｜兩個 tsconfig 加 3 選項，**行尾註解被移到新行**（#121）、`.gitattributes`、`.vscode/` | 2｜同上 | 2｜同上 | 0｜`.git/hooks/` 兩個 hook + `.claude/` | 1｜7E 0D 2H（`deps/lockfile-missing` 說缺 package-lock.json、tool-missing 提示 `npm ci`） | 1｜擋下：`environment/tool-missing` eslint | 0 放行；full：1｜`找不到 vitest` |
 
 #### jquense/yup
 - 安裝依賴前的 `doctor`：`找不到 eslint … 需手動修正：npm ci`，但元件是 `deps.manager: yarn`、只有 `yarn.lock`（#117）。tsconfig `extends: "@4c/tsconfig/web"` 未安裝前正確給 `settings/unconfirmed`；裝好後改成實際的 `settings/looser`。
@@ -387,7 +390,7 @@ devguard 0.3.1，Windows 11、Python 3.14.7、uv 0.10.8。五個專案都用 `dr
 - **lefthook** 2.2.2：release binary（驗證 checksum）放到 `%USERPROFILE%\go\bin`，只為 kong 的 hook 測試。
 - **pre-commit** 4.6.2：`uv tool install pre-commit`，只為 email-verifier 的 hook 測試。
 - Git for Windows 系統層 `core.autocrlf=true`，沒有 eol `.gitattributes` 的 repo 都是 CRLF 工作目錄；這是許多 gofmt／`go-mod-untidy` 錯誤的來源（#84）。testfixtures 本身有 `* text eol=lf`，所以沒有受影響。
-- 為了讓後續步驟有意義，第一次 `check` 之後對每個模組執行了 `go mod download`；我的 `-mod=mod` 下載曾改到 kong `_examples/server/go.sum` 與 email-verifier `go.sum`，已經 `git checkout` 還原，並重跑 `check 後`。
+- 為了讓後續步驟有意義，第一次 `check` 之後對每個模組執行了 `go mod download`；`-mod=mod` 下載曾改到 kong `_examples/server/go.sum` 與 email-verifier `go.sum`，已經 `git checkout` 還原，並重跑 `check 後`。
 - 所有 push 都推到本機 bare repo（remote 名稱 `local`）；沒有推到上游，也沒有對上游開 PR。devguard repo 沒有修改。
 
 ### 6.4 Java
@@ -409,9 +412,9 @@ devguard 0.3.1（`main` @ 9a3c031）。clone 用 `--depth 1`；pre-push 推到�
 - **check 前（6E，133 秒）**：`checkstyle-missing`、`pmd-missing`、`enforcer-rule-missing`、`gitattributes-eol` 合理；另外兩筆 `code/tool-failed` 的訊息只有 `[INFO] Scanning for projects...` 和 `[WARNING]`，看不出原因（#97）。直接執行才看到：
   - `spotless:check` → `No plugin found for prefix 'spotless'`（pom 沒有 Spotless；settings 層沒有回報，#98）
   - `checkstyle:check pmd:check` → `pf4j-demo-api` 解析不到同 reactor 的 `org.pf4j:pf4j:3.17.0-SNAPSHOT`（只跑 goal 不經過 compile，#102）
-- **fix --yes**：新增 `checkstyle.xml`（只有 `CyclomaticComplexity` max 20 與 `IllegalImport`）、`pmd-ruleset.xml`（quickstart＋CognitiveComplexity 25，legacy 的值正確）、`.gitattributes`、`.vscode/`。pom 沒有 `maven-checkstyle-plugin` 的 `configLocation`，產生的 `checkstyle.xml` 不會被 Maven 採用（預設 sun_checks），settings 層也不回報（#98）。
+- **fix --yes**：新增 `checkstyle.xml`（只有 `CyclomaticComplexity` max 20 與 `IllegalImport`）、`pmd-ruleset.xml`（quickstart＋CognitiveComplexity 25，基線標準的值正確）、`.gitattributes`、`.vscode/`。pom 沒有 `maven-checkstyle-plugin` 的 `configLocation`，產生的 `checkstyle.xml` 不會被 Maven 採用（預設 sun_checks），settings 層也不回報（#98）。
 - **check 後（3E）**：enforcer＋兩筆 tool-failed。
-- **check --full（4E）**：多一筆 `test/tool-failed`，訊息是 Maven 結尾的 `[Help 1] …NoPluginFoundForPrefixException`（#97）。原因是固定帶 `jacoco:report`，pf4j 沒有 JaCoCo，legacy 的 `coverage.lines: 0` 也一樣跑不了測試（#99）。直接執行 `mvnw test`：336 個測試、**1 個 error**——devguard 因此漏報一個真的測試錯誤。
+- **check --full（4E）**：多一筆 `test/tool-failed`，訊息是 Maven 結尾的 `[Help 1] …NoPluginFoundForPrefixException`（#97）。原因是固定帶 `jacoco:report`，pf4j 沒有 JaCoCo，基線標準的 `coverage.lines: 0` 也一樣跑不了測試（#99）。直接執行 `mvnw test`：336 個測試、**1 個 error**——devguard 因此漏報一個真的測試錯誤。
 - **install**：沒有 hook 框架，寫入 `.git/hooks/pre-commit`、`pre-push` 與 `.claude/`。
 - **doctor**：同 check 的 3E，加 `environment/claude-never-ran`、`environment/vscode-cli-failed`（見環境備註）。
 - **pre-commit**：在 `StringUtils.java` 尾端加一行註解並 stage 全部設定檔。hook 觸發，2 筆 `code/tool-failed` 以 exit 1 擋下（29 秒；tool-failed 沒有檔案，不會印 `修正程式碼：devguard fix --code` 那行）。之後以 `--no-verify` commit。
@@ -435,7 +438,7 @@ devguard 0.3.1（`main` @ 9a3c031）。clone 用 `--depth 1`；pre-push 推到�
 - **draft**：`build.tool: gradle`；`options.release = 8` 讀不到（Gradle 不讀版本），依 brief 手動改 `legacy@1.0.0`。
 - **check 前**：先在 JDK 21 下跑，Gradle 6.9.2 以 `Unsupported class file major version 65` 無法編譯 `settings.gradle`；devguard 的訊息是前 5 行 `FAILURE … * Where: Settings file '…settings.gradle'`，看不到原因（#97）。`doctor` 只在 JDK < 11 時提示，沒有 wrapper 版本與 JDK 不相容的提示（環境問題，未開 issue）。安裝 JDK 11 後重跑：7E 1H，與 disruptor 同類（缺 PMD／Spotless task）。`lib/build.gradle` 的 `checkstyle { toolVersion '10.0' }` 沒有 `tool-version` finding，因為只讀根目錄的建置檔（#103）。
 - **fix --yes**：把 371 行的 Google 風格 Checkstyle 設定換成 13 行（13+／358−）（#100）。
-- **check --full（3E 1H，60 秒）**：Gradle 真的跑完 `test jacocoTestReport`，`lib/build/test-results` 707 個測試、0 失敗，tests 層沒有 finding（legacy 不看覆蓋率）。**實驗**：暫時改成 `team@1.3.0` 再跑，報 `找不到覆蓋率報告 build/reports/jacoco/test/jacocoTestReport.xml [coverage/no-report]`，但報告在 `lib/build/reports/jacoco/test/` 裡——Gradle 多專案只讀根目錄（#101）。實驗後已改回 legacy。
+- **check --full（3E 1H，60 秒）**：Gradle 真的跑完 `test jacocoTestReport`，`lib/build/test-results` 707 個測試、0 失敗，tests 層沒有 finding（基線標準不看覆蓋率）。**實驗**：暫時改成 `team@1.3.0` 再跑，報 `找不到覆蓋率報告 build/reports/jacoco/test/jacocoTestReport.xml [coverage/no-report]`，但報告在 `lib/build/reports/jacoco/test/` 裡——Gradle 多專案只讀根目錄（#101）。實驗後已改回 `legacy@1.0.0`。
 - **pre-commit**：擋下（2 筆 tool-failed）。**pre-push**：預設放行；full 也放行（5 秒，Gradle 的 test task up-to-date，沒有重跑測試）。
 
 #### FasterXML/jackson-databind
@@ -452,7 +455,7 @@ devguard 0.3.1（`main` @ 9a3c031）。clone 用 `--depth 1`；pre-push 推到�
 - #96 Java：同時有 pom.xml 與 build.gradle 時一律當成 Maven，忽略宣告的 build.tool；runner 拿 Maven 參數執行 gradlew — 新開（JSON-java）
 - #97 Java 的 code/test tool-failed 訊息擷取到 Maven／Gradle 的樣板行，看不到真正的錯誤 — 新開（pf4j、disruptor、jackson-databind、java-jwt；Go 的同類是 #83）
 - #98 Java：不檢查建置檔有沒有 Spotless／PMD／Checkstyle plugin，也不檢查是否指向 devguard 的設定檔；缺 plugin 只得到 tool-failed — 新開（5 個專案都沒有 Spotless）
-- #99 Java check --full：專案沒有 JaCoCo 時測試完全不執行（legacy 的 coverage 0 也一樣）— 新開（pf4j 因此漏報 1 個測試錯誤）
+- #99 Java check --full：專案沒有 JaCoCo 時測試完全不執行（基線標準的 coverage 0 也一樣）— 新開（pf4j 因此漏報 1 個測試錯誤）
 - #100 fix 把專案自己寫的 checkstyle.xml 整份換成只有兩個 module 的產生檔 — 新開（disruptor、java-jwt；產生檔也不符 SPEC §6.4 的 google_checks 基礎）
 - #101 Gradle 多專案建置只讀根目錄的 JaCoCo／Checkstyle／PMD 報告，子專案的覆蓋率被誤報 coverage/no-report — 新開（java-jwt）
 - #102 Maven 多模組：lint 指令不經過 compile，模組間相依時整個 checkstyle:check pmd:check 失敗 — 新開（pf4j）
