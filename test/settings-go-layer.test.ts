@@ -59,6 +59,65 @@ describe("goSettingsLayer", () => {
     expect(r.findings.map((f) => f.file)).toEqual(["backend/.golangci.yml", "backend/go.mod"]);
   });
 
+  it("checks a .golangci.toml golangci-lint would use instead of reporting it missing", async () => {
+    const cwd = project({
+      ".devguard.yaml": DECL,
+      "backend/.golangci.toml": 'version = "2"\n\n[linters]\nenable = ["gosec"]\n',
+      "backend/go.mod": "module x\n\ngo 1.26\n",
+    });
+    const r = await run(cwd);
+    expect(rules(r.findings)).not.toContain("error:settings/golangci-missing");
+    expect(rules(r.findings)).toContain("error:settings/golangci-linter-missing");
+    expect(new Set(r.findings.map((f) => f.file))).toEqual(new Set(["backend/.golangci.toml"]));
+    const revive = r.findings.find((f) => f.message.includes("revive"));
+    expect(revive?.message).toContain(".golangci.toml");
+    expect(revive?.message).not.toContain(".golangci.yml");
+  });
+
+  it("checks the .golangci.toml golangci-lint picks over a .golangci.yml in the same directory, with a hint", async () => {
+    const cwd = project({
+      ".devguard.yaml": DECL,
+      "backend/.golangci.yml": GOLANGCI,
+      "backend/.golangci.toml": 'version = "2"\n',
+      "backend/go.mod": "module x\n\ngo 1.26\n",
+    });
+    const r = await run(cwd);
+    expect(rules(r.findings)).toContain("error:settings/golangci-linter-missing");
+    expect(r.findings.filter((f) => f.level === "error").every((f) => f.file === "backend/.golangci.toml")).toBe(true);
+    const hints = r.findings.filter((f) => f.level === "hint");
+    expect(hints).toMatchObject([{ rule: "settings/golangci-multiple", file: "backend/.golangci.toml" }]);
+    expect(hints[0]?.message).toContain(".golangci.yml");
+  });
+
+  it("checks the nearest directory's config, with no hint for one further up", async () => {
+    const cwd = project({
+      ".devguard.yaml": DECL,
+      ".golangci.toml": 'version = "2"\n',
+      "backend/.golangci.yml": GOLANGCI,
+      "backend/go.mod": "module x\n\ngo 1.26\n",
+    });
+    expect(rules((await run(cwd)).findings)).toEqual([]);
+  });
+
+  it("reports a .golangci.toml or .golangci.json that does not parse, naming it, without a repair", async () => {
+    for (const [name, text, rule] of [
+      [".golangci.toml", 'version = "2"\n[linters\n', "settings/golangci-toml-syntax"],
+      [".golangci.json", '{ "version": "2", }\n', "settings/golangci-json-syntax"],
+    ] as const) {
+      const cwd = project({
+        ".devguard.yaml": DECL,
+        [`backend/${name}`]: text,
+        "backend/go.mod": "module x\n\ngo 1.26\n",
+      });
+      const r = await run(cwd);
+      expect(rules(r.findings)).toEqual([`error:${rule}`]);
+      expect(r.findings[0]).toMatchObject({ file: `backend/${name}` });
+      expect(r.findings[0]?.message).toContain(name);
+      expect(r.findings[0]?.line).toBeGreaterThan(0);
+      expect(r.findings[0]?.repairs).toBeUndefined();
+    }
+  });
+
   it("does nothing without a resolved declaration", async () => {
     expect((await run(project({}))).findings.map((f) => f.rule)).toEqual(["declaration/missing"]);
   });

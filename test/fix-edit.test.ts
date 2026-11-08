@@ -110,6 +110,19 @@ describe("editConfigText: TOML (SPEC §13 T1)", () => {
       },
     });
   });
+
+  it("sets a value holding nested tables under a new section at its full path (#85)", () => {
+    const text = 'version = "2"\n\n[linters]\nenable = ["gosec"]\n';
+    const rules = { main: { deny: [{ pkg: "io/ioutil", desc: "use io" }] } };
+    const out = editConfigText(".golangci.toml", text, [
+      { op: "set", path: ["linters", "settings", "depguard", "rules"], value: rules },
+    ]);
+    expect(out).toContain("[linters.settings.depguard.rules.main]");
+    expect(parseConfigText(".golangci.toml", out)).toEqual({
+      version: "2",
+      linters: { enable: ["gosec"], settings: { depguard: { rules } } },
+    });
+  });
 });
 
 describe("editConfigText: JSONC", () => {
