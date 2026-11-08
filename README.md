@@ -20,7 +20,7 @@
 - **程式碼與測試**：透過專案環境鎖定的工具執行 lint、format 與 typecheck；`check --full` 再跑測試與行 / 分支覆蓋率門檻。
 - **三道防線**：`install` 產生 `.vscode/`、`.claude/` 與工具設定檔，並安裝 pre-commit / pre-push hook（或注入既有的 pre-commit、husky、lefthook）；`doctor` 檢查本機環境。
 - **修正**：`fix` 依檔案類別修正設定（保留註解與順序、CRLF 檔不整份重寫），`fix --code` 修正程式碼。
-- **實際專案測試**：以 27 個開源專案跑過 `draft` → `check` → `fix --yes` → `check`，發現的問題都已修正並補上測試，見 [KEI-6 報告](docs/real-project-test-report.md) 與 [KEI-7 報告](docs/testing/round-2-report.md)。
+- **實際專案測試**：以 27 個開源專案跑過 `draft` → `check` → `fix --yes` → `check`，發現的問題都已修正並補上測試，見 [KEI-6 報告](docs/real-project-test-report.md) 與 [KEI-7 報告](docs/testing/round-2-report.md)。Round 3 以四種語言各 5 個專案再跑完整流程（含 `check --full`、`install`、`doctor` 與 git hook），開出的 47 個 issue 尚待處理，見 [#82 報告](docs/testing/round-3-report.md)。
 
 ## 快速開始（Quick Start）
 
