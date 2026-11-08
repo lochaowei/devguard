@@ -7,6 +7,7 @@ import {
   hooksPathConflict,
   frameworkHooksNotInstalled,
   PRE_COMMIT_MIN_VERSION,
+  pushRunsProjectHooks,
   readHooksPath,
   staleMinimumVersion,
   type FrameworkEntry,
@@ -98,6 +99,24 @@ async function preCommitVersionProblem(cwd: string, file: string): Promise<Findi
 }
 
 /**
+ * The pre-commit config calls devguard at pre-push without a top-level `default_stages`: the project's own hooks
+ * without `stages` then run on every push (#95). Not a pre-push problem of devguard's, so never only a hint.
+ */
+async function preCommitDefaultStagesProblem(cwd: string, file: string): Promise<Finding | undefined> {
+  if (!pushRunsProjectHooks((await readIfExists(join(cwd, file))) ?? "")) return undefined;
+  const message =
+    `${file} 沒有設定頂層 default_stages；安裝 pre-push hook 型別後，專案中沒寫 stages 的 hook 也會在每次 git push 時執行，` +
+    "請加上 default_stages: [pre-commit]";
+  return { ...problem("pre-commit-default-stages", message), file };
+}
+
+/** What the pre-commit config itself needs for devguard's entries to work as intended (SPEC §7.4). */
+async function preCommitConfigProblems(cwd: string, file: string): Promise<Finding[]> {
+  const found = [await preCommitVersionProblem(cwd, file), await preCommitDefaultStagesProblem(cwd, file)];
+  return found.filter((f) => f !== undefined);
+}
+
+/**
  * §7.4 step 2 with a framework that writes its own hooks (pre-commit, lefthook): the entry alone does nothing until
  * the framework's command has written the hook into the hooks directory. `unwritten` is `frameworkHooksNotInstalled`,
  * which `install` also reads for its next step.
@@ -156,11 +175,7 @@ export function createGitHooksCheck(options: GitHooksCheckOptions = {}): Environ
       const framework = await detectFramework(cwd);
       const silenced = await hooksPathProblem(cwd, framework, exec);
       if (silenced) return [silenced];
-      const findings: Finding[] = [];
-      if (framework?.name === "pre-commit") {
-        const stale = await preCommitVersionProblem(cwd, framework.file);
-        if (stale) findings.push(stale);
-      }
+      const findings = framework?.name === "pre-commit" ? await preCommitConfigProblems(cwd, framework.file) : [];
       const probes = { entryFor, unwritten: await frameworkHooksNotInstalled(cwd, exec), exec };
       for (const hook of INSTALLED_HOOKS) {
         const found = await hookProblem(cwd, hook, probes);

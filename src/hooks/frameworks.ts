@@ -102,6 +102,12 @@ export function staleMinimumVersion(text: string): { found?: string } | undefine
 
 const MIN_VERSION_VALUE = `"${PRE_COMMIT_MIN_VERSION}"`;
 
+/** The text with `line` added as the last line, which in a block mapping makes it a new top-level key. */
+function appendLine(text: string, line: string): string {
+  const body = text === "" || text.endsWith("\n") ? text : `${text}\n`;
+  return `${body}${line}\n`;
+}
+
 /**
  * The config with `PRE_COMMIT_MIN_VERSION` written in as text: over the value `node` of the existing key, or as a new
  * last line of a block mapping (`node` undefined). Undefined when neither applies.
@@ -110,8 +116,7 @@ function minimumVersionTextEdit(text: string, node: unknown, flow: boolean): str
   const range = isScalar(node) ? node.range : undefined;
   if (range && range[1] > range[0]) return text.slice(0, range[0]) + MIN_VERSION_VALUE + text.slice(range[1]);
   if (node !== undefined || flow) return undefined;
-  const body = text === "" || text.endsWith("\n") ? text : `${text}\n`;
-  return `${body}${MIN_VERSION_KEY}: ${MIN_VERSION_VALUE}\n`;
+  return appendLine(text, `${MIN_VERSION_KEY}: ${MIN_VERSION_VALUE}`);
 }
 
 /**
@@ -135,6 +140,33 @@ function requireMinimumVersion(text: string): string {
   return doc.toString({ lineWidth: 0 });
 }
 
+const DEFAULT_STAGES_KEY = "default_stages";
+
+/**
+ * Whether the config has no top-level `default_stages`. pre-commit then runs every hook without `stages` at every hook
+ * type installed, so installing the pre-push hook type for devguard would run the project's own commit hooks on each
+ * `git push` too (#95). Any value the project set, pre-push included, is its choice.
+ */
+function missingDefaultStages(text: string): boolean {
+  const config = parseYaml(text);
+  return isRecord(config) && !(DEFAULT_STAGES_KEY in config);
+}
+
+/**
+ * Adds `default_stages: [pre-commit]` when the config has none, as a new last line of a block mapping so the rest of
+ * the file is kept byte for byte; a flow mapping at the top goes through the YAML document instead.
+ */
+function requireDefaultStages(text: string): string {
+  if (!missingDefaultStages(text)) return text;
+  const doc = parseDocument(text);
+  if (!isMap(doc.contents)) return text;
+  if (doc.contents.flow !== true) return appendLine(text, `${DEFAULT_STAGES_KEY}: [pre-commit]`);
+  const stages = doc.createNode(["pre-commit"]);
+  stages.flow = true;
+  doc.set(DEFAULT_STAGES_KEY, stages);
+  return doc.toString({ lineWidth: 0 });
+}
+
 /** What pre-commit needs to write every hook type devguard installs. */
 const PRE_COMMIT_INSTALL = `pre-commit install ${INSTALLED_HOOKS.map((h) => `--hook-type ${h}`).join(" ")}`;
 
@@ -153,9 +185,16 @@ const preCommit: Injector = {
   },
   inject: (file, text, hook, command) =>
     editConfigText(file, text, [{ op: "add", path: ["repos"], value: preCommitRepo(hook, command) }]),
-  finish: requireMinimumVersion,
+  finish: (text) => requireDefaultStages(requireMinimumVersion(text)),
   installer: { command: PRE_COMMIT_INSTALL, wroteHook: preCommitWroteHook },
 };
+
+/**
+ * For doctor: the pre-commit config calls devguard at pre-push but sets no `default_stages`, so the project's hooks
+ * without `stages` run on every `git push` once the pre-push hook type is installed (#95). `install` adds it.
+ */
+export const pushRunsProjectHooks = (text: string): boolean =>
+  preCommit.hasEntry(text, "pre-push", "") && missingDefaultStages(text);
 
 // --- husky ------------------------------------------------------------------------------------------------------
 
