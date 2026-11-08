@@ -1,5 +1,5 @@
 import { chmod, mkdir, stat, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { normalizePath } from "../declaration/path.ts";
 import { nodeExec, type Exec } from "../process/exec.ts";
 import { redactSecrets } from "../report/redact.ts";
@@ -264,7 +264,7 @@ export function renderPlan(plan: ChangePlan): string {
   return out.join("\n");
 }
 
-/** The nearest existing ancestor directory entry of `path`, when it is not a directory. */
+/** The closest existing ancestor of `path` when it is a file rather than a directory; undefined otherwise. */
 async function fileInTheWay(path: string): Promise<string | undefined> {
   for (let dir = dirname(path); ; dir = dirname(dir)) {
     try {
@@ -277,7 +277,7 @@ async function fileInTheWay(path: string): Promise<string | undefined> {
 }
 
 /** Whether `rel` (relative to `cwd`) is a symlink in the git index (mode 120000). */
-async function gitSymlink(cwd: string, rel: string, exec: Exec): Promise<boolean> {
+async function isGitSymlink(cwd: string, rel: string, exec: Exec): Promise<boolean> {
   try {
     const result = await exec({ file: "git", args: ["ls-files", "-s", "--", rel], cwd });
     return result.code === 0 && result.stdout.startsWith("120000 ");
@@ -300,10 +300,10 @@ export async function withoutBlockedWrites(cwd: string, plan: ChangePlan, exec: 
       continue;
     }
     const rel = relative(cwd, file);
-    const inside = !rel.startsWith("..") && !isAbsolute(rel);
+    const inside = rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
     const shown = normalizePath(inside ? rel : file);
     const lines = [`${shown} 是檔案，不是目錄`];
-    if (inside && (await gitSymlink(cwd, rel, exec))) {
+    if (inside && (await isGitSymlink(cwd, rel, exec))) {
       lines.push(
         `${shown} 在 git 中是 symlink（mode 120000），checkout 時沒有展開成 symlink（core.symlinks 為 false，Windows 上常見）；`,
         `請先讓系統允許建立 symlink（Windows：開啟開發人員模式），執行 git config core.symlinks true，再重新 checkout ${shown}`,

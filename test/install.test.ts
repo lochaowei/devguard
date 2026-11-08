@@ -156,8 +156,7 @@ describe("devguard install (SPEC §3.2, §7.4)", () => {
     it("prints the command in a preview, with the preview's exit code", async () => {
       const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": "repos: []\n" });
       const out = io(false);
-      const code = await runInstall({ cwd: dir, today: TODAY, io: out });
-      expect(code).toBe(1);
+      expect(await runInstall({ cwd: dir, today: TODAY, io: out })).toBe(1);
       expect(out.out).toContain(COMMAND);
       expect(read(dir, ".pre-commit-config.yaml")).toBe("repos: []\n");
     });
@@ -289,8 +288,7 @@ describe("a write path blocked by a file (#129)", () => {
   it("install writes everything else, reports the blocked path and exits 1", async () => {
     const dir = blocked();
     const out = io();
-    const code = await runInstall({ cwd: dir, today: TODAY, io: out });
-    expect(code).toBe(1);
+    expect(await runInstall({ cwd: dir, today: TODAY, io: out })).toBe(1);
     expect(inspectHookFile(read(dir, ".git/hooks/pre-commit")).kind).toBe("devguard");
     expect(inspectHookFile(read(dir, ".git/hooks/pre-push")).kind).toBe("devguard");
     expect(read(dir, ".claude/settings.json")).toContain("devguard");
@@ -307,6 +305,7 @@ describe("a write path blocked by a file (#129)", () => {
     const out = io();
     expect(await runFix({ cwd: dir, today: TODAY, io: out })).toBe(1);
     expect(read(dir, "pyproject.toml")).toContain("[tool.ruff]");
+    expect(read(dir, ".claude/skills")).toBe("../.agents/skills");
     expect(out.out).toContain(".claude/skills/standards-doctor/SKILL.md：錯誤：");
     expect(out.out).toContain(".claude/skills 是檔案，不是目錄");
   });
