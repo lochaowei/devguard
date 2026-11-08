@@ -88,8 +88,8 @@ function frameworkProblem(hook: GitHookName, entry: FrameworkEntry): Finding | u
  * The pre-commit config does not ask for the pre-commit version that knows devguard's `language: unsupported`
  * entries; an older pre-commit then rejects the config without saying why (SPEC §7.4).
  */
-async function preCommitVersionProblem(cwd: string, file: string): Promise<Finding | undefined> {
-  const stale = staleMinimumVersion((await readIfExists(join(cwd, file))) ?? "");
+function preCommitVersionProblem(file: string, text: string): Finding | undefined {
+  const stale = staleMinimumVersion(text);
   if (!stale) return undefined;
   const now = stale.found === undefined ? "沒有設定" : `是 ${stale.found}`;
   const message =
@@ -100,10 +100,10 @@ async function preCommitVersionProblem(cwd: string, file: string): Promise<Findi
 
 /**
  * The pre-commit config calls devguard at pre-push without a top-level `default_stages`: the project's own hooks
- * without `stages` then run on every push (#95). Not a pre-push problem of devguard's, so never only a hint.
+ * without `stages` then run on every push (SPEC §7.4, #95). Not a pre-push problem of devguard's, so never only a hint.
  */
-async function preCommitDefaultStagesProblem(cwd: string, file: string): Promise<Finding | undefined> {
-  if (!pushRunsProjectHooks((await readIfExists(join(cwd, file))) ?? "")) return undefined;
+function preCommitDefaultStagesProblem(file: string, text: string): Finding | undefined {
+  if (!pushRunsProjectHooks(text)) return undefined;
   const message =
     `${file} 沒有設定頂層 default_stages；安裝 pre-push hook 型別後，專案中沒寫 stages 的 hook 也會在每次 git push 時執行，` +
     "請加上 default_stages: [pre-commit]";
@@ -112,7 +112,8 @@ async function preCommitDefaultStagesProblem(cwd: string, file: string): Promise
 
 /** What the pre-commit config itself needs for devguard's entries to work as intended (SPEC §7.4). */
 async function preCommitConfigProblems(cwd: string, file: string): Promise<Finding[]> {
-  const found = [await preCommitVersionProblem(cwd, file), await preCommitDefaultStagesProblem(cwd, file)];
+  const text = (await readIfExists(join(cwd, file))) ?? "";
+  const found = [preCommitVersionProblem(file, text), preCommitDefaultStagesProblem(file, text)];
   return found.filter((f) => f !== undefined);
 }
 

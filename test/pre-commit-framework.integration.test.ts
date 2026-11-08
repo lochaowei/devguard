@@ -63,6 +63,7 @@ describe.skipIf(!hasPreCommit)(
     });
 
     afterAll(() => {
+      Reflect.deleteProperty(process.env, "PRE_COMMIT_HOME");
       rmSync(base, { recursive: true, force: true });
     });
 

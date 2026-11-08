@@ -102,7 +102,7 @@ describe("install into an existing hook framework (SPEC §7.4)", () => {
 
     it.each([
       ["commit and push", "default_stages: [pre-commit, pre-push]  # both, on purpose\n", ["pre-commit", "pre-push"]],
-      ["an empty value", "default_stages:\n", null],
+      ["a block list", "default_stages:\n  - pre-commit\n  - manual\n", ["pre-commit", "manual"]],
     ])("leaves an existing default_stages alone (%s)", async (_, line, value) => {
       const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": line + PRE_COMMIT_CONFIG });
       await runInstall({ cwd: dir, today: TODAY, io: io() });
@@ -127,6 +127,27 @@ describe("install into an existing hook framework (SPEC §7.4)", () => {
       const again = io();
       await runInstall({ cwd: dir, today: TODAY, io: again });
       expect(again.out).not.toContain(".pre-commit-config.yaml：");
+    });
+
+    it("adds the keys before a document end marker, so the config stays one YAML document", async () => {
+      const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": `${PRE_COMMIT_CONFIG}...\n# after\n` });
+      await runInstall({ cwd: dir, today: TODAY, io: io() });
+      const text = read(dir, ".pre-commit-config.yaml");
+      const parsed = parse(text) as { default_stages: string[]; minimum_pre_commit_version: string };
+      expect(parsed).toMatchObject({ default_stages: ["pre-commit"], minimum_pre_commit_version: "4.4.0" });
+      expect(text).toMatch(/^default_stages: \[pre-commit\]\n\.\.\./m);
+    });
+
+    it("writes the added lines in the file's own CRLF line endings", async () => {
+      const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": PRE_COMMIT_CONFIG });
+      await runInstall({ cwd: dir, today: TODAY, io: io() });
+      const crlf = read(dir, ".pre-commit-config.yaml")
+        .replace(/^(minimum_pre_commit_version|default_stages): .*\n/gm, "")
+        .replaceAll("\n", "\r\n");
+      writeFileSync(join(dir, ".pre-commit-config.yaml"), crlf);
+      await runInstall({ cwd: dir, today: TODAY, io: io() });
+      const text = read(dir, ".pre-commit-config.yaml");
+      expect(text).toBe(`${crlf}minimum_pre_commit_version: "4.4.0"\r\ndefault_stages: [pre-commit]\r\n`);
     });
 
     it("sets it in a flow mapping at the top level too", async () => {

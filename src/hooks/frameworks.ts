@@ -102,10 +102,19 @@ export function staleMinimumVersion(text: string): { found?: string } | undefine
 
 const MIN_VERSION_VALUE = `"${PRE_COMMIT_MIN_VERSION}"`;
 
-/** The text with `line` added as the last line, which in a block mapping makes it a new top-level key. */
-function appendLine(text: string, line: string): string {
-  const body = text === "" || text.endsWith("\n") ? text : `${text}\n`;
-  return `${body}${line}\n`;
+/** A document end marker (`...`, always at column 0): a key written after it would start a second YAML document. */
+const DOCUMENT_END = /^\.\.\.[ \t]*(#.*)?$/m;
+
+/**
+ * The text with `line` added as a new top-level key of its block mapping, in the file's own line ending: as the last
+ * line, or just before a document end marker (`...`) when there is one.
+ */
+function appendTopLevel(text: string, line: string): string {
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const end = DOCUMENT_END.exec(text);
+  if (end) return `${text.slice(0, end.index)}${line}${eol}${text.slice(end.index)}`;
+  const body = text === "" || text.endsWith("\n") ? text : `${text}${eol}`;
+  return `${body}${line}${eol}`;
 }
 
 /**
@@ -116,7 +125,7 @@ function minimumVersionTextEdit(text: string, node: unknown, flow: boolean): str
   const range = isScalar(node) ? node.range : undefined;
   if (range && range[1] > range[0]) return text.slice(0, range[0]) + MIN_VERSION_VALUE + text.slice(range[1]);
   if (node !== undefined || flow) return undefined;
-  return appendLine(text, `${MIN_VERSION_KEY}: ${MIN_VERSION_VALUE}`);
+  return appendTopLevel(text, `${MIN_VERSION_KEY}: ${MIN_VERSION_VALUE}`);
 }
 
 /**
@@ -153,14 +162,15 @@ function missingDefaultStages(text: string): boolean {
 }
 
 /**
- * Adds `default_stages: [pre-commit]` when the config has none, as a new last line of a block mapping so the rest of
- * the file is kept byte for byte; a flow mapping at the top goes through the YAML document instead.
+ * Adds `default_stages: [pre-commit]` when the config has none, as a new top-level key of a block mapping so the rest
+ * of the file is kept byte for byte; a flow mapping at the top goes through the YAML document instead. The stage name
+ * `pre-commit` needs pre-commit 3.2.0 or later, which `requireMinimumVersion` already asks for.
  */
 function requireDefaultStages(text: string): string {
   if (!missingDefaultStages(text)) return text;
   const doc = parseDocument(text);
   if (!isMap(doc.contents)) return text;
-  if (doc.contents.flow !== true) return appendLine(text, `${DEFAULT_STAGES_KEY}: [pre-commit]`);
+  if (doc.contents.flow !== true) return appendTopLevel(text, `${DEFAULT_STAGES_KEY}: [pre-commit]`);
   const stages = doc.createNode(["pre-commit"]);
   stages.flow = true;
   doc.set(DEFAULT_STAGES_KEY, stages);
@@ -194,6 +204,7 @@ const preCommit: Injector = {
  * without `stages` run on every `git push` once the pre-push hook type is installed (#95). `install` adds it.
  */
 export const pushRunsProjectHooks = (text: string): boolean =>
+  // pre-commit's `hasEntry` reads only the text; the file name is for the other frameworks.
   preCommit.hasEntry(text, "pre-push", "") && missingDefaultStages(text);
 
 // --- husky ------------------------------------------------------------------------------------------------------
