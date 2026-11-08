@@ -69,16 +69,16 @@ function workingTreeTools(components: readonly ResolvedComponent[], files: reado
 
 /** `devguard fix --code` for the staged files it can fix: those with a fixable code finding (SPEC §7.4). */
 function fixLine(findings: readonly Finding[], staged: ReadonlySet<string>): string {
-  const fixable = (f: Finding): f is Finding & { file: string } =>
+  const listed = (f: Finding): f is Finding & { file: string } =>
     f.layer === "code" && isFixable(f) && f.file !== undefined && staged.has(f.file);
-  const files = [...new Set(findings.filter(fixable).map((f) => f.file))];
+  const files = [...new Set(findings.filter(listed).map((f) => f.file))];
   return files.length === 0 ? "" : `修正程式碼：devguard fix --code ${files.join(" ")}\n`;
 }
 
 export interface StagedCheck {
   result: CheckResult;
   /** The staged files the check covered; deleted files are not among them. */
-  staged: ReadonlySet<string>;
+  stagedFiles: ReadonlySet<string>;
   /** Set when a partially staged file is checked in its working-tree version by some tools (SPEC §7.4). */
   warning?: string;
 }
@@ -95,7 +95,7 @@ export async function checkStaged(
   const entries = await stagedEntries(ctx);
   if (entries.length === 0) return undefined;
   const files = entries.filter((e) => e.status !== "D").map((e) => e.path);
-  const staged = new Set(files);
+  const stagedFiles = new Set(files);
   const layers: CheckLayer[] = [declarationLayer];
   if (entries.some((e) => isDependencyFile(e.path))) layers.push(depsLayer);
   layers.push(codeLayer);
@@ -104,7 +104,7 @@ export async function checkStaged(
       ...ctx,
       scope: { files, full: false },
       listFiles: () => Promise.resolve(files),
-      stagedText: async (path) => (staged.has(path) ? git(ctx, ["show", `:${path}`]) : undefined),
+      stagedText: async (path) => (stagedFiles.has(path) ? git(ctx, ["show", `:${path}`]) : undefined),
     },
     layers,
   );
@@ -112,11 +112,11 @@ export async function checkStaged(
   // Ignored files get no file checks, so no tool reads their working-tree version either.
   const partial = withoutIgnored(result.resolution?.ignore ?? [], files).filter((f) => unstaged.has(f));
   const tools = workingTreeTools(result.resolution?.components ?? [], partial);
-  if (tools.length === 0) return { result, staged };
+  if (tools.length === 0) return { result, stagedFiles };
   const warning =
     `注意：${partial.join("、")} 有未 staged 的修改。其他檢查用的是 staged 版本，` +
     `但 ${tools.join("、")} 沒有可用的 stdin 模式，檢查的是工作目錄版本。\n`;
-  return { result, staged, warning };
+  return { result, stagedFiles, warning };
 }
 
 /**
@@ -130,6 +130,6 @@ export async function runPreCommit(ctx: HookContext): Promise<number> {
   if (warning) ctx.write(warning);
   const code = exitCodeFor(result.findings, false);
   if (result.findings.length > 0) ctx.write(renderText(result));
-  if (code !== 0) ctx.write(fixLine(result.findings, staged.staged));
+  if (code !== 0) ctx.write(fixLine(result.findings, staged.stagedFiles));
   return code;
 }

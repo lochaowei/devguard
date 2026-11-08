@@ -216,19 +216,22 @@ async function biome(target: CodeTarget, ctx: CodeCheckContext, command: "lint" 
   return findings;
 }
 
+/** Whether the target's `lint.tool` is Biome, which then also formats. */
+const usesBiome = (target: CodeTarget) => target.effective["lint.tool"] === "biome";
+
 /** ESLint + Prettier (or Biome) and `tsc --noEmit`, run from the component's node_modules (SPEC §6.3). */
 export const typescriptChecker: CodeChecker = {
   language: "typescript",
   // ESLint, Prettier and Biome's formatter read the staged version from stdin; Biome's linter and tsc read the disk.
   workingTreeTools: (target) => [
-    ...(target.categories.has("lint") && target.effective["lint.tool"] === "biome" ? ["biome lint"] : []),
+    ...(target.categories.has("lint") && usesBiome(target) ? ["biome lint"] : []),
     ...(target.categories.has("typecheck") ? ["tsc"] : []),
   ],
   // `--no-warn-ignored`, `--ignore-unknown` and `--files-ignore-unknown=true` let the tools skip what they don't handle.
   takesEveryFile: true,
   async check(target, ctx) {
     const findings: Finding[] = [];
-    const useBiome = target.effective["lint.tool"] === "biome";
+    const useBiome = usesBiome(target);
     if (target.categories.has("lint")) {
       findings.push(...(await (useBiome ? biome(target, ctx, "lint") : lint(target, ctx))));
     }
@@ -241,7 +244,7 @@ export const typescriptChecker: CodeChecker = {
   /** Lint fixes first, then the formatter, so the formatter has the last word on layout. */
   fixSteps(target) {
     const files = target.files ?? ["."];
-    const biome = target.effective["lint.tool"] === "biome";
+    const biome = usesBiome(target);
     const lintFix = biome
       ? { tool: "biome", args: ["lint", "--write", ...BIOME_UNKNOWN], files, okUpTo: 1 }
       : { tool: "eslint", args: ["--fix", "--no-warn-ignored"], files, okUpTo: 1 };

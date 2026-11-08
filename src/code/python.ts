@@ -1,5 +1,5 @@
 import type { Finding } from "../report/finding.ts";
-import { isPyrightTool, mypyConfiguredFiles, type PyrightTool } from "../settings/type-checkers.ts";
+import { isPyrightTool, mypyConfigSetsFiles, type PyrightTool } from "../settings/type-checkers.ts";
 import { pythonToolRequest, type ToolResult } from "../tools/runner.ts";
 import { codeFinding, firstDifferentLine, runBatched, splitStaged, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
@@ -130,13 +130,13 @@ function mypyFinding(target: CodeTarget, ctx: CodeCheckContext, text: string): F
  * excludes (SPEC §7.1). A path on the command line would make mypy ignore `files` (#110).
  */
 async function mypy(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
-  const scoped = (await mypyConfiguredFiles(target.dir, ctx.readText)) !== undefined;
+  const configSetsFiles = await mypyConfigSetsFiles(target.dir, ctx.readText);
   const args = [
     "--no-pretty",
     "--no-error-summary",
     "--show-error-codes",
     "--no-color-output",
-    ...(scoped ? [] : ["."]),
+    ...(configSetsFiles ? [] : ["."]),
   ];
   const result = await ctx.tools.run({ ...pythonToolRequest(target, "mypy"), args });
   if (result.code === 0) return [];

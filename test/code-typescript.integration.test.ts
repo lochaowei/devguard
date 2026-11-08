@@ -211,4 +211,10 @@ describe.runIf(biomeInstalled)("TypeScript code checks with the real Biome (#120
       "biome/format tidy.ts:1",
     ]);
   });
+
+  it("lints nothing for a staged file deleted from the working tree but still checks its staged format", async () => {
+    const staged = { "clean.ts": "export const clean = 1;\n", "gone.ts": "export   const gone = 1;\n" };
+    expect(await checkStaged("lint", staged)).toEqual([]);
+    expect(await checkStaged("format", staged)).toEqual(["biome/format gone.ts:1"]);
+  });
 });

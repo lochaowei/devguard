@@ -375,7 +375,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 
 指定檔案時（檔案參數、`--staged`、pre-commit、Claude 的兩個 hook、`fix --code`），TypeScript 元件內的非原始碼檔案（`.js`、`.mjs`、`.json`、`.md`、`.prettierrc`、`LICENSE` 等）也交給最深的 TypeScript 元件的 linter 與 formatter，由工具決定處理哪些：ESLint 用 `--no-warn-ignored`，Prettier 用 `--ignore-unknown`，Biome 用 `--files-ignore-unknown=true` 與 `--no-errors-on-unmatched`。工具設定的 ignore（`.prettierignore`、ESLint 的 `ignores`、Biome 的 `files`）照常生效；工具不處理的檔案不產生 finding，staged（stdin）時也一樣。因此回報的 lint 與格式問題，與整個元件的檢查對同一組檔案回報的相同。其他語言的原始碼仍歸各自的元件。型別檢查不變：只有元件內有原始碼檔案時才跑。
 
-型別檢查的範圍是整個元件，由型別檢查器的設定決定。mypy 在元件目錄執行：mypy 實際讀到的設定（依 mypy 的順序找 `mypy.ini`、`.mypy.ini`、有 `[tool.mypy]` 的 `pyproject.toml`、有 `[mypy]` 的 `setup.cfg`，元件目錄沒有時往上層目錄找到 repo 根目錄為止，只用第一份）設了 `files` 時，devguard 不傳路徑，依設定檢查；否則傳 `.` 檢查整個元件。命令列有路徑時 mypy 會忽略設定中的 `files`。pyright 與 basedpyright 本來就不傳路徑。
+型別檢查的範圍是整個元件，由型別檢查器的設定決定。mypy 在元件目錄執行：mypy 實際讀到的設定（依 mypy 的順序找 `mypy.ini`、`.mypy.ini`、有 `[tool.mypy]` 的 `pyproject.toml`、有 `[mypy]` 的 `setup.cfg`，元件目錄沒有時往上層目錄找到 repo 根目錄為止，只用第一份）設了 `files` 時，devguard 不傳路徑，依設定檢查；否則傳 `.` 檢查整個元件。上層目錄的設定一樣套用在元件目錄執行的 mypy，所以其中的 `files` 路徑是相對於元件目錄解析。命令列有路徑時 mypy 會忽略設定中的 `files`。pyright 與 basedpyright 本來就不傳路徑。
 
 ### 7.2 第一道：VS Code
 

@@ -319,6 +319,16 @@ describe("python checker: mypy scope follows the configured files (#110)", () =>
     expect(await mypyArgs({ "api/mypy.ini": "files = src\n" })).toEqual([[...MYPY_ARGS, "."]]);
   });
 
+  it("skips an INI file with a duplicate section or key, which mypy's strict configparser rejects", async () => {
+    const fallback = { "api/setup.cfg": "[mypy]\nstrict = True\n" };
+    const duplicateSection = "[mypy]\nfiles = src\n\n[mypy]\nstrict = True\n";
+    expect(await mypyArgs({ "api/mypy.ini": duplicateSection, ...fallback })).toEqual([[...MYPY_ARGS, "."]]);
+    const duplicateKey = "[mypy]\nfiles = src\nFILES = tests\n";
+    expect(await mypyArgs({ "api/mypy.ini": duplicateKey, ...fallback })).toEqual([[...MYPY_ARGS, "."]]);
+    // Without the fallback, the skipped file's `files` must not be used either.
+    expect(await mypyArgs({ "api/mypy.ini": duplicateKey })).toEqual([[...MYPY_ARGS, "."]]);
+  });
+
   it("looks in parent directories up to the repo root when the component has no config, as mypy does", async () => {
     expect(await mypyArgs({ "pyproject.toml": '[tool.mypy]\nfiles = ["api/src"]\n' }, "api/web/")).toEqual([MYPY_ARGS]);
     const nearer = {
