@@ -1,4 +1,3 @@
-import { statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { runCheck, TOOL_MISSING_RULE } from "../check.ts";
@@ -14,6 +13,7 @@ import { claudeFeedback } from "../report/claude.ts";
 import type { Finding } from "../report/finding.ts";
 import { exitCodeFor, problemsOnly } from "../report/render.ts";
 import type { HookContext } from "./pre-commit.ts";
+import { isFile } from "../shared/fs.ts";
 import { isRecord } from "../shared/guards.ts";
 
 /** The hook's JSON input from stdin (Claude Code passes it to every command hook). */
@@ -82,18 +82,20 @@ export async function runClaudePostEdit(ctx: HookContext): Promise<number> {
 }
 
 /**
- * The files changed in the working tree since the last commit, new ones included, deleted ones left out. An untracked
- * nested git repo appears as one directory entry; it is not this repo's files, so it is left out too (#142).
+ * The files changed in the working tree since the last commit, new ones included, deleted ones left out. Only files
+ * are kept: an untracked nested git repo is listed by git as one directory (`repro/`), and its files are not this
+ * repo's (#142).
  */
 async function changedFiles(ctx: HookContext): Promise<string[]> {
   const args = ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"];
   const r = await (ctx.exec ?? nodeExec)({ file: "git", args, cwd: ctx.cwd });
   if (r.code !== 0) throw new Error(`git ${args.join(" ")} 失敗：${r.stderr.trim()}`);
-  return r.stdout
+  const paths = r.stdout
     .split("\0")
     .filter((e) => e.length > 3)
-    .map((e) => e.slice(3))
-    .filter((p) => statSync(join(ctx.cwd, p), { throwIfNoEntry: false })?.isFile() === true);
+    .map((e) => e.slice(3));
+  const kept = await Promise.all(paths.map((p) => isFile(join(ctx.cwd, p))));
+  return paths.filter((_, i) => kept[i]);
 }
 
 /**

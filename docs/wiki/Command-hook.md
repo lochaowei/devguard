@@ -150,7 +150,7 @@ $ echo '{"tool_name":"Write","tool_input":{"file_path":"C:\\work\\demo\\src\\sub
 
 ### 執行流程
 
-1. 用 `git status` 找出工作目錄中所有變更與新增的檔案（刪除的不算；未追蹤的巢狀 git repo 裡的檔案不屬於這個 repo，也不算）。透過 Bash 改的檔案也會被找到。
+1. 用 `git status` 找出工作目錄中所有變更與新增的檔案（刪除的不算）。透過 Bash 改的檔案也會被找到。未追蹤的巢狀 git repo（例如在 repo 裡 `git init` 的重現用目錄）在 `git status` 中只是一個目錄，裡面的檔案不屬於這個 repo，不會檢查。
 2. 對這些檔案跑 lint、format、typecheck。TypeScript 元件內的非原始碼檔案交給 linter 與 formatter，由工具決定是否處理；元件只有這類檔案變更時不跑 typecheck。
 3. 沒有錯誤就通過。
 4. 有錯誤時，依 hook 輸入的 `stop_hook_active` 決定：

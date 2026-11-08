@@ -45,6 +45,18 @@ interface Injector {
   finish?(text: string): string;
   /** File mode to set after writing (a hook script). */
   mode?: number;
+  /**
+   * For frameworks whose entries only run once a separate command has written the hooks into the hooks directory
+   * (SPEC §7.4, #70, #93): that command, and whether a hook file is one it wrote for the hook.
+   */
+  installer?: FrameworkInstaller;
+}
+
+/** The command a framework writes its hooks with, and how to recognise a hook file it wrote. */
+interface FrameworkInstaller {
+  command: string;
+  /** Whether `installed` is the file the command writes for `hook`. */
+  wroteHook(hook: GitHookName, installed: InstalledHook): boolean;
 }
 
 // --- pre-commit -------------------------------------------------------------------------------------------------
@@ -124,7 +136,7 @@ function requireMinimumVersion(text: string): string {
 }
 
 /** What pre-commit needs to write every hook type devguard installs. */
-export const PRE_COMMIT_INSTALL = `pre-commit install ${INSTALLED_HOOKS.map((h) => `--hook-type ${h}`).join(" ")}`;
+const PRE_COMMIT_INSTALL = `pre-commit install ${INSTALLED_HOOKS.map((h) => `--hook-type ${h}`).join(" ")}`;
 
 /** Whether `pre-commit install` has written the hook into the hooks directory. */
 function preCommitWroteHook(hook: GitHookName, installed: InstalledHook): boolean {
@@ -142,6 +154,7 @@ const preCommit: Injector = {
   inject: (file, text, hook, command) =>
     editConfigText(file, text, [{ op: "add", path: ["repos"], value: preCommitRepo(hook, command) }]),
   finish: requireMinimumVersion,
+  installer: { command: PRE_COMMIT_INSTALL, wroteHook: preCommitWroteHook },
 };
 
 // --- husky ------------------------------------------------------------------------------------------------------
@@ -171,6 +184,17 @@ function lefthookRuns(jobs: unknown, commands: unknown, hook: GitHookName): bool
   return inJobs || (isRecord(commands) && Object.values(commands).some((c) => isRecord(c) && mentions(c.run, hook)));
 }
 
+/** What writes lefthook's hooks into the hooks directory. */
+const LEFTHOOK_INSTALL = "lefthook install";
+
+/**
+ * Whether `lefthook install` has written the hook: its script calls lefthook to run the hook, as
+ * `call_lefthook run "<hook>" "$@"` (1.5 and later) or `call_lefthook "run <hook> $@"` (before 1.5).
+ */
+function lefthookWroteHook(hook: GitHookName, installed: InstalledHook): boolean {
+  return new RegExp(`^call_lefthook "?run "?${hook}(?![\\w-])`, "m").test(installed.text ?? "");
+}
+
 const lefthook: Injector = {
   file: (framework) => framework.file,
   hasEntry(text, hook, file) {
@@ -187,6 +211,7 @@ const lefthook: Injector = {
     }
     return editConfigText(file, text, [{ op: "add", path: [hook, "jobs"], value: { name: "devguard", run } }]);
   },
+  installer: { command: LEFTHOOK_INSTALL, wroteHook: lefthookWroteHook },
 };
 
 const INJECTORS: Record<HookFrameworkName, Injector> = { "pre-commit": preCommit, husky, lefthook };
@@ -322,24 +347,35 @@ export async function planFrameworkHooks(
   return { writes, printed: [] };
 }
 
+/** The hooks a framework has not written into the hooks directory yet, and the command that writes them. */
+export interface UnwrittenHooks {
+  /** The framework in use (pre-commit or lefthook). */
+  framework: HookFrameworkName;
+  /** The command that writes them: `pre-commit install --hook-type …` or `lefthook install`. */
+  command: string;
+  /** Each hook not written yet, with what is there now. Never empty. */
+  hooks: ReadonlyMap<GitHookName, InstalledHook>;
+}
+
 /**
- * The hooks devguard installs that the pre-commit framework has not written into the hooks directory yet (SPEC §7.4,
- * #70): what doctor reports as `framework-not-installed` and what `install` asks for `PRE_COMMIT_INSTALL` for. Empty
- * when the repo does not use pre-commit, is not a git repo, or `core.hooksPath` is set (pre-commit then refuses to
- * install, and `hooksPathConflict` is reported instead).
+ * The hooks devguard installs that the hook framework (pre-commit, lefthook) has not written into the hooks directory
+ * yet (SPEC §7.4, #70, #93): what doctor reports as `framework-not-installed` and what `install` asks to run the
+ * framework's command for. Undefined when every hook is written, the framework has no such command (none, husky), the
+ * repo is not a git repo, or `core.hooksPath` conflicts with the framework (`hooksPathConflict` is reported instead).
  */
-export async function preCommitHooksNotInstalled(
+export async function frameworkHooksNotInstalled(
   cwd: string,
   exec: Exec = nodeExec,
-): Promise<ReadonlyMap<GitHookName, InstalledHook>> {
-  const pending = new Map<GitHookName, InstalledHook>();
+): Promise<UnwrittenHooks | undefined> {
   const framework = await detectFramework(cwd);
-  if (framework?.name !== "pre-commit") return pending;
-  if ((await exec({ file: "git", args: ["rev-parse", "--git-dir"], cwd })).code !== 0) return pending;
-  if (await hooksPathConflict(cwd, framework, exec)) return pending;
+  const installer = framework && INJECTORS[framework.name].installer;
+  if (!framework || !installer) return undefined;
+  if ((await exec({ file: "git", args: ["rev-parse", "--git-dir"], cwd })).code !== 0) return undefined;
+  if (await hooksPathConflict(cwd, framework, exec)) return undefined;
+  const hooks = new Map<GitHookName, InstalledHook>();
   for (const hook of INSTALLED_HOOKS) {
     const installed = await installedHook(cwd, hook, exec);
-    if (!preCommitWroteHook(hook, installed)) pending.set(hook, installed);
+    if (!installer.wroteHook(hook, installed)) hooks.set(hook, installed);
   }
-  return pending;
+  return hooks.size > 0 ? { framework: framework.name, command: installer.command, hooks } : undefined;
 }

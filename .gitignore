@@ -2,3 +2,5 @@ node_modules/
 coverage/
 dist/
 .claude/worktrees/
+# Throwaway repos for reproducing a bug (AGENTS.md); the rest of .scratch/ is tracked.
+.scratch/repro/
