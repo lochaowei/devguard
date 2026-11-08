@@ -1,22 +1,32 @@
-import { isNode, LineCounter, parseDocument, type Document } from "yaml";
+import { parse as parseToml } from "@decimalturn/toml-patch";
+import { findNodeAtLocation, getNodeValue, parseTree, printParseErrorCode, type ParseError } from "jsonc-parser";
+import { isNode, LineCounter, parseDocument } from "yaml";
 import { compareToDefault } from "../declaration/compare.ts";
 import type { EffectiveItem, ResolvedComponent } from "../declaration/resolve.ts";
 import { fixText } from "../fix/category.ts";
+import { editFormat } from "../fix/edit.ts";
 import type { Repair } from "../fix/repair.ts";
+import { baseName } from "../repo/paths.ts";
 import type { Finding, Level } from "../report/finding.ts";
+import { at } from "./config-files.ts";
 import { judgeConfigValue, setAt } from "./judge.ts";
 
+/** The golangci config `devguard fix` creates when golangci-lint would find none. */
 export const GOLANGCI_FILE = ".golangci.yml";
-export const GOLANGCI_FILES = [".golangci.yml", ".golangci.yaml"] as const;
+/** golangci-lint's config names, in the order it picks one within a directory. */
+export const GOLANGCI_FILES = [".golangci.json", ".golangci.toml", ".golangci.yaml", ".golangci.yml"] as const;
 export const GOMOD_FILE = "go.mod";
 
 /** Linters golangci-lint v2 enables with `linters.default: standard` (the default). */
 const V2_STANDARD = ["errcheck", "govet", "ineffassign", "staticcheck", "unused"];
 
 export interface GoSettingsFiles {
-  /** Text of `.golangci.yml` (or `.golangci.yaml`); undefined when the file does not exist. */
+  /** Text of the golangci config golangci-lint uses; undefined when there is none. */
   golangci?: string;
-  /** Repo-relative path of the golangci config file; defaults to `component.dir + GOLANGCI_FILE`. */
+  /**
+   * Repo-relative path of that config, whose extension gives its format (`.json`, `.toml`, `.yaml`, `.yml`);
+   * defaults to `component.dir + GOLANGCI_FILE`.
+   */
   golangciFile?: string;
   /** Text of `go.mod`; undefined when the file does not exist. */
   gomod?: string;
@@ -71,31 +81,116 @@ class GoReport {
   }
 }
 
-/** A parsed `.golangci.yml` that answers values and their line numbers by key path. */
+type Lines = (path: readonly string[]) => number | undefined;
+
+/** A parsed golangci config (YAML, TOML or JSON) that answers values and, where it can, their lines by key path. */
 class Golangci {
   readonly file: string;
-  private readonly doc: Document;
-  private readonly lines: LineCounter;
+  private readonly data: unknown;
+  private readonly lineOf: Lines;
 
-  constructor(file: string, doc: Document, lines: LineCounter) {
+  constructor(file: string, data: unknown, lineOf: Lines) {
     this.file = file;
-    this.doc = doc;
-    this.lines = lines;
+    this.data = data;
+    this.lineOf = lineOf;
+  }
+
+  /** The file name for messages, such as `.golangci.toml`. */
+  get name(): string {
+    return baseName(this.file);
   }
 
   get(...path: string[]): unknown {
-    const node: unknown = this.doc.getIn(path, true);
-    return isNode(node) ? node.toJSON() : node;
+    return at(this.data, ...path);
   }
 
-  /** Line of the deepest existing node along `path`, plus where to fix it. */
+  /** Line of the deepest existing node along `path` (when the format gives one), plus where to fix it. */
   at(path: string[], fix?: string): { file: string; line?: number; fix?: string } {
+    const line = this.lineOf(path);
+    return line === undefined ? { file: this.file, fix } : { file: this.file, line, fix };
+  }
+}
+
+/**
+ * Turns a line lookup for one exact path into one that falls back to the nearest existing ancestor along `path`, so a
+ * missing key still points at the table it belongs in.
+ */
+const withAncestorFallback =
+  (lineOf: (path: readonly string[]) => number | undefined): Lines =>
+  (path) => {
     for (let n = path.length; n > 0; n--) {
-      const node = this.doc.getIn(path.slice(0, n), true);
-      const offset = isNode(node) ? node.range?.[0] : undefined;
-      if (offset !== undefined) return { file: this.file, line: this.lines.linePos(offset).line, fix };
+      const line = lineOf(path.slice(0, n));
+      if (line !== undefined) return line;
     }
-    return { file: this.file, fix };
+    return undefined;
+  };
+
+type Parsed = { config: Golangci } | { syntax: { rule: string; message: string; line?: number } };
+
+/** A golangci config that does not parse in its format, such as `settings/golangci-toml-syntax`. */
+function syntaxError(format: "YAML" | "TOML" | "JSON", name: string, reason: string, line?: number): Parsed {
+  return {
+    syntax: {
+      rule: `settings/golangci-${format.toLowerCase()}-syntax`,
+      message: `${name} 的 ${format} 語法錯誤：${reason}`,
+      ...(line === undefined ? {} : { line }),
+    },
+  };
+}
+
+function parseYamlConfig(file: string, name: string, text: string): Parsed {
+  const lines = new LineCounter();
+  const doc = parseDocument(text, { lineCounter: lines, prettyErrors: false });
+  const syntax = doc.errors[0];
+  if (syntax) return syntaxError("YAML", name, syntax.message, lines.linePos(syntax.pos[0]).line);
+  const lineOf = withAncestorFallback((path) => {
+    const node = doc.getIn(path, true);
+    const offset = isNode(node) ? node.range?.[0] : undefined;
+    return offset === undefined ? undefined : lines.linePos(offset).line;
+  });
+  return { config: new Golangci(file, doc.toJSON(), lineOf) };
+}
+
+function parseTomlConfig(file: string, name: string, text: string): Parsed {
+  try {
+    return { config: new Golangci(file, parseToml(text), () => undefined) };
+  } catch (e) {
+    const line = (e as { line?: unknown }).line;
+    const reason = (e instanceof Error ? e.message : String(e)).split("\n").pop() ?? "";
+    return syntaxError("TOML", name, reason, typeof line === "number" ? line : undefined);
+  }
+}
+
+function parseJsonConfig(file: string, name: string, text: string): Parsed {
+  const errors: ParseError[] = [];
+  const root = parseTree(text, errors, { disallowComments: true });
+  const error = errors[0];
+  if (error || !root) {
+    const reason = error ? printParseErrorCode(error.error) : "空檔案";
+    return syntaxError("JSON", name, reason, lineAtOffset(text, error?.offset ?? 0));
+  }
+  const lineOf = withAncestorFallback((path) => {
+    const node = findNodeAtLocation(root, [...path]);
+    return node ? lineAtOffset(text, node.offset) : undefined;
+  });
+  return { config: new Golangci(file, getNodeValue(root), lineOf) };
+}
+
+const lineAtOffset = (text: string, offset: number): number => text.slice(0, offset).split("\n").length;
+
+/**
+ * Reads a golangci config in the format its name says (golangci-lint reads `.json`, `.toml`, `.yaml`, `.yml`), by the
+ * same extension mapping `devguard fix` edits it with. JSON is read strictly: golangci-lint allows no comments.
+ */
+function parseGolangci(file: string, text: string): Parsed {
+  const name = baseName(file);
+  switch (editFormat(file)) {
+    case "toml":
+      return parseTomlConfig(file, name, text);
+    case "jsonc":
+      return parseJsonConfig(file, name, text);
+    default:
+      return parseYamlConfig(file, name, text);
   }
 }
 
@@ -115,7 +210,7 @@ function checkLinters(r: GoReport, config: Golangci): void {
     const file = config.file;
     r.fixable(
       "settings/golangci-linter-missing",
-      `${GOLANGCI_FILE} 沒有啟用標準要求的 linter「${name}」`,
+      `${config.name} 沒有啟用標準要求的 linter「${name}」`,
       config.at(["linters", "enable"], `在 ${file} 的 linters.enable 加上 ${name}`),
       [
         { op: "add", file, path: ["linters", "enable"], value: name },
@@ -182,7 +277,7 @@ function checkThresholds(r: GoReport, config: Golangci): void {
       const declared = r.effective(t.item);
       r.fixable(
         "settings/golangci-unset",
-        `${GOLANGCI_FILE} 沒有明確設定 ${t.linter}.${t.setting}（golangci-lint 預設 ${String(t.toolDefault)}）`,
+        `${config.name} 沒有明確設定 ${t.linter}.${t.setting}（golangci-lint 預設 ${String(t.toolDefault)}）`,
         config.at(
           ["linters", "settings", t.linter],
           `在 linters.settings.${t.linter} 加上 ${t.setting}: ${String(declared)}`,
@@ -202,7 +297,7 @@ function checkDepguard(r: GoReport, config: Golangci): void {
   const deny = strings(r.effective("deps.bannedApis")).map((pkg) => ({ pkg, desc: "標準禁用（deps.bannedApis）" }));
   r.fixable(
     "settings/golangci-depguard-rules",
-    `${GOLANGCI_FILE} 的 depguard 沒有明確規則（linters.settings.depguard.rules）`,
+    `${config.name} 的 depguard 沒有明確規則（linters.settings.depguard.rules）`,
     config.at(path, "在 linters.settings.depguard.rules 寫明禁用的套件"),
     [{ op: "set", file: config.file, path, value: { main: { deny } } }],
   );
@@ -214,7 +309,7 @@ function checkFormatters(r: GoReport, config: Golangci): void {
     if (enabled.has(name)) continue;
     r.fixable(
       "settings/golangci-formatter-missing",
-      `${GOLANGCI_FILE} 沒有啟用宣告的格式化工具「${name}」`,
+      `${config.name} 沒有啟用宣告的格式化工具「${name}」`,
       config.at(["formatters", "enable"], `在 ${config.file} 的 formatters.enable 加上 ${name}`),
       [{ op: "add", file: config.file, path: ["formatters", "enable"], value: name }],
     );
@@ -222,23 +317,18 @@ function checkFormatters(r: GoReport, config: Golangci): void {
 }
 
 function checkGolangci(r: GoReport, file: string, text: string): void {
-  const lines = new LineCounter();
-  const doc = parseDocument(text, { lineCounter: lines, prettyErrors: false });
-  const syntax = doc.errors[0];
-  if (syntax) {
-    const line = lines.linePos(syntax.pos[0]).line;
-    r.add("error", "settings/golangci-yaml-syntax", `${GOLANGCI_FILE} 的 YAML 語法錯誤：${syntax.message}`, {
-      file,
-      line,
-    });
+  const parsed = parseGolangci(file, text);
+  if ("syntax" in parsed) {
+    const { rule, message, line } = parsed.syntax;
+    r.add("error", rule, message, { file, ...(line === undefined ? {} : { line }) });
     return;
   }
-  const config = new Golangci(file, doc, lines);
+  const config = parsed.config;
   if (String(config.get("version")) !== "2") {
     r.add(
       "error",
       "settings/golangci-version",
-      `${GOLANGCI_FILE} 必須是 golangci-lint v2 格式（version: "2"）`,
+      `${config.name} 必須是 golangci-lint v2 格式（version: "2"）`,
       config.at(["version"], "golangci-lint migrate"),
     );
   }
@@ -278,7 +368,7 @@ function checkGoMod(r: GoReport, file: string, text: string): void {
   );
 }
 
-/** Compares a Go component's `.golangci.yml` and `go.mod` with its effective standard (SPEC §6.2, §8). */
+/** Compares a Go component's golangci config and `go.mod` with its effective standard (SPEC §6.2, §8). */
 export function checkGoSettings(component: ResolvedComponent, files: GoSettingsFiles): Finding[] {
   const r = new GoReport(component);
   if (files.golangci !== undefined)

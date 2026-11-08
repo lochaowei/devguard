@@ -12,3 +12,8 @@ export function upwards(dir: string): string[] {
   }
   return out;
 }
+
+/** The file name of a "/"-separated repo path: `svc/.golangci.toml` → `.golangci.toml`. */
+export function baseName(path: string): string {
+  return path.slice(path.lastIndexOf("/") + 1);
+}

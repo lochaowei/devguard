@@ -111,6 +111,55 @@ describe("checkGoSettings", () => {
     ]);
   });
 
+  it("judges a .golangci.json or .golangci.toml by the same rules, with a line where the format gives one", () => {
+    const json = `{
+  "version": "2",
+  "linters": {
+    "enable": ["gosec", "revive", "errorlint", "bodyclose", "misspell", "cyclop", "gocognit", "gomodguard_v2", "depguard"],
+    "settings": {
+      "cyclop": { "max-complexity": 12 },
+      "gocognit": { "min-complexity": 15 },
+      "depguard": { "rules": { "main": { "deny": [{ "pkg": "io/ioutil" }] } } }
+    }
+  },
+  "formatters": { "enable": ["gofumpt", "goimports"] }
+}
+`;
+    const fromJson = checkGoSettings(component(), {
+      golangci: json,
+      golangciFile: "backend/.golangci.json",
+      gomod: GOMOD,
+    });
+    expect(rules(fromJson)).toEqual(["error:settings/looser"]);
+    expect(fromJson[0]).toMatchObject({ file: "backend/.golangci.json", line: 6 });
+
+    const toml = `version = "2"
+
+[linters]
+enable = ["gosec", "revive", "errorlint", "bodyclose", "misspell", "cyclop", "gocognit", "gomodguard_v2", "depguard"]
+
+[linters.settings.cyclop]
+max-complexity = 12
+
+[linters.settings.gocognit]
+min-complexity = 15
+
+[[linters.settings.depguard.rules.main.deny]]
+pkg = "io/ioutil"
+
+[formatters]
+enable = ["gofumpt", "goimports"]
+`;
+    const fromToml = checkGoSettings(component(), {
+      golangci: toml,
+      golangciFile: "backend/.golangci.toml",
+      gomod: GOMOD,
+    });
+    expect(rules(fromToml)).toEqual(["error:settings/looser"]);
+    expect(fromToml[0]).toMatchObject({ file: "backend/.golangci.toml" });
+    expect(fromToml[0]?.line).toBeUndefined();
+  });
+
   it("errors when go.mod's go version is below the standard, accepts a higher one", () => {
     const low = check(GOOD, "module x\n\ngo 1.25.3\n");
     expect(rules(low)).toEqual(["error:settings/gomod-go-version"]);
