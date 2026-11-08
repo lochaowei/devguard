@@ -256,6 +256,18 @@ describe("devguard fix", () => {
     expect((await run(["fix", "--cwd", dir, "--yes"])).code).toBe(0);
     expect((await run(["check", "--cwd", dir])).code).toBe(0);
   });
+
+  it("leaves a TOML file whose edit would not parse, prints the edits and exits 0 with --yes (#105)", async () => {
+    const dir = project("standard: team@1.3.0\ncomponents:\n  - { path: ./, language: python }\n");
+    // `tool.ruff` is a number, so the standard's `tool.ruff.lint.*` keys cannot be added under it.
+    const pyproject = '[project]\nname = "x"\nversion = "0"\nrequires-python = ">=3.11"\n\n[tool]\nruff = 1\n';
+    writeFileSync(join(dir, "pyproject.toml"), pyproject);
+    writeFileSync(join(dir, "uv.lock"), "version = 1\n");
+    const r = await run(["fix", "--cwd", dir, "--yes"]);
+    expect(r.out).toContain("pyproject.toml：錯誤：修改後不是合法的 TOML，不會修改；請自行套用");
+    expect(readFileSync(join(dir, "pyproject.toml"), "utf8")).toBe(pyproject);
+    expect(r.code).toBe(0);
+  });
 });
 
 describe("devguard fix --code", () => {
