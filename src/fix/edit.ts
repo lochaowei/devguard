@@ -130,14 +130,25 @@ function editToml(text: string, edits: readonly KeyEdit[]): string {
   }
   const blocks = [
     // Top-level keys of an empty file (a new ruff.toml) have no section header.
-    ...[...sections].map(([name, values]) => ({ head: name ? `[${name}]\n` : "", values })),
-    ...[...arrayTables].flatMap(([name, items]) => items.map((values) => ({ head: `[[${name}]]\n`, values }))),
+    ...[...sections].map(([name, values]) => ({ head: name ? `[${name}]\n` : "", name, values })),
+    ...[...arrayTables].flatMap(([name, items]) => items.map((values) => ({ head: `[[${name}]]\n`, name, values }))),
   ];
   let out = empty ? "" : patchToml(text, doc, TOML_FORMAT);
-  for (const { head, values } of blocks) {
-    out += `${separator(out)}${head}${stringifyToml(values, TOML_FORMAT).trimEnd()}\n`;
+  for (const { head, name, values } of blocks) {
+    out += `${separator(out)}${head}${underTable(stringifyToml(values, TOML_FORMAT), name).trimEnd()}\n`;
   }
   return out;
+}
+
+/**
+ * stringify writes the sub-tables of a section's values (`rules.main` under `[linters.settings.depguard]`) with
+ * headers relative to the root, so they get the section's name in front.
+ */
+function underTable(toml: string, name: string): string {
+  if (name === "") return toml;
+  return toml.replace(/^(\[\[?)([^\]\n]+)(\]\]?)[ \t]*$/gm, (_, open: string, key: string, close: string) => {
+    return `${open}${name}.${key}${close}`;
+  });
 }
 
 function jsonFormatting(text: string): FormattingOptions {

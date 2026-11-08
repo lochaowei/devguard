@@ -15,7 +15,7 @@
 **SPEC 的指令都已實作**（`check`、`doctor`、`fix`、`install`、`hook`、`draft`、`standard upgrade`）。以 Bun 打包成 Windows、Linux、macOS 的單一執行檔，透過 GitHub Release 發佈（見[安裝](#安裝)）。見下方[路線圖](#路線圖)與[已知限制](#已知限制)。
 
 - **專案宣告與草稿**：解析並檢查 `.devguard.yaml`（9 種標準項目類型、覆寫與偏離規則、到期日檢查、未涵蓋程式檔提示），以及依既有設定產生宣告草稿（`devguard draft`，含 Gradle、pnpm、yarn、Poetry、Biome、Jest、pyright、basedpyright 等工具選擇）。
-- **四語言設定檢查與一致性檢查**：Python（`pyproject.toml`、`ruff.toml`、`pyrightconfig.json`）、Go（`.golangci.yml` / `.golangci.yaml`、`go.mod`）、TypeScript（`tsconfig.json`、ESLint、Prettier、Biome、Vitest / Jest、`package.json`）、Java（`pom.xml`、`build.gradle(.kts)`、`checkstyle.xml`、PMD ruleset、`lombok.config`）與共通 `.gitattributes`（`* text=auto eol=lf`）。monorepo 的子元件沿用上層目錄的共用設定檔。
+- **四語言設定檢查與一致性檢查**：Python（`pyproject.toml`、`ruff.toml`、`pyrightconfig.json`）、Go（golangci-lint 採用的 `.golangci.json` / `.toml` / `.yaml` / `.yml`、`go.mod`）、TypeScript（`tsconfig.json`、ESLint、Prettier、Biome、Vitest / Jest、`package.json`）、Java（`pom.xml`、`build.gradle(.kts)`、`checkstyle.xml`、PMD ruleset、`lombok.config`）與共通 `.gitattributes`（`* text=auto eol=lf`）。monorepo 的子元件沿用上層目錄的共用設定檔。
 - **依賴規則與工具版本範圍**：lockfile 是否提交（含 `go mod tidy -diff`、Maven Enforcer、Gradle `gradle.lockfile`）、直接依賴是否包含禁用套件（`deps.banned`），以及鎖定的工具版本（`uv.lock` / `poetry.lock`、`package-lock.json` / `pnpm-lock.yaml` / `yarn.lock` 等）是否落在標準允許的範圍內（`tools.*`）。
 - **程式碼與測試**：透過專案環境鎖定的工具執行 lint、format 與 typecheck；`check --full` 再跑測試與行 / 分支覆蓋率門檻。
 - **三道防線**：`install` 產生 `.vscode/`、`.claude/` 與工具設定檔，並安裝 pre-commit / pre-push hook（或注入既有的 pre-commit、husky、lefthook）；`doctor` 檢查本機環境。

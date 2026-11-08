@@ -79,6 +79,18 @@
 | `deps.banned` | `["pycrypto", "nose"]` | 直接依賴禁用套件 |
 | `deps.bannedApis` | `[]` | 對應 Ruff `TID251` banned-api |
 
+### golangci 設定檔
+
+devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，只檢查、修正這一份：
+
+1. 從元件目錄往上到 repo 根目錄，最近一層有設定檔的目錄優先（元件目錄的 `.golangci.yml` 優先於上層的 `.golangci.toml`）。
+2. 同一層依 `.golangci.json` > `.golangci.toml` > `.golangci.yaml` > `.golangci.yml` 取第一份。
+
+- 四種格式套用同樣的檢查與 rule id；finding 的 `file` 是採用的那一份，能取得行號時附上（TOML 目前沒有行號）。
+- `devguard fix` 沿用採用的那一份的格式修改它（TOML 就改 TOML、JSON 就改 JSON）。只有整條路徑上都沒有任何 golangci 設定檔時，才回報 `settings/golangci-missing` 並建立 `.golangci.yml`。
+- 語法錯誤依格式回報 `settings/golangci-yaml-syntax`、`settings/golangci-toml-syntax` 或 `settings/golangci-json-syntax`，不當成缺檔，也不自動修正。
+- 同一層有不只一份時，回報 `hint` `settings/golangci-multiple`，說明 golangci-lint 採用哪一份、其他的會被忽略。
+
 ### 執行方式
 
 - **工具執行器**：`uv run --no-sync <tool>`（鎖定版本讀取自 `uv.lock` 或 `poetry.lock`）。工具須已安裝在專案環境：有設定 `UV_PROJECT_ENVIRONMENT` 時就是它指定的目錄（絕對路徑照用，相對路徑相對於專案目錄，與 uv 相同），否則是 `.venv`；找不到時訊息會列出實際找過的路徑。安裝提示是 `uv sync`（Poetry：`poetry install`）；工具沒有列在 `pyproject.toml` 的依賴中時改為 `uv add --dev "<工具><範圍>"`（Poetry：`poetry config virtualenvs.in-project true && poetry add --group dev "<工具><範圍>"`），範圍取標準的 `tools.*`。Poetry 專案不讀 `UV_PROJECT_ENVIRONMENT`。Poetry 專案（最近的 lockfile 是 `poetry.lock`）改為直接執行專案內 `.venv` 中的工具，需要 `poetry config virtualenvs.in-project true`；以下的 `uv run --no-sync` 對 Poetry 專案都換成 `.venv` 中的執行檔
@@ -109,14 +121,14 @@
 | 項目 | 預設值 | 允許替代 / 備註 |
 |---|---|---|
 | `go.minVersion` | `"1.26"` | 檢查 `go.mod` 的 `go` directive |
-| `lint.tool` | `"golangci-lint"` | v2 設定檔（`version: "2"`），binary 版本須 `>=2.12,<3` |
-| `lint.rules` | `["errcheck", "govet", "ineffassign", "staticcheck", "unused", "gosec", "revive", "errorlint", "bodyclose", "misspell", "cyclop", "gocognit", "gomodguard_v2", "depguard"]` | `.golangci.yml` 的 `linters.enable` |
-| `format.tools` | `["gofumpt", "goimports"]` | `.golangci.yml` 的 `formatters.enable` |
+| `lint.tool` | `"golangci-lint"` | v2 設定檔（`version: "2"`），binary 版本須 `>=2.12,<3`。設定檔可以是 `.golangci.json`、`.golangci.toml`、`.golangci.yaml` 或 `.golangci.yml`，見下方「golangci 設定檔」 |
+| `lint.rules` | `["errcheck", "govet", "ineffassign", "staticcheck", "unused", "gosec", "revive", "errorlint", "bodyclose", "misspell", "cyclop", "gocognit", "gomodguard_v2", "depguard"]` | golangci 設定檔的 `linters.enable` |
+| `format.tools` | `["gofumpt", "goimports"]` | golangci 設定檔的 `formatters.enable` |
 | `complexity.cyclomatic` / `cognitive` | `10` / `15` | `cyclop.max-complexity` / `gocognit.min-complexity` |
 | `coverage.lines` | `80` | 排除 generated 檔案（`// Code generated … DO NOT EDIT.`）與 `mocks/` |
 | `deps.lockfile` | `true` | `go.mod` 與 `go.sum` 必須提交，且 `go mod tidy -diff` 必須乾淨 |
 | `deps.banned` | `["github.com/pkg/errors", "github.com/golang/protobuf"]` | 直接依賴禁用模組 + `gomodguard_v2` |
-| `deps.bannedApis` | `["io/ioutil"]` | `.golangci.yml` 的 `depguard` 規則 |
+| `deps.bannedApis` | `["io/ioutil"]` | golangci 設定檔的 `depguard` 規則 |
 
 ### 執行方式
 

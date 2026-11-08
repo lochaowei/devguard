@@ -46,7 +46,7 @@ devguard check [檔案…] [--staged] [--only lint|format|typecheck] [--full]
 | 1 | `declaration` | `config` | 解析 `.devguard.yaml`、驗證標準版本、比對覆寫與偏離理由 / 到期日、檢查同語言風格一致性 |
 | 2 | `uncovered-files` | `config` | 沒有被任何元件涵蓋的四語言程式檔，套用推定的預設標準並給提示 |
 | 3 | `settings-python` | `config` | `pyproject.toml` 的 Ruff、mypy / pyright / basedpyright 設定 |
-| 4 | `settings-go` | `config` | `go.mod` 的 Go 版本與 `.golangci.yml` |
+| 4 | `settings-go` | `config` | `go.mod` 的 Go 版本與 golangci-lint 採用的設定檔（`.golangci.json` / `.toml` / `.yaml` / `.yml`，查找順序見 [Language-Standards](Language-Standards.md)） |
 | 5 | `settings-java` | `config` | Maven / Gradle 建置檔、Wrapper、`checkstyle.xml`、PMD ruleset、`lombok.config` |
 | 6 | `deps` | `config` | lockfile 是否已提交、直接依賴是否違反 `deps.banned` |
 | 7 | `settings-typescript` | `config` | `package.json`、`tsconfig.json`、ESLint flat config、Prettier、Biome、Vitest / Jest 覆蓋率門檻 |
