@@ -127,6 +127,26 @@ describe("runPreCommit (SPEC §7.4)", () => {
     expect(out).toContain("devguard fix --code ");
   });
 
+  it("names Biome lint, which has no usable stdin mode, for a partially staged Biome file (#120)", async () => {
+    const { dir, git, write } = repo();
+    write(
+      ".devguard.yaml",
+      "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: typescript\n    overrides:\n      lint.tool: biome\n",
+    );
+    write("a.ts", "export const a = 1;\n");
+    git("add", ".");
+    write("a.ts", "export const a = 2;\n");
+    const tools: ToolRunner = {
+      run: (req) => Promise.resolve({ code: 0, stdout: req.stdin ?? "", stderr: "" }),
+    };
+    const { code, out } = await preCommit(dir, tools);
+    expect(code).toBe(0);
+    expect(out).toBe(
+      "注意：a.ts 有未 staged 的修改。其他檢查用的是 staged 版本，" +
+        "但 biome lint、tsc 沒有可用的 stdin 模式，檢查的是工作目錄版本。\n",
+    );
+  });
+
   it("says nothing about the working tree when staged and working versions match", async () => {
     const { dir, git, write } = repo();
     write("app.py", "y = 1\n");

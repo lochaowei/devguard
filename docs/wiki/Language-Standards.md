@@ -163,8 +163,8 @@
   - `tools.biome`（`@biomejs/biome`）：`>=2,<3`
   - `tools.vitest`：`>=5,<6`（`team@1.1.0`：`>=4.1,<6`）、`tools.jest`：`>=30,<31`
 - **程式碼檢查（`code` 層）**：
-  - `lint`：`eslint --format json`（或 `biome lint --reporter=json`；`--staged` 時透過 `--stdin` 讀取 staged 內容）
-  - `format`：`prettier --list-different`（或 `biome format --reporter=json`；`--staged` 時透過 `--stdin-filepath` 讀取 staged 內容）
+  - `lint`：`eslint --format json`（`--staged` 時透過 `--stdin` 讀取 staged 內容；或 `biome lint --reporter=github`，Biome 2.x 從 stdin 不回報 lint 診斷，所以 `--staged` 時也檢查工作目錄版本）
+  - `format`：`prettier --list-different`（或 `biome format --reporter=github`；`--staged` 時分別透過 `--stdin-filepath` 與 `--stdin-file-path` 讀取 staged 內容）
   - `typecheck`：`tsc --noEmit --pretty false`
 - **自動修正程式碼（`fix --code`）**：
   - `eslint --fix` + `prettier --write`（或 `biome lint --write` + `biome format --write`）

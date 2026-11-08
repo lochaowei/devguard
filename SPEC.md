@@ -463,8 +463,9 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
   - pre-commit 的項目要等 `pre-commit install --hook-type pre-commit --hook-type pre-push` 把 hook 寫進 hooks 目錄才會執行。`install` 結束時（預覽與套用都一樣）用與「已安裝」環境檢查相同的判斷確認；還沒寫入時印出這條指令作為下一步。`install` 不自己執行它，這則提示也不影響 exit code。
 - **找不到 CLI**：擋下 commit。錯誤訊息附上安裝指令，並提示可用 `--no-verify` 暫時略過。
 - **部分 staged 的檔案**：不做 stash，也不還原任何檔案。
-  - formatter 與單檔 linter 改用 `git show :<path>` 取出 **staged 版本**，再以 stdin 交給工具檢查，例如 `ruff check|format --stdin-filename`、`eslint --stdin --stdin-filename`、`prettier --stdin-filepath`、`biome lint|format --stdin-file-path`，以及 Go 的格式檢查 `golangci-lint fmt --stdin`（套用設定中的 gofumpt、goimports）。這可以避免最常見的誤判：工作目錄已經格式化，但 commit 進去的版本沒有。
+  - formatter 與單檔 linter 改用 `git show :<path>` 取出 **staged 版本**，再以 stdin 交給工具檢查，例如 `ruff check|format --stdin-filename`、`eslint --stdin --stdin-filename`、`prettier --stdin-filepath`、`biome format --stdin-file-path`，以及 Go 的格式檢查 `golangci-lint fmt --stdin`（套用設定中的 gofumpt、goimports）。這可以避免最常見的誤判：工作目錄已經格式化，但 commit 進去的版本沒有。
   - 型別檢查（mypy、pyright、tsc）、golangci-lint 與 Java 工具（Spotless、Checkstyle、PMD）沒有 stdin 模式，而且本來就會讀磁碟上的其他檔案，所以仍然檢查工作目錄的版本。
+  - `biome lint` 也檢查工作目錄的版本，與未 staged 的檔案一樣以檔案路徑執行：Biome 2.x 從 stdin 讀取時不回報任何 lint 診斷（不論內容，一律 exit 1 並只印出 `The contents aren't fixed`），`--write` 則會吞掉錯誤。不把 staged 內容寫成暫存檔再檢查，因為 Biome 依路徑套用 `includes` 與 `overrides`。
   - 印出的警告要說明哪些檢查用的是工作目錄版本。
 - **hook 只做檢查、不做修正**：失敗時印出 `devguard fix --code <files>`。
 - **專案工具不繼承 git 的 repo 定位變數**：git 執行 hook 前會匯出 `GIT_DIR`、`GIT_WORK_TREE`、`GIT_INDEX_FILE` 等變數（`githooks(5)`），在 worktree 中 `GIT_DIR` 是絕對路徑。CLI 代為執行的專案工具（測試、linter、formatter、型別檢查、套件管理指令）的環境中移除 `GIT_DIR`、`GIT_WORK_TREE`、`GIT_INDEX_FILE`、`GIT_OBJECT_DIRECTORY`、`GIT_ALTERNATE_OBJECT_DIRECTORIES`、`GIT_COMMON_DIR`、`GIT_PREFIX`，其餘變數照常傳遞；否則專案測試在暫存目錄中執行的 `git init`、`git commit` 會寫進外層的 repo。CLI 自己執行的 git 指令保留這些變數，例如 pre-commit 用 `git show :<path>` 讀 staged 版本時仍使用 git 提供的 index。
