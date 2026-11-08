@@ -49,6 +49,15 @@ export async function isDirectory(path: string): Promise<boolean> {
   }
 }
 
+/** Whether `path` is an existing file (following symlinks), not a directory. */
+export async function isFile(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isFile();
+  } catch {
+    return false;
+  }
+}
+
 /** Whether something exists at `path`. */
 export async function pathExists(path: string): Promise<boolean> {
   try {
