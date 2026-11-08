@@ -39,20 +39,31 @@ async function git(ctx: Pick<HookContext, "cwd" | "exec">, args: string[]): Prom
 
 const nulList = (out: string) => out.split("\0").filter((p) => p !== "");
 
-/** The file mode git gives a nested repo or submodule: a commit, not a file. */
-const GITLINK = "160000";
+/** The mode git gives a submodule (gitlink): a commit pointer, not a file. */
+const GITLINK_MODE = "160000";
 
 /**
- * `git diff --cached --raw -z`: status and path of each staged change (renames as delete + add). A staged nested repo
- * or submodule is left out: it has no file content to check (#142).
+ * A staged change as `stagedEntries` keeps it, given its `--raw` modes. A submodule (gitlink) has no staged text and
+ * its files are not this repo's (#147): one staged as a submodule is left out, or counts as deleting the file it
+ * replaced; a file staged in place of a submodule is checked like any other.
  */
+function withoutGitlink(oldMode: string, newMode: string, status: string, path: string): StagedEntry | undefined {
+  const wasFile = oldMode !== GITLINK_MODE && !/^0+$/.test(oldMode);
+  if (newMode === GITLINK_MODE) return wasFile ? { status: "D", path } : undefined;
+  // A deleted or unmerged submodule has no file to check either.
+  if (oldMode === GITLINK_MODE && (status === "D" || status === "U")) return undefined;
+  return { status, path };
+}
+
+/** `git diff --cached --raw -z`: status and path of each staged change (renames as delete + add). */
 async function stagedEntries(ctx: Pick<HookContext, "cwd" | "exec">): Promise<StagedEntry[]> {
   const parts = nulList(await git(ctx, ["diff", "--cached", "--raw", "-z", "--no-renames"]));
   const entries: StagedEntry[] = [];
   for (let i = 0; i + 1 < parts.length; i += 2) {
-    // `:<old mode> <new mode> <old sha> <new sha> <status>`
-    const [, newMode, , , status = ""] = (parts[i] ?? "").slice(1).split(" ");
-    if (newMode !== GITLINK) entries.push({ status, path: parts[i + 1] ?? "" });
+    // `:<old mode> <new mode> <old sha> <new sha> <status>`, then the path.
+    const [oldMode = "", newMode = "", , , status = ""] = (parts[i] ?? "").slice(1).split(" ");
+    const entry = withoutGitlink(oldMode, newMode, status, parts[i + 1] ?? "");
+    if (entry) entries.push(entry);
   }
   return entries;
 }

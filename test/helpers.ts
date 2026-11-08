@@ -1,3 +1,6 @@
+// Fixture gotcha: a Python component checks only `.py` files, while a TypeScript component formats (and, staged,
+// reads through `git show`) every changed file whatever its extension. A test that a directory, submodule or other
+// odd path never reaches the tools needs a TypeScript component, or it passes without the fix (#142, #147).
 import { parseDeclaration } from "../src/declaration/parse.ts";
 import { resolveDeclaration, type Resolution } from "../src/declaration/resolve.ts";
 import type { Finding } from "../src/report/finding.ts";
