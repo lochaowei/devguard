@@ -34,6 +34,10 @@ function repo(files: Record<string, string> = { ".devguard.yaml": DECL }, git = 
   return dir;
 }
 
+/** The hook `lefthook install` (2.2.2) wrote, with the machine-specific lefthook path made generic. */
+const lefthookWrote = (hook: GitHookName): string =>
+  readFileSync(new URL(`./fixtures/lefthook/${hook}`, import.meta.url), "utf8");
+
 const environment = (findings: Finding[]) => findings.filter((f) => f.layer === "environment");
 
 /** A developer whose pushes run the full tests (SPEC §7.4): pre-push problems are errors. */
@@ -181,6 +185,44 @@ describe("an existing hook framework (SPEC §7.4 step 2)", () => {
     writeFileSync(join(dir, ".git/hooks/pre-commit"), generated("pre-commit"));
     writeFileSync(join(dir, ".git/hooks/pre-push"), generated("pre-push"));
     expect(environment((await runDoctor({ cwd: dir, today: TODAY, checks })).findings)).toEqual([]);
+  });
+
+  describe("lefthook framework: hooks `lefthook install` has not written yet (#93)", () => {
+    /** A repo whose lefthook.yml already runs devguard for both hooks, with these files in `.git/hooks`. */
+    const lefthookRepo = (hooks: Partial<Record<GitHookName, string>> = {}) =>
+      repo({
+        ".devguard.yaml": DECL,
+        "lefthook.yml":
+          "pre-commit:\n  jobs:\n    - name: devguard\n      run: devguard hook git-pre-commit\n" +
+          "pre-push:\n  jobs:\n    - name: devguard\n      run: devguard hook git-pre-push\n",
+        ...Object.fromEntries(Object.entries(hooks).map(([hook, text]) => [`.git/hooks/${hook}`, text])),
+      });
+    const hooksCheck = async (dir: string, env: Record<string, string>) =>
+      environment((await runDoctor({ cwd: dir, today: TODAY, checks: [createGitHooksCheck()], env })).findings);
+    const NOT_INSTALLED = "error:environment/framework-not-installed";
+
+    it("reports both hooks with `lefthook install`; pre-push only as a hint while pushes do not run the tests", async () => {
+      const dir = lefthookRepo();
+      const findings = await hooksCheck(dir, FULL);
+      expect(rules(findings)).toEqual([NOT_INSTALLED, NOT_INSTALLED]);
+      expect(findings[0]?.fix).toBe("lefthook install");
+      expect(findings[0]?.message).toContain("lefthook 的 pre-commit hook 沒有安裝");
+      expect(findings[1]?.message).toContain(join(".git", "hooks", "pre-push"));
+      expect(rules(await hooksCheck(dir, {}))).toEqual([NOT_INSTALLED, "hint:environment/framework-not-installed"]);
+    });
+
+    it("passes once lefthook has written both hooks", async () => {
+      const dir = lefthookRepo({ "pre-commit": lefthookWrote("pre-commit"), "pre-push": lefthookWrote("pre-push") });
+      expect(await hooksCheck(dir, FULL)).toEqual([]);
+    });
+
+    it("still reports a hook of the same name that lefthook did not write, or wrote for another hook", async () => {
+      const dir = lefthookRepo({
+        "pre-commit": "#!/bin/sh\nnpx lint-staged\n",
+        "pre-push": lefthookWrote("pre-commit"),
+      });
+      expect(rules(await hooksCheck(dir, FULL))).toEqual([NOT_INSTALLED, NOT_INSTALLED]);
+    });
   });
 
   it.each([

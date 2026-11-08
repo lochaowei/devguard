@@ -9,11 +9,10 @@ import { nodeExec, type Exec } from "../process/exec.ts";
 import { hookCommandLine, inspectHookFile, renderHookFile, type GitHookName, type HookFileOptions } from "./file.ts";
 import {
   detectFramework,
+  frameworkHooksNotInstalled,
   hooksDisabled,
   hooksPathConflict,
   planFrameworkHooks,
-  PRE_COMMIT_INSTALL,
-  preCommitHooksNotInstalled,
   readHooksPath,
 } from "./frameworks.ts";
 import { hookFilePath, INSTALLED_HOOKS, installedHook } from "./location.ts";
@@ -133,9 +132,10 @@ export async function runInstall(options: InstallOptions): Promise<0 | 1> {
   });
   // The framework entry does nothing until the framework writes its hooks, which install leaves to the person (#70);
   // the same hooks doctor reports as framework-not-installed.
-  if ((await preCommitHooksNotInstalled(options.cwd, options.exec)).size > 0) {
+  const unwritten = await frameworkHooksNotInstalled(options.cwd, options.exec);
+  if (unwritten) {
     options.io.write(
-      `下一步：執行 ${PRE_COMMIT_INSTALL}，hook 框架才會把 hook 寫進 hooks 目錄（install 不會自動執行）。\n`,
+      `下一步：執行 ${unwritten.command}，hook 框架才會把 hook 寫進 hooks 目錄（install 不會自動執行）。\n`,
     );
   }
   return code;

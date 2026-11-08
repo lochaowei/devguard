@@ -210,6 +210,59 @@ describe("devguard install (SPEC §3.2, §7.4)", () => {
     });
   });
 
+  describe("lefthook framework: the next step when `lefthook install` has not run (#93)", () => {
+    const NEXT = "下一步：執行 lefthook install";
+    /** The hook `lefthook install` (2.2.2) wrote, with the machine-specific lefthook path made generic. */
+    const lefthookWrote = (hook: string): string =>
+      readFileSync(new URL(`./fixtures/lefthook/${hook}`, import.meta.url), "utf8");
+
+    it("prints the command after adding devguard's jobs to lefthook.yml", async () => {
+      const dir = repo({ ".devguard.yaml": DECL, "lefthook.yml": "pre-commit:\n  jobs: []\n" });
+      const out = io();
+      expect(await runInstall({ cwd: dir, today: TODAY, io: out })).toBe(0);
+      expect(read(dir, "lefthook.yml")).toContain("devguard hook git-pre-push");
+      expect(out.out).toContain(NEXT);
+      expect(out.out.indexOf(NEXT)).toBeGreaterThan(out.out.indexOf("已套用"));
+    });
+
+    it("says nothing once lefthook has written both hooks", async () => {
+      const dir = repo({
+        ".devguard.yaml": DECL,
+        "lefthook.yml": "pre-commit:\n  jobs: []\n",
+        ".git/hooks/pre-commit": lefthookWrote("pre-commit"),
+        ".git/hooks/pre-push": lefthookWrote("pre-push"),
+      });
+      const out = io();
+      expect(await runInstall({ cwd: dir, today: TODAY, io: out })).toBe(0);
+      expect(out.out).not.toContain("下一步");
+    });
+
+    it("finds the hooks lefthook wrote under core.hooksPath", async () => {
+      const dir = repo({
+        ".devguard.yaml": DECL,
+        "lefthook.yml": "pre-commit:\n  jobs: []\n",
+        ".githooks/pre-commit": lefthookWrote("pre-commit"),
+        ".githooks/pre-push": lefthookWrote("pre-push"),
+      });
+      execFileSync("git", ["config", "core.hooksPath", ".githooks"], { cwd: dir });
+      const out = io();
+      await runInstall({ cwd: dir, today: TODAY, io: out });
+      expect(out.out).not.toContain("下一步");
+    });
+
+    it("still asks for it when a hook of the same name is not lefthook's", async () => {
+      const dir = repo({
+        ".devguard.yaml": DECL,
+        "lefthook.yml": "pre-commit:\n  jobs: []\n",
+        ".git/hooks/pre-commit": lefthookWrote("pre-commit"),
+        ".git/hooks/pre-push": "#!/bin/sh\nnpm test\n",
+      });
+      const out = io();
+      await runInstall({ cwd: dir, today: TODAY, io: out });
+      expect(out.out).toContain(NEXT);
+    });
+  });
+
   it("refuses outside a git repository", async () => {
     const dir = repo({ ".devguard.yaml": DECL }, false);
     await expect(runInstall({ cwd: dir, today: TODAY, io: io() })).rejects.toThrow("git repo");
