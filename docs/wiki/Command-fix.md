@@ -59,7 +59,7 @@ devguard fix --code [檔案…] [--yes] [--cwd <dir>]
 | `snippet`：建置檔與程式碼形式的設定 | `pom.xml`、`build.gradle(.kts)`、`eslint.config.js`、`vitest.config.ts` 等 | **不寫入**，只印出要手動套用的片段 |
 | `user`：使用者層級設定 | repo 以外的路徑，例如 `~/.m2/settings.xml` | **不寫入**，只印出修改說明 |
 
-修改 TOML 共用檔（例如 `pyproject.toml`）時，`fix` 會先確認修改後的內容仍是合法的 TOML。不合法時該檔**不寫入**，改為印出 `pyproject.toml：錯誤：修改後不是合法的 TOML，不會修改；請自行套用` 與要套用的修改；同一次的其他檔案照常處理，exit code 不變。
+修改 TOML 共用檔（例如 `pyproject.toml`）時，`fix` 會先確認修改後的內容仍是合法的 TOML。不合法時該檔**不寫入**，改為印出 `pyproject.toml：錯誤：修改後不是合法的 TOML，不會修改；請自行套用` 與要套用的修改；同一次的其他檔案照常處理，這不會讓 `fix` 失敗：其他檔案寫入成功時 exit code 仍是 `0`。
 
 `check` 的報告會說明每筆問題屬於哪一種：`可用 fix 修正：devguard fix（…）` 表示 `fix` 會自動寫入；`（devguard fix 會印出要套用的片段，不會自動修改）` 表示屬於 `snippet` 或 `user`。
 

@@ -91,7 +91,7 @@ async function planWrite(
   file: string,
   category: "generated" | "managed",
   repairs: Repair[],
-): Promise<{ write?: FileWrite; rest: Repair[]; unparseable?: true }> {
+): Promise<{ write?: FileWrite; rest: Repair[]; printAs?: Printed["category"] }> {
   const before = (await readIfExists(join(cwd, file))) ?? "";
   if (category === "generated") {
     const generate = repairs.filter((r) => r.op === "generate").pop();
@@ -101,11 +101,17 @@ async function planWrite(
     return { write: after === before ? undefined : { file, category, before, after }, rest };
   }
   const edits = repairs.filter(keyEdit);
-  const after = editConfigText(file, before, edits);
-  // A broken pyproject.toml stops every tool that reads it; better to leave the file and print the edits.
-  if (editFormat(file, after) === "toml" && parseConfigText(file, after) === undefined) {
-    return { rest: repairs, unparseable: true };
+  // A broken TOML file stops every tool that reads it, so a TOML edit that fails or whose result does not parse is
+  // not written; the edits are printed instead. JSONC and YAML results are not checked.
+  const unparseable = { rest: repairs, printAs: "unparseable" } as const;
+  let after: string;
+  try {
+    after = editConfigText(file, before, edits);
+  } catch (error) {
+    if (editFormat(file, before) === "toml") return unparseable;
+    throw error;
   }
+  if (editFormat(file, after) === "toml" && parseConfigText(file, after) === undefined) return unparseable;
   const rest = repairs.filter((r) => !keyEdit(r));
   return { write: after === before ? undefined : { file, category, before, after }, rest };
 }
@@ -120,16 +126,15 @@ export async function planChanges(cwd: string, repairs: readonly Repair[]): Prom
   for (const [file, list] of byFile(repairs)) {
     const category: FileCategory = fileCategory(file);
     let rest = list;
-    let unparseable = false;
+    let printAs: Printed["category"] = category === "user" ? "user" : "snippet";
     if (category === "generated" || category === "managed") {
       const planned = await planWrite(cwd, file, category, list);
       if (planned.write) plan.writes.push(planned.write);
       rest = planned.rest;
-      unparseable = planned.unparseable === true;
+      printAs = planned.printAs ?? printAs;
     }
     if (rest.length === 0) continue;
-    const printedCategory = unparseable ? "unparseable" : category === "user" ? "user" : "snippet";
-    plan.printed.push({ file, category: printedCategory, lines: rest.map(describeEdit) });
+    plan.printed.push({ file, category: printAs, lines: rest.map(describeEdit) });
   }
   return plan;
 }

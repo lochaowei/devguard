@@ -96,6 +96,20 @@ describe("editConfigText: TOML (SPEC §13 T1)", () => {
       tool: { ruff: { lint: { select: ["E"], "per-file-ignores": { "tests/**": ["S101"] } } } },
     });
   });
+
+  it("puts two adds to a new sub-table of a dotted-key table in one section", () => {
+    const text = '[tool.ruff]\nlint.select = ["E"]\n';
+    const out = editConfigText("pyproject.toml", text, [
+      { op: "add", path: ["tool", "ruff", "lint", "per-file-ignores", "tests/**"], value: "S101" },
+      { op: "add", path: ["tool", "ruff", "lint", "per-file-ignores", "scripts/**"], value: "T201" },
+    ]);
+    expect(out.match(/\[tool\.ruff\.lint\.per-file-ignores\]/g)).toHaveLength(1);
+    expect(parseConfigText("pyproject.toml", out)).toEqual({
+      tool: {
+        ruff: { lint: { select: ["E"], "per-file-ignores": { "tests/**": ["S101"], "scripts/**": ["T201"] } } },
+      },
+    });
+  });
 });
 
 describe("editConfigText: JSONC", () => {

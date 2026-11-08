@@ -88,6 +88,8 @@ function hasTomlTable(text: string, doc: Obj, table: KeyPath, name: string): boo
     parseToml(`${text}\n[${name}]\n`);
     return false;
   } catch {
+    // `text` already parsed (doc came from it), so the only way the append fails is redeclaring the table. A library
+    // bug landing here instead just means an in-place edit, and planChanges refuses any TOML result that won't parse.
     return true;
   }
 }
