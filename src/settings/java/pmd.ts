@@ -1,6 +1,17 @@
 import type { Finding } from "../../report/finding.ts";
 import { child, descendants, type XmlEl } from "../../xml/parse.ts";
-import { finding, findConfig, generated, isFinding, judgeNumber, readXmlConfig, type JavaTarget } from "./common.ts";
+import {
+  finding,
+  findConfig,
+  generated,
+  isFinding,
+  judgeNumber,
+  readXmlConfig,
+  snippet,
+  type JavaTarget,
+  type OwnConfig,
+} from "./common.ts";
+import { pmdCognitiveRule } from "./generate.ts";
 
 /** Where the PMD ruleset is looked for, relative to the component. */
 export const PMD_FILES = ["pmd-ruleset.xml", "pmd.xml", "config/pmd/ruleset.xml", "config/pmd/pmd.xml"] as const;
@@ -25,6 +36,12 @@ function reportLevel(rule: XmlEl): XmlEl | undefined {
   return properties?.children.find((p) => p.name === "property" && p.attrs.name === "reportLevel");
 }
 
+/** What a finding about a PMD ruleset devguard did not generate prints: the CognitiveComplexity rule to add. */
+function own(t: JavaTarget, text: string, present: boolean): OwnConfig {
+  const where = present ? `把 ruleset 中的 ${RULE} 設定換成：` : "加在 ruleset 底下：";
+  return { text, missing: snippet(where, pmdCognitiveRule(t)) };
+}
+
 /** Checks the PMD ruleset of a Java component: CognitiveComplexity with reportLevel per the declaration. */
 export async function checkPmd(t: JavaTarget): Promise<Finding[]> {
   const file = findConfig(t, PMD_FILES);
@@ -39,14 +56,15 @@ export async function checkPmd(t: JavaTarget): Promise<Finding[]> {
       ),
     ];
   }
-  const root = await readXmlConfig(t, file);
-  if (isFinding(root)) return [root];
+  const config = await readXmlConfig(t, file);
+  if (isFinding(config)) return [config];
+  const { root, text } = config;
   const rule = findRule(root);
   if (!rule) {
     return [
       finding(t, "error", "settings/pmd-rule-missing", `${file}：缺少 PMD 的 ${RULE}（complexity.cognitive）`, {
         file,
-        ...generated(t, file),
+        ...generated(t, file, own(t, text, false)),
       }),
     ];
   }
@@ -56,5 +74,6 @@ export async function checkPmd(t: JavaTarget): Promise<Finding[]> {
     file,
     line: (level ?? rule).line,
     setting: `${RULE} reportLevel`,
+    own: own(t, text, true),
   });
 }

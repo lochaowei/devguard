@@ -396,7 +396,7 @@ components:
 | 指令 | 實際執行的動作 |
 |---|---|
 | `devguard check` | 檢查 Wrapper、`pom.xml` / `build.gradle(.kts)` 版本與鎖定規則、`checkstyle.xml`、`pmd-ruleset.xml`、`lombok.config`、禁用依賴（`log4j:log4j`、`junit:junit`），並透過 Wrapper 執行 `spotless:check`、`checkstyle:check`、`pmd:check`（或 Gradle 對應 tasks）解析 XML 報告 |
-| `devguard fix` | 重新產生 `checkstyle.xml`、`pmd-ruleset.xml`、`.mvn/`，修補 `lombok.config`、`.vscode/`、`.claude/`，並印出建置檔需手動修改的片段 |
+| `devguard fix` | 重新產生 `checkstyle.xml`、`pmd-ruleset.xml`（專案自己寫、沒有「由 CLI 產生」檔頭的不覆寫，只印出要加入的 module）、`.mvn/`，修補 `lombok.config`、`.vscode/`、`.claude/`，並印出建置檔需手動修改的片段 |
 | `devguard fix --code` | 透過 Wrapper 執行 `spotless:apply`（或 `spotlessApply`）格式化 Java 程式碼 |
 | `devguard check --full` | 執行 `mvnw test jacoco:report`（或 `gradlew test jacocoTestReport`），解析 `jacoco.xml` 驗證 `LINE` 與 `BRANCH` 覆蓋率各自 `>= 80%` |
 

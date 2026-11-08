@@ -183,13 +183,25 @@ describe("check and fix keep an existing Claude Code setup current", () => {
   it("reports an out-of-date rules file as an error that fix regenerates", async () => {
     const dir = repo({ ".devguard.yaml": DECL });
     await runInstall({ cwd: dir, today: TODAY, io: io() });
-    writeFileSync(join(dir, ".claude/rules/standards-api-python.md"), "hand edited\n");
+    writeFileSync(join(dir, ".claude/rules/standards-api-python.md"), "<!-- 由 CLI 產生 -->\nhand edited\n");
     const findings = await claudeFindings(dir);
     expect(findings.map((f) => [f.level, f.file])).toEqual([["error", ".claude/rules/standards-api-python.md"]]);
     expect(findings[0]?.fix).toMatch(/^devguard fix/);
     expect(await runFix({ cwd: dir, today: TODAY, io: io() })).toBe(0);
-    expect(read(dir, ".claude/rules/standards-api-python.md")).toContain("由 CLI 產生");
+    expect(read(dir, ".claude/rules/standards-api-python.md")).not.toContain("hand edited");
     expect(await claudeFindings(dir)).toEqual([]);
+  });
+
+  it("never overwrites a rules file devguard did not generate, and says fix only prints it (#100)", async () => {
+    const dir = repo({ ".devguard.yaml": DECL });
+    await runInstall({ cwd: dir, today: TODAY, io: io() });
+    writeFileSync(join(dir, ".claude/rules/standards-api-python.md"), "our own rules\n");
+    const findings = await claudeFindings(dir);
+    expect(findings.map((f) => [f.level, f.file])).toEqual([["error", ".claude/rules/standards-api-python.md"]]);
+    expect(findings[0]?.fix).toContain("不是 devguard 產生的");
+    expect(findings[0]?.fix).not.toMatch(/^devguard fix/);
+    await runFix({ cwd: dir, today: TODAY, io: io() });
+    expect(read(dir, ".claude/rules/standards-api-python.md")).toBe("our own rules\n");
   });
 });
 

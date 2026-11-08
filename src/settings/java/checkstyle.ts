@@ -1,6 +1,17 @@
 import type { Finding } from "../../report/finding.ts";
 import { descendants, type XmlEl } from "../../xml/parse.ts";
-import { finding, findConfig, generated, isFinding, judgeNumber, readXmlConfig, type JavaTarget } from "./common.ts";
+import {
+  finding,
+  findConfig,
+  generated,
+  isFinding,
+  judgeNumber,
+  readXmlConfig,
+  snippet,
+  type JavaTarget,
+  type OwnConfig,
+} from "./common.ts";
+import { checkstyleModule, type CheckstyleModule } from "./generate.ts";
 
 /** Where the Checkstyle config is looked for, relative to the component (Maven-style, then Gradle's default). */
 export const CHECKSTYLE_FILES = ["checkstyle.xml", "config/checkstyle/checkstyle.xml"] as const;
@@ -24,7 +35,13 @@ function findModule(root: XmlEl, name: string): XmlEl | undefined {
   );
 }
 
-function checkIllegalImport(t: JavaTarget, file: string, module: XmlEl): Finding[] {
+/** What a finding about `name` in a Checkstyle config devguard did not generate prints: the module to add or replace. */
+function own(t: JavaTarget, text: string, name: CheckstyleModule, present: boolean): OwnConfig {
+  const where = present ? `把 TreeWalker 底下的 ${name} 換成：` : "加在 TreeWalker 底下：";
+  return { text, missing: snippet(where, checkstyleModule(t, name)) };
+}
+
+function checkIllegalImport(t: JavaTarget, file: string, text: string, module: XmlEl): Finding[] {
   if (property(module, "regexp")?.attrs.value === "true") {
     return [
       finding(
@@ -58,15 +75,15 @@ function checkIllegalImport(t: JavaTarget, file: string, module: XmlEl): Finding
       "error",
       "settings/banned-api-not-enforced",
       `${file}：IllegalImport 沒有涵蓋禁用 API ${missing.join("、")}`,
-      { file, line: module.line, ...generated(t, file) },
+      { file, line: module.line, ...generated(t, file, own(t, text, "IllegalImport", true)) },
     ),
   ];
 }
 
-function moduleMissing(t: JavaTarget, file: string, name: string, why: string): Finding {
+function moduleMissing(t: JavaTarget, file: string, text: string, name: CheckstyleModule, why: string): Finding {
   return finding(t, "error", "settings/checkstyle-module-missing", `${file}：缺少 Checkstyle 的 ${name}（${why}）`, {
     file,
-    ...generated(t, file),
+    ...generated(t, file, own(t, text, name, false)),
   });
 }
 
@@ -80,8 +97,9 @@ export async function checkCheckstyle(t: JavaTarget): Promise<Finding[]> {
       }),
     ];
   }
-  const root = await readXmlConfig(t, file);
-  if (isFinding(root)) return [root];
+  const config = await readXmlConfig(t, file);
+  if (isFinding(config)) return [config];
+  const { root, text } = config;
   const findings: Finding[] = [];
   const cyclomatic = findModule(root, "CyclomaticComplexity");
   if (cyclomatic) {
@@ -91,13 +109,14 @@ export async function checkCheckstyle(t: JavaTarget): Promise<Finding[]> {
         file,
         line: (property(cyclomatic, "max") ?? cyclomatic).line,
         setting: "CyclomaticComplexity max",
+        own: own(t, text, "CyclomaticComplexity", true),
       }),
     );
   } else {
-    findings.push(moduleMissing(t, file, "CyclomaticComplexity", "complexity.cyclomatic"));
+    findings.push(moduleMissing(t, file, text, "CyclomaticComplexity", "complexity.cyclomatic"));
   }
   const illegalImport = findModule(root, "IllegalImport");
-  if (illegalImport) findings.push(...checkIllegalImport(t, file, illegalImport));
-  else findings.push(moduleMissing(t, file, "IllegalImport", "deps.bannedApis"));
+  if (illegalImport) findings.push(...checkIllegalImport(t, file, text, illegalImport));
+  else findings.push(moduleMissing(t, file, text, "IllegalImport", "deps.bannedApis"));
   return findings;
 }

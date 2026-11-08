@@ -510,7 +510,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 | 類別 | 範例 | 做法 |
 |---|---|---|
-| CLI 全權產生 | `checkstyle.xml`、PMD ruleset、`.claude/rules/*`、`/standards-doctor` skill、git hook | 整份重新產生，檔頭標示「由 CLI 產生」 |
+| CLI 全權產生 | `checkstyle.xml`、PMD ruleset、`.claude/rules/*`、`/standards-doctor` skill、git hook | 整份重新產生，檔頭標示「由 CLI 產生」。例外：檔案已存在、非空白、且沒有「由 CLI 產生」檔頭時，表示不是 devguard 產生的，一律不覆寫（`--yes` 也一樣），只印出要加入的內容：Checkstyle 設定與 PMD ruleset 印出缺少或要換掉的 module / rule，其餘印出完整的產生內容；`check` 也只提示手動修正。git hook 由 `install` / `fix` 以 hook 自己的標記判斷（§7.4） |
 | 結構化的共用檔 | `pyproject.toml` 的 `[tool.*]`、`.golangci.yml`、`tsconfig.json`、`.prettierrc`、`.npmrc`（只有帳密引用，不寫 `registry=`）、`.vscode/*`、`.claude/settings.json` | 只修改 CLI 管理的 key，並保留註解與順序（YAML 用 `yaml`，JSONC 用 `jsonc-parser`，TOML 用 `@decimalturn/toml-patch`；`@shopify/toml-patch` 需要在執行時載入 wasm，可能無法打包進 Bun exe）。TOML 的修改結果無法解析時不寫入該檔，改為印出要套用的修改 |
 | 建置檔與程式碼形式的設定檔 | `pom.xml`、`build.gradle`、`settings.gradle`、`vitest.config.ts`、`eslint.config.js` | 不自動修改，只印出要套用的片段或 diff |
 

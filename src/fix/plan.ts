@@ -24,9 +24,10 @@ export interface Printed {
   /**
    * `conflict`: a setting that stops the git hooks from running (`core.hooksPath`, SPEC §7.4). `typecheck`: the
    * project already configures a type checker other than the declared one (#68). `unparseable`: editing a shared TOML
-   * file would leave it unparseable, so it is not written (#105).
+   * file would leave it unparseable, so it is not written (#105). `foreign`: a CLI-owned file devguard did not generate,
+   * so it is not overwritten (#100).
    */
-  category: "snippet" | "user" | "conflict" | "typecheck" | "unparseable";
+  category: "snippet" | "user" | "conflict" | "typecheck" | "unparseable" | "foreign";
   lines: string[];
 }
 
@@ -37,6 +38,14 @@ export interface ChangePlan {
 
 export const GENERATED_MARK = "由 CLI 產生";
 const HEADER_TEXT = `${GENERATED_MARK}（devguard），請勿手動修改；執行 devguard fix 重新產生`;
+
+/**
+ * A CLI-owned file (SPEC §9.2) that devguard did not generate: it has content but no "由 CLI 產生" header. `fix` does
+ * not overwrite it (#100), as `install` leaves a git hook it did not write alone.
+ */
+export function isForeign(text: string | undefined): boolean {
+  return text !== undefined && text.trim() !== "" && !text.includes(GENERATED_MARK);
+}
 
 /**
  * Adds the "由 CLI 產生" header in the file's own comment syntax (after an XML declaration, shebang or front matter).
@@ -86,20 +95,32 @@ function byFile(repairs: readonly Repair[]): Map<string, Repair[]> {
   return files;
 }
 
+interface PlannedFile {
+  write?: FileWrite;
+  rest: Repair[];
+  printAs?: Printed["category"];
+}
+
+/** A CLI-owned file: regenerated whole, unless it exists and devguard did not generate it (#100). */
+function planGenerated(file: string, before: string, repairs: Repair[]): PlannedFile {
+  const generate = repairs.filter((r) => r.op === "generate").pop();
+  const rest = repairs.filter((r) => r.op !== "generate");
+  // Not devguard's file: nothing is written. The checks attach the part to add as snippets; failing those, the whole
+  // generated content is printed for reference.
+  if (isForeign(before)) return { rest: rest.length > 0 || !generate ? rest : [generate], printAs: "foreign" };
+  if (!generate) return { rest };
+  const after = withGeneratedHeader(file, generate.content);
+  return { write: after === before ? undefined : { file, category: "generated", before, after }, rest };
+}
+
 async function planWrite(
   cwd: string,
   file: string,
   category: "generated" | "managed",
   repairs: Repair[],
-): Promise<{ write?: FileWrite; rest: Repair[]; printAs?: Printed["category"] }> {
+): Promise<PlannedFile> {
   const before = (await readIfExists(join(cwd, file))) ?? "";
-  if (category === "generated") {
-    const generate = repairs.filter((r) => r.op === "generate").pop();
-    const rest = repairs.filter((r) => r.op !== "generate");
-    if (!generate) return { rest };
-    const after = withGeneratedHeader(file, generate.content);
-    return { write: after === before ? undefined : { file, category, before, after }, rest };
-  }
+  if (category === "generated") return planGenerated(file, before, repairs);
   const edits = repairs.filter(keyEdit);
   // A broken TOML file stops every tool that reads it, so a TOML edit that fails or whose result does not parse is
   // not written; the edits are printed instead. JSONC and YAML results are not checked.
@@ -211,6 +232,7 @@ const PRINT_LABEL = {
   conflict: "core.hooksPath 衝突，hook 不會執行；請自行處理",
   typecheck: "警告：已有宣告以外的型別檢查器設定，不會修改宣告；請自行決定",
   unparseable: "錯誤：修改後不是合法的 TOML，不會修改；請自行套用",
+  foreign: "這份檔案不是 devguard 產生的，不會覆寫；請自行加入以下內容",
 } as const;
 
 /** A diff line (`-` / `+` / ` ` marker) with any credential it shows masked (SPEC §10.3). */
@@ -227,7 +249,12 @@ export function renderPlan(plan: ChangePlan): string {
     );
   }
   for (const p of plan.printed) {
-    out.push(`${p.file}：${PRINT_LABEL[p.category]}`, ...p.lines.map((l) => `    ${redactSecrets(l)}`), "");
+    const lines = p.lines.flatMap((l) =>
+      redactSecrets(l)
+        .replace(/\r?\n$/, "")
+        .split(/\r?\n/),
+    );
+    out.push(`${p.file}：${PRINT_LABEL[p.category]}`, ...lines.map((l) => `    ${l}`), "");
   }
   if (out.length === 0) return "沒有需要修正的設定。\n";
   return out.join("\n");

@@ -138,13 +138,58 @@ default = true
       "pom.xml": pom,
       mvnw: "",
       "mvnw.cmd": "",
-      "checkstyle.xml": '<module name="Checker"><module name="TreeWalker"/></module>',
+      "checkstyle.xml": '<!-- 由 CLI 產生（devguard） -->\n<module name="Checker"><module name="TreeWalker"/></module>',
     });
     const after = await fixesEverything(dir);
-    expect(read(dir, "checkstyle.xml")).toContain("由 CLI 產生");
+    expect(read(dir, "checkstyle.xml")).toContain('<module name="CyclomaticComplexity">');
     expect(read(dir, "pmd-ruleset.xml")).toContain("由 CLI 產生");
     expect(read(dir, "pom.xml")).toBe(pom);
     expect(after.map((f) => f.rule)).toContain("settings/looser");
+  });
+
+  it("Java: never overwrites a checkstyle.xml or PMD ruleset devguard did not generate, prints what to add (#100)", async () => {
+    const checkstyle = [
+      '<?xml version="1.0"?>',
+      '<module name="Checker">',
+      "  <!-- the team's own checks -->",
+      '  <module name="TreeWalker">',
+      '    <module name="FinalLocalVariable"/>',
+      '    <module name="MagicNumber"/>',
+      "  </module>",
+      "</module>",
+      "",
+    ].join("\n");
+    const pmd =
+      '<?xml version="1.0"?>\n<ruleset name="ours">\n  <rule ref="rulesets/java/quickstart.xml"/>\n</ruleset>\n';
+    const dir = repo({
+      ".devguard.yaml": decl("java"),
+      "pom.xml": "<project/>\n",
+      mvnw: "",
+      "mvnw.cmd": "",
+      "checkstyle.xml": checkstyle,
+      "pmd-ruleset.xml": pmd,
+    });
+    const own = (f: Finding) => f.file === "checkstyle.xml" || f.file === "pmd-ruleset.xml";
+    const before = (await check(dir)).filter(own);
+    expect(before.map((f) => f.rule).sort()).toEqual([
+      "settings/checkstyle-module-missing",
+      "settings/checkstyle-module-missing",
+      "settings/pmd-rule-missing",
+    ]);
+    expect(before.filter(fixable)).toEqual([]);
+    expect(before[0]?.fix).toContain("不是 devguard 產生的");
+    let out = "";
+    const io: Interaction = { ...YES, write: (s) => (out += s) };
+    await runFix({ cwd: dir, today: TODAY, io });
+    expect(read(dir, "checkstyle.xml")).toBe(checkstyle);
+    expect(read(dir, "pmd-ruleset.xml")).toBe(pmd);
+    expect(out).toContain("checkstyle.xml：這份檔案不是 devguard 產生的，不會覆寫");
+    expect(out).toContain(
+      '    <module name="CyclomaticComplexity">\n      <property name="max" value="10"/>\n    </module>',
+    );
+    expect(out).toContain('    <module name="IllegalImport">');
+    expect(out).toContain('    <rule ref="category/java/design.xml/CognitiveComplexity">');
+    expect(out).not.toContain("<!DOCTYPE");
   });
 
   it("adds * text=auto eol=lf to .gitattributes", async () => {
