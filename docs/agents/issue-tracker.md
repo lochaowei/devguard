@@ -20,9 +20,12 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 
 Several agents work this repo at once. Before implementing an issue, check that nobody else holds it:
 
-1. **Taken** if any of these exist: an assignee (`gh issue view <n> --json assignees`), a PR mentioning it (`gh pr list --state all --search "<n>"`), or a remote branch for it (`git ls-remote --heads origin "*/<n>-*"`). Pick another issue or ask the user.
-2. **Claim**: `gh issue edit <n> --add-assignee @me`, the first write of the session.
-3. **Worktree**: build in your own worktree on a new branch `fix/<n>-<slug>` (or `feat/`, `docs/`). The main checkout belongs to the user, so leave its branch alone.
+Every agent and the user act as the same GitHub user, so an assignee alone cannot tell a live claim from a stale one; the remote branch is the claim.
+
+1. **Taken** if either exists: a remote branch for it (`git ls-remote --heads origin "*/<n>-*"`) or a PR mentioning it (`gh pr list --state all --search "<n>"`). An assignee with neither is taken while the assignment is under a day old (`gh api repos/{owner}/{repo}/issues/<n>/timeline --jq '.[] | select(.event == "assigned") | .created_at'`) and stale after that. Pick another issue or ask the user.
+2. **Claim**, as the first writes of the session: `gh issue edit <n> --add-assignee @me`, then create the branch `fix/<n>-<slug>` (or `feat/`, `docs/`) from `origin/main` and push it at once with `git push -u origin <branch>`, before any work, so the next agent's `ls-remote` sees it.
+3. **Worktree**: build that branch in your own worktree. The main checkout belongs to the user, so leave its branch alone.
+4. **Filing an issue you are about to fix** is a claim too: push its branch in the same step as `gh issue create`.
 
 ## Pull requests as a triage surface
 
