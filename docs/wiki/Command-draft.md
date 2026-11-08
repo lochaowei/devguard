@@ -29,7 +29,7 @@ $ devguard draft
 ## 執行流程
 
 1. **列出 repo 的檔案**：`git ls-files --cached --others --exclude-standard`，也就是已追蹤加上未被忽略的未追蹤檔，再去掉符合 `--ignore` 的檔案。
-2. **推斷元件**：每個四語言的程式檔，歸屬到往上找最近、含有該語言標記檔的目錄；找不到就歸屬 repo 根目錄。
+2. **推斷元件**：每個四語言的程式檔，歸屬到往上找最近、含有該語言標記檔的目錄。
 
    | 語言 | 標記檔 |
    |---|---|
@@ -39,6 +39,13 @@ $ devguard draft
    | Java | `pom.xml`、`build.gradle(.kts)`、`settings.gradle(.kts)` |
 
    Java 的多模組建置以**最外層**的建置檔為一個元件，其他語言以**最近**的為準。
+
+   下列檔案不成為元件，改寫進草稿的 `ignore`（排在 `--ignore` 的項目之後），每項上方有一行註解說明原因：
+
+   - **不在 `go.work` 中的 Go 模組**：`go.mod` 的目錄或上層有 `go.work`，但不在它的 `use` 清單中（常見的是測試資料裡讓 go 工具略過目錄的哨兵 `go.mod`）。golangci-lint 在 workspace 模式下無法檢查這種模組。註解：`# 不在 go.work 的 use 清單中`。沒有 `go.work` 的 repo，每個 `go.mod` 都是一個元件。
+   - **零星的程式檔**：往上找不到該語言的標記檔，而 repo 已經有其他有標記檔的元件，例如 Go 專案測試資料裡的 `.py`、Java 專案根目錄的一支腳本。同一目錄、同副檔名有多個時寫成 `<目錄>/*.<副檔名>`。註解：`# 沒有 Python 的標記檔，未建立元件；若要檢查，請補上標記檔並新增元件`。
+
+   整個 repo 都沒有任何標記檔時（例如純腳本 repo），零星的程式檔照舊成為 repo 根目錄的元件。
 
 3. **推斷非預設的工具選擇**：依元件目錄往上找到的檔案判斷。
 
@@ -56,7 +63,7 @@ $ devguard draft
    - 與預設相同：省略。
    - 比預設嚴格，或只是風格不同（例如行寬）：直接寫成覆寫值。
    - 比預設寬鬆：寫成 `{value, reason}`，`reason` 是 `TODO: 由 <檔案> 推得，請填寫放寬理由`。
-5. **寫入** `.devguard.yaml`，檔頭附上說明註解；有 `--ignore` 時在最後加上 `ignore` 清單。寫入時用「檔案不存在才建立」的模式，同時執行兩次也不會互相覆蓋。
+5. **寫入** `.devguard.yaml`，檔頭附上說明註解；有 `--ignore` 或步驟 2 排除的檔案時，在最後加上 `ignore` 清單。寫入時用「檔案不存在才建立」的模式，同時執行兩次也不會互相覆蓋。
 
 標準一律使用這個 CLI 內建的最新 `team` 版本，不會寫入既有專案的基線標準 `legacy@1.0.0`；要用它時自行改寫 `standard`（見[各語言預設標準](Language-Standards.md)）。
 
@@ -73,7 +80,7 @@ $ devguard draft
 
 ## 範例
 
-一個 repo 根目錄有零散的 Python 腳本、`api/` 是 Poetry 專案、`web/` 是 pnpm + Biome 的 TypeScript 專案：
+一個 repo 根目錄有 `requirements.txt` 與幾支 Python 腳本、`api/` 是 Poetry 專案、`web/` 是 pnpm + Biome 的 TypeScript 專案：
 
 ```text
 $ devguard draft
@@ -119,7 +126,8 @@ components:
 | 現象 | 原因與處理 |
 |---|---|
 | 多出不該有的元件（例如來自 `node_modules/`、`.venv/`） | 檔案清單只排除 git 忽略的檔案。先把依賴目錄加進 `.gitignore`，刪掉草稿重新產生 |
-| repo 根目錄出現一個意外的元件 | 有程式檔往上找不到標記檔，例如零散的腳本。可以保留、移到某個元件中，或從宣告中刪除（刪除後 `check` 會以 `uncovered-files` 提示） |
+| repo 根目錄出現一個意外的元件 | repo 沒有任何標記檔，零散的腳本歸屬 repo 根目錄。可以保留，或把這些檔案寫進 `ignore`。只從宣告中刪除元件不會排除檔案：它們會變成未涵蓋檔案，仍依預設標準檢查 |
+| 草稿的 `ignore` 有我想檢查的檔案 | 這些檔案沒有標記檔，或模組不在 `go.work` 中。補上標記檔（或把模組加進 `go.work`）後，刪掉該項並新增元件 |
 | 範例、第三方原始碼或自動產生的檔案變成元件 | 刪掉草稿，以 `--ignore examples/ --ignore third_party/` 重新產生；或直接把這些路徑寫進宣告的 `ignore` |
 | 想重新產生 | 先刪除或改名 `.devguard.yaml` 再執行 |
 | Poetry 專案的 `check` 提示 `找不到 ruff：專案環境（<專案>/.venv）中沒有安裝` | devguard 從專案內的 `.venv` 執行工具。照提示執行 `poetry config virtualenvs.in-project true && poetry install`，讓 Poetry 把虛擬環境建在專案裡 |
