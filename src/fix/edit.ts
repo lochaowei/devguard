@@ -218,14 +218,22 @@ const EDITORS: Record<EditFormat, (text: string, edits: readonly KeyEdit[]) => s
   lines: editLines,
 };
 
+/** Whether a file's line breaks are mostly CRLF (a file committed with CRLF, or checked out with it). */
+export function usesCrlf(text: string): boolean {
+  const crlf = text.split("\r\n").length - 1;
+  return crlf > 0 && crlf >= text.split("\n").length - 1 - crlf;
+}
+
 /**
  * Applies edits to the CLI-managed keys of a structured shared file and leaves everything else (comments, blank
- * lines, key order) as it was (SPEC §9.2). `text` is "" for a file that does not exist yet.
+ * lines, key order, CRLF line endings) as it was (SPEC §9.2, #84). `text` is "" for a file that does not exist yet,
+ * which gets LF.
  */
 export function editConfigText(file: string, text: string, edits: readonly KeyEdit[]): string {
   const format = editFormat(file, text);
   if (!format) throw new Error(`${file} 不是 CLI 能修改的結構化設定檔`);
-  return EDITORS[format](text.replace(/\r\n/g, "\n"), edits);
+  const out = EDITORS[format](text.replace(/\r\n/g, "\n"), edits);
+  return usesCrlf(text) ? out.replace(/\n/g, "\r\n") : out;
 }
 
 /**

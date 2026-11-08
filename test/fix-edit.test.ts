@@ -203,17 +203,39 @@ describe("editConfigText: line files", () => {
     expect(out).toBe("*.png binary\n* text=auto eol=lf\n");
   });
 
-  it("normalizes CRLF input to LF when editing JSONC, TOML, YAML, and line files", () => {
+  it("keeps a CRLF file CRLF when editing JSONC, TOML, YAML, and line files (#84)", () => {
     const jsonOut = editConfigText(
       "tsconfig.json",
       '{\r\n  "compilerOptions": {\r\n    "strict": false\r\n  }\r\n}\r\n',
-      [{ op: "set", path: ["compilerOptions", "strict"], value: true }],
+      [{ op: "set", path: ["compilerOptions", "noImplicitOverride"], value: true }],
     );
-    expect(jsonOut).not.toContain("\r");
-    expect(jsonOut).toContain('"strict": true');
+    expect(jsonOut).toBe(
+      '{\r\n  "compilerOptions": {\r\n    "strict": false,\r\n    "noImplicitOverride": true\r\n  }\r\n}\r\n',
+    );
+
+    const tomlOut = editConfigText("ruff.toml", "line-length = 100\r\n", [
+      { op: "set", path: ["line-length"], value: 120 },
+    ]);
+    expect(tomlOut).toBe("line-length = 120\r\n");
+
+    const yamlOut = editConfigText(".golangci.yml", 'version: "2"\r\nrun:\r\n  timeout: 1m\r\n', [
+      { op: "set", path: ["run", "timeout"], value: "5m" },
+    ]);
+    expect(yamlOut).toBe('version: "2"\r\nrun:\r\n  timeout: 5m\r\n');
 
     const lineOut = editConfigText(".gitattributes", "*.png binary\r\n", [{ op: "line", value: "* text=auto eol=lf" }]);
-    expect(lineOut).toBe("*.png binary\n* text=auto eol=lf\n");
+    expect(lineOut).toBe("*.png binary\r\n* text=auto eol=lf\r\n");
+  });
+
+  it("keeps an LF file LF, and writes a new file with LF", () => {
+    const lf = editConfigText("tsconfig.json", '{\n  "compilerOptions": {}\n}\n', [
+      { op: "set", path: ["compilerOptions", "strict"], value: true },
+    ]);
+    expect(lf).not.toContain("\r");
+    const created = editConfigText("tsconfig.json", "", [
+      { op: "set", path: ["compilerOptions", "strict"], value: true },
+    ]);
+    expect(created).not.toContain("\r");
   });
 });
 
