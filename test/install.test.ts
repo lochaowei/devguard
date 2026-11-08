@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Interaction } from "../src/fix/interaction.ts";
-import { inspectHookFile } from "../src/hooks/file.ts";
+import { foreignHookLine, inspectHookFile } from "../src/hooks/file.ts";
 import { runInstall } from "../src/hooks/install.ts";
 import { runFix } from "../src/fix/run.ts";
-import { HUSKY_V4_HOOK, lefthookWrote, TODAY } from "./helpers.ts";
+import { afterShebang, HUSKY_V4_HOOK, lefthookWrote, TODAY } from "./helpers.ts";
 import { isolateGit } from "./git-isolation.ts";
 
 // Real git runs here: keep it off any repo or config outside this file's temp directories.
@@ -147,6 +147,16 @@ describe("devguard install (SPEC §3.2, §7.4)", () => {
       // The other settings are still written; the hook is named as not installed after them.
       expect(read(dir, ".git/hooks/pre-push")).toContain("devguard hook git-pre-push");
       expect(out.out).toMatch(/已套用。\n[^]*沒有安裝[^]*\.git\/hooks\/pre-commit/);
+    });
+
+    it("counts the hook as installed once the line is at its top", async () => {
+      const hook = afterShebang(HUSKY_V4_HOOK, foreignHookLine("pre-commit"));
+      const dir = repo({ ".devguard.yaml": DECL, ".git/hooks/pre-commit": hook });
+      const out = io();
+      expect(await runInstall({ cwd: dir, today: TODAY, io: out })).toBe(0);
+      expect(read(dir, ".git/hooks/pre-commit")).toBe(hook);
+      expect(out.out).not.toContain("沒有安裝");
+      expect(out.out).not.toContain("既有的 git hook");
     });
 
     it("exits 1 when the foreign hooks are all there is", async () => {
