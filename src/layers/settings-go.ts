@@ -5,7 +5,7 @@ import type { Repair } from "../fix/repair.ts";
 import type { Finding } from "../report/finding.ts";
 import { checkGoSettings, GOLANGCI_FILE, GOLANGCI_FILES, GOMOD_FILE } from "../settings/go.ts";
 import type { CheckLayer } from "./types.ts";
-import { baseName, upwards } from "../repo/paths.ts";
+import { baseName, dirName, upwards } from "../repo/paths.ts";
 import { readIfExists } from "../shared/fs.ts";
 
 interface FoundGolangci {
@@ -71,17 +71,62 @@ function golangciMissing(component: ResolvedComponent): Finding {
   return { ...missing(component, GOLANGCI_FILE, "settings/golangci-missing", fix), repairs };
 }
 
-async function checkComponent(cwd: string, component: ResolvedComponent): Promise<Finding[]> {
+interface ComponentSettings {
+  component: ResolvedComponent;
+  /** The golangci config the component uses, if any. */
+  golangciFile?: string;
+  findings: Finding[];
+}
+
+async function checkComponent(cwd: string, component: ResolvedComponent): Promise<ComponentSettings> {
   const golangci = await findGolangci(cwd, component.dir);
   const gomod = await readIfExists(join(cwd, component.dir, GOMOD_FILE));
   const findings: Finding[] = [];
   if (golangci === undefined) findings.push(golangciMissing(component));
   else if (golangci.ignored.length > 0) findings.push(golangciMultiple(component, golangci));
   if (gomod === undefined) findings.push(missing(component, GOMOD_FILE, "settings/gomod-missing", "go mod init"));
-  return [
-    ...findings,
-    ...checkGoSettings(component, { golangci: golangci?.text, golangciFile: golangci?.file, gomod }),
-  ];
+  findings.push(...checkGoSettings(component, { golangci: golangci?.text, golangciFile: golangci?.file, gomod }));
+  return { component, findings, ...(golangci ? { golangciFile: golangci.file } : {}) };
+}
+
+const depth = (dir: string) => dir.split("/").length;
+
+/**
+ * Where a finding several components report about the golangci config they share is listed (#92): under the
+ * reporter whose directory holds the file, otherwise under the shallowest reporter, ties going to declaration order.
+ * `reporters` is in declaration order and never empty.
+ */
+function golangciOwner(file: string, reporters: readonly ResolvedComponent[]): ResolvedComponent {
+  const shallowest = reporters.reduce((best, c) => (depth(c.dir) < depth(best.dir) ? c : best));
+  return reporters.find((c) => c.dir === dirName(file)) ?? shallowest;
+}
+
+const findingKey = (f: Finding) => JSON.stringify([f.rule, f.file, f.line, f.message]);
+
+/** A finding about the golangci config the component uses, as opposed to its own files. */
+const aboutGolangci = (s: ComponentSettings, f: Finding) => s.golangciFile !== undefined && f.file === s.golangciFile;
+
+/**
+ * Findings about a golangci config several components share are listed once (#92), under the owner among the
+ * components that report them, so their repairs are applied once. One a single component reports stays as it is.
+ */
+function mergeShared(settings: readonly ComponentSettings[]): Finding[] {
+  const reporters = new Map<string, ResolvedComponent[]>();
+  for (const s of settings) {
+    for (const f of s.findings.filter((f) => aboutGolangci(s, f))) {
+      reporters.set(findingKey(f), [...(reporters.get(findingKey(f)) ?? []), s.component]);
+    }
+  }
+  const seen = new Set<string>();
+  return settings.flatMap((s) =>
+    s.findings.flatMap((f) => {
+      const key = findingKey(f);
+      if (!aboutGolangci(s, f)) return [f];
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{ ...f, component: golangciOwner(s.golangciFile ?? "", reporters.get(key) ?? [s.component]).name }];
+    }),
+  );
 }
 
 /** Settings check for Go components: the golangci config golangci-lint uses and `go.mod` against the effective standard (SPEC §6.2). */
@@ -90,7 +135,7 @@ export const goSettingsLayer: CheckLayer = {
   fixable: true,
   async run({ cwd, resolution }) {
     const components = resolution?.components.filter((c) => c.language === "go") ?? [];
-    const findings = await Promise.all(components.map((c) => checkComponent(cwd, c)));
-    return { findings: findings.flat() };
+    const checked = await Promise.all(components.map((c) => checkComponent(cwd, c)));
+    return { findings: mergeShared(checked) };
   },
 };

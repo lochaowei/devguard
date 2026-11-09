@@ -17,3 +17,8 @@ export function upwards(dir: string): string[] {
 export function baseName(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1);
 }
+
+/** The directory of a "/"-separated repo path, ending in "/" ("" at the root): `svc/.golangci.toml` → `svc/`. */
+export function dirName(path: string): string {
+  return path.slice(0, path.lastIndexOf("/") + 1);
+}

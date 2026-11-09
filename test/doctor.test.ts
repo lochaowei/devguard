@@ -5,12 +5,12 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runDoctor } from "../src/doctor.ts";
 import { createGitHooksCheck, type FrameworkEntryProbe } from "../src/environment/git-hooks.ts";
-import { renderHookFile, type GitHookName } from "../src/hooks/file.ts";
+import { foreignHookLine, renderHookFile, type GitHookName } from "../src/hooks/file.ts";
 import { runInstall } from "../src/hooks/install.ts";
 import { nodeExec, type Exec } from "../src/process/exec.ts";
 import type { Finding } from "../src/report/finding.ts";
 import { ToolMissingError, type ToolRunner } from "../src/tools/runner.ts";
-import { lefthookWrote, rules, TODAY } from "./helpers.ts";
+import { afterShebang, HUSKY_V4_HOOK, lefthookWrote, rules, TODAY } from "./helpers.ts";
 import { isolateGit } from "./git-isolation.ts";
 
 // Real git runs here: keep it off any repo or config outside this file's temp directories.
@@ -111,6 +111,55 @@ describe("git hooks installed (SPEC §7.4)", () => {
     const [finding] = environment((await runDoctor({ cwd: dir, today: TODAY })).findings);
     expect(finding).toMatchObject({ level: "error", rule: "environment/hook-foreign" });
     expect(finding?.fix).toContain("devguard hook git-pre-commit");
+  });
+
+  describe("where a foreign hook calls devguard (husky v4, #126)", () => {
+    const LINE = foreignHookLine("pre-commit");
+    const findingsFor = async (text: string) =>
+      environment((await runDoctor({ cwd: withPreCommit(text), today: TODAY })).findings);
+
+    it("accepts the call at the top, after the #! line", async () => {
+      expect(await findingsFor(afterShebang(HUSKY_V4_HOOK, LINE))).toEqual([]);
+    });
+
+    it("reports a call after the line that loads husky.sh, which never returns", async () => {
+      const [finding, ...rest] = await findingsFor(`${HUSKY_V4_HOOK}${LINE}\n`);
+      expect(rest).toEqual([]);
+      expect(finding).toMatchObject({ level: "error", rule: "environment/hook-foreign" });
+      expect(finding?.message).toContain('. "$(dirname "$0")/husky.sh"');
+      expect(finding?.message).toContain("不會執行");
+      expect(finding?.fix).toContain("開頭");
+      expect(finding?.fix).toContain('devguard hook git-pre-commit "$@" || exit $?');
+    });
+
+    it("reports a call after a top-level exit", async () => {
+      const [finding] = await findingsFor(`#!/bin/sh\nnpm test\nexit 0\n${LINE}\n`);
+      expect(finding).toMatchObject({ rule: "environment/hook-foreign" });
+      expect(finding?.message).toContain("exit 0");
+    });
+
+    it("reports a call after a top-level exec of another program", async () => {
+      const [finding] = await findingsFor(`#!/bin/sh\nexec npx lint-staged\n${LINE}\n`);
+      expect(finding?.message).toContain("exec npx lint-staged");
+    });
+
+    it("does not stop at an exec that only redirects, an exit under a condition, or one in a function", async () => {
+      const text = [
+        "#!/bin/sh",
+        "exec 1>&2",
+        '[ -n "$CI" ] && exit 0',
+        "if [ -f .skip ]; then",
+        "  exit 0",
+        "fi",
+        "fail() {",
+        "  exit 1",
+        "}",
+        "echo 'exit 0' # exit 0",
+        LINE,
+        "",
+      ].join("\n");
+      expect(await findingsFor(text)).toEqual([]);
+    });
   });
 });
 

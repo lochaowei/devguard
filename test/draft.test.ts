@@ -270,6 +270,33 @@ describe("draftDeclaration: overrides from tool settings", () => {
       reason: expect.stringMatching(/^TODO.*web\/vitest\.config\.ts/) as unknown,
     });
   });
+
+  describe("solution-style tsconfig (#124)", () => {
+    const solution = (playground: Record<string, boolean>) => ({
+      ...tsComponent(10, 80),
+      "web/tsconfig.json": JSON.stringify({
+        files: [],
+        references: [{ path: "./tsconfig.project.json" }, { path: "./tsconfig.playground.json" }],
+      }),
+      "web/tsconfig.project.json": JSON.stringify({
+        compilerOptions: Object.fromEntries(TS_OPTIONS.map((o) => [o, true])),
+      }),
+      "web/tsconfig.playground.json": JSON.stringify({ compilerOptions: playground }),
+    });
+
+    it("infers strict from the referenced tsconfigs, not the solution file", async () => {
+      const d = await draft(solution(Object.fromEntries(TS_OPTIONS.map((o) => [o, true]))));
+      expect(d.components).toEqual([{ path: "web/", language: "typescript" }]);
+    });
+
+    it("takes the loosest reference", async () => {
+      const d = await draft(solution({ strict: false }));
+      expect(d.components[0]?.overrides?.["typecheck.strict"]).toEqual({
+        value: false,
+        reason: expect.stringMatching(/^TODO.*web\/tsconfig\.playground\.json/) as unknown,
+      });
+    });
+  });
 });
 
 describe("writeDraft", () => {

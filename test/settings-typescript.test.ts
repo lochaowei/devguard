@@ -130,6 +130,84 @@ describe("TypeScript settings check: tsconfig extends", () => {
   });
 });
 
+/** remeda's packages/stackblitz-template: a solution-style tsconfig.json (#124). */
+const SOLUTION = JSON.stringify({
+  files: [],
+  references: [{ path: "./tsconfig.project.json" }, { path: "./tsconfig.playground.json" }],
+});
+
+describe("TypeScript settings check: solution-style tsconfig (#124)", () => {
+  it("judges each referenced tsconfig instead of the solution file", async () => {
+    const dir = project({
+      "tsconfig.json": SOLUTION,
+      "tsconfig.project.json": STRICT_TSCONFIG,
+      "tsconfig.playground.json": JSON.stringify({ extends: "./tsconfig.project.json" }),
+    });
+    expect(await check(dir)).toEqual([]);
+  });
+
+  it("points a finding and its repair at the referenced file that lacks the option", async () => {
+    const lacking = { strict: true, noUncheckedIndexedAccess: true, noFallthroughCasesInSwitch: true };
+    const dir = project({
+      "tsconfig.json": SOLUTION,
+      "tsconfig.project.json": STRICT_TSCONFIG,
+      "tsconfig.playground.json": JSON.stringify({ compilerOptions: lacking }),
+    });
+    const fs = await check(dir);
+    expect(summary(fs)).toEqual(["error:settings/looser:tsconfig.playground.json"]);
+    expect(fs[0]?.repairs).toEqual([
+      { op: "set", file: "tsconfig.playground.json", path: ["compilerOptions", "noImplicitOverride"], value: true },
+    ]);
+  });
+
+  it("reads a reference to a directory as that directory's tsconfig.json", async () => {
+    const dir = project({
+      "tsconfig.json": JSON.stringify({ files: [], references: [{ path: "./src" }] }),
+      "src/tsconfig.json": JSON.stringify({ compilerOptions: { strict: false } }),
+    });
+    expect(summary(await check(dir))).toEqual(expect.arrayContaining(["error:settings/looser:src/tsconfig.json"]));
+    expect(summary(await check(dir)).filter((s) => s.endsWith(":tsconfig.json"))).toEqual([]);
+  });
+
+  it("hints when a referenced tsconfig cannot be read", async () => {
+    const dir = project({ "tsconfig.json": SOLUTION, "tsconfig.project.json": STRICT_TSCONFIG });
+    expect(summary(await check(dir))).toEqual(["hint:settings/unconfirmed:tsconfig.playground.json"]);
+  });
+
+  it("judges a reference in no component's directory, and a nested solution's references, once each", async () => {
+    const dir = project({
+      ".devguard.yaml": "standard: team@1.0.0\ncomponents:\n  - path: web/\n    language: typescript\n",
+      "web/tsconfig.json": JSON.stringify({
+        files: [],
+        references: [{ path: "../shared" }, { path: "./nested.json" }, { path: "../shared/tsconfig.json" }],
+      }),
+      "web/nested.json": JSON.stringify({ files: [], references: [{ path: "../shared" }] }),
+      "shared/tsconfig.json": JSON.stringify({ compilerOptions: { strict: false } }),
+      "web/.prettierrc": '{ "printWidth": 120, "endOfLine": "lf" }',
+      "web/eslint.config.js": ESLINT,
+      "web/vitest.config.ts": VITEST,
+    });
+    const fs = await check(dir);
+    expect(fs.filter((f) => f.message.includes("strict")).map((f) => f.file)).toEqual(["shared/tsconfig.json"]);
+  });
+
+  it("leaves a referenced tsconfig in another component's directory to that component", async () => {
+    const dir = project({
+      ".devguard.yaml": `${DECL}  - path: packages/a/\n    language: typescript\n`,
+      "tsconfig.json": JSON.stringify({ files: [], references: [{ path: "./packages/a" }] }),
+      "packages/a/tsconfig.json": JSON.stringify({ compilerOptions: { strict: false } }),
+      "packages/a/.prettierrc": '{ "printWidth": 120, "endOfLine": "lf" }',
+      "packages/a/eslint.config.js": ESLINT,
+      "packages/a/vitest.config.ts": VITEST,
+    });
+    const fs = await check(dir);
+    const looser = fs.filter((f) => f.file === "packages/a/tsconfig.json").map((f) => f.component);
+    expect(looser.length).toBeGreaterThan(0);
+    expect(looser.every((c) => c?.startsWith("packages/a/ "))).toBe(true);
+    expect(fs.filter((f) => f.component?.startsWith("./ "))).toEqual([]);
+  });
+});
+
 const eslint = (rules: string, preset = "tseslint.configs.strictTypeChecked") =>
   `import tseslint from "typescript-eslint";\nexport default [\n  ${preset},\n  { rules: { ${rules} } },\n];\n`;
 

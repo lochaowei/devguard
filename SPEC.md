@@ -307,7 +307,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | 項目 | 預設值 | 落地方式 |
 |---|---|---|
 | `go.minVersion` | 1.26（`go.mod` 較高時以專案為準） | `go.mod` |
-| `lint.tool` | golangci-lint v2，**≥2.12** | golangci-lint 採用的設定檔（`version: "2"`）：從元件目錄往上到 repo 根目錄，最近一層有設定檔的目錄，同層依 `.golangci.json` > `.golangci.toml` > `.golangci.yaml` > `.golangci.yml` 取第一份。檢查與修正都針對這一份並沿用它的格式；同層有多份時提示其他的會被忽略；整條路徑都沒有時才建立 `.golangci.yml`。不是 v2 格式時只回報 `settings/golangci-version`（先 `golangci-lint migrate` 再重新 check），不檢查其他設定、不修正（#86） |
+| `lint.tool` | golangci-lint v2，**≥2.12** | golangci-lint 採用的設定檔（`version: "2"`）：從元件目錄往上到 repo 根目錄，最近一層有設定檔的目錄，同層依 `.golangci.json` > `.golangci.toml` > `.golangci.yaml` > `.golangci.yml` 取第一份。檢查與修正都針對這一份並沿用它的格式；同層有多份時提示其他的會被忽略；整條路徑都沒有時才建立 `.golangci.yml`。不是 v2 格式時只回報 `settings/golangci-version`（先 `golangci-lint migrate` 再重新 check），不檢查其他設定、不修正（#86）。多個 Go 元件共用同一份設定檔時，同一筆 finding（規則、檔案、行、訊息相同）只列一次、修正只套用一次：在回報它的元件中，列在目錄就是設定檔所在目錄的那個下，沒有時（例如設定在 `go.work` 所在、不是元件的目錄）列在目錄最上層的那個下（同層依宣告順序）。因此只有一個元件回報的 finding（例如該元件覆寫多加的 linter）照舊列在它下面（#92） |
 | `lint.rules` | v2 預設組加上 `gosec, revive, errorlint, bodyclose, misspell, cyclop, gocognit, gomodguard_v2, depguard` | `linters.enable`；depguard 一定要寫明確規則 |
 | `format.tools` | gofumpt + goimports（風格） | golangci-lint formatters；gopls `formatting.gofumpt` |
 | `complexity.cyclomatic` / `cognitive` | 10 / 15 | `cyclop.max-complexity`（預設 10）/ `gocognit.min-complexity`，**必須明確設為 15**（預設 30） |
@@ -332,6 +332,8 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | `deps.manager` | `npm`；允許替代工具 `pnpm`、`yarn` | — |
 | `deps.lockfile` | lockfile 必須提交；CI 使用 `npm ci` | CLI 檢查 |
 
+solution-style 的 `tsconfig.json`（`"files": []`、沒有 `include`、有 `references`）本身不檢查任何檔案：`typecheck.strict` 與 `typecheck.options` 改對每個被參照的 tsconfig 判斷（finding 與 `fix` 都指向被參照的檔案，solution 檔不修改；位在其他元件目錄內的參照交給該元件，巢狀的 solution 檔繼續往下追），型別檢查對每個參照執行 `tsc --noEmit -p <ref>` 並合併相同的錯誤。
+
 來源：[預設標準：TypeScript](.scratch/coding-standards-guard/issues/10-default-standard-typescript.md)
 
 ### 6.4 Java
@@ -346,6 +348,8 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | `test.tool` | JUnit 5 | — |
 | `coverage.lines` | JaCoCo BUNDLE 層級，LINE 與 BRANCH 都要 0.80；排除 Lombok 產生的程式碼 | `jacoco:check`；在 `lombok.config` 設定 `lombok.addLombokGeneratedAnnotation = true` |
 | `deps.lockfile` | Maven：Enforcer 的 `banDynamicVersions`（一條規則同時禁止版本範圍、LATEST / RELEASE 與 SNAPSHOT）加上 `dependencyConvergence`；Gradle：dependency locking 加上 `gradle.lockfile` | — |
+
+Maven 多模組建置（`pom.xml` 有 `<modules>`）的 lint 指令在 `checkstyle:check pmd:check` 之前加上 `test-compile` phase：只執行 plugin goal 時，reactor 解析不到尚未建置的兄弟模組（本機 `~/.m2` 沒有它們的 SNAPSHOT 時整個指令失敗），PMD 的型別解析也因此有 classpath。所以多模組的 lint 會先編譯，比較慢；編譯失敗時回報 `code/tool-failed`，訊息是建置輸出中的錯誤行。報告從各模組的 `target/` 讀取。單一模組的 Maven、Spotless 與 Gradle 不加 phase。
 
 來源：[預設標準：Java](.scratch/coding-standards-guard/issues/11-default-standard-java.md)
 
@@ -482,7 +486,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 - **pre-push 的完整測試由開發者開啟**：`install` 照常安裝 pre-push hook，但 hook 只在環境變數 `DEVGUARD_PRE_PUSH` 為 `full` 時，才執行 `check --full` 中的測試與覆蓋率；未設定或其他值時直接放行，什麼都不印。開關放在開發者的環境而不是專案宣告，所以不改變 §4 的格式，切換時也不需要重新執行 `install`。
 - **「已安裝」的環境檢查**
   1. 讀取 `core.hooksPath` 及其設定來源。
-  2. 若使用既有框架，確認其設定中有呼叫 CLI 的項目；使用 pre-commit 或 lefthook 框架時，另外確認 `pre-commit install --hook-type pre-commit --hook-type pre-push`／`lefthook install` 已執行（hooks 目錄中有該框架為 pre-commit、pre-push 產生的 hook）；使用 pre-commit 框架時，也確認設定的 `minimum_pre_commit_version` 至少為 `"4.4.0"`（缺少或較低都是錯誤，`devguard install` 會修正），且有 CLI 的 pre-push 項目時設定了頂層 `default_stages`（缺少是錯誤，不依 `DEVGUARD_PRE_PUSH` 降為提示，`devguard install` 會修正）。沒有使用框架時，確認 hook 檔存在、有 CLI 標記，且 checksum 正確。
+  2. 若使用既有框架，確認其設定中有呼叫 CLI 的項目；使用 pre-commit 或 lefthook 框架時，另外確認 `pre-commit install --hook-type pre-commit --hook-type pre-push`／`lefthook install` 已執行（hooks 目錄中有該框架為 pre-commit、pre-push 產生的 hook）；使用 pre-commit 框架時，也確認設定的 `minimum_pre_commit_version` 至少為 `"4.4.0"`（缺少或較低都是錯誤，`devguard install` 會修正），且有 CLI 的 pre-push 項目時設定了頂層 `default_stages`（缺少是錯誤，不依 `DEVGUARD_PRE_PUSH` 降為提示，`devguard install` 會修正）。沒有使用框架時，確認 hook 檔存在、有 CLI 標記，且 checksum 正確；hook 檔不是 devguard 產生的時，確認它呼叫 devguard，而且呼叫出現在第一個結束腳本的頂層無條件指令（`exit`、執行其他程式的 `exec`、以 `.`／`source` 載入其他腳本）之前。`install` 不修改這種 hook，只印出要加在開頭的一行，並以 `1` 結束。
   3. `core.hooksPath` 指向 `/dev/null` 或不存在的目錄時，回報錯誤。
 
   步驟 2 中 pre-push 的問題（hook 不存在或被修改、框架設定缺項目、框架尚未寫入 pre-push hook），在沒有設定 `DEVGUARD_PRE_PUSH=full` 時只列為**提示**，因為這時 pre-push 本來就不跑任何檢查；設定之後才算錯誤。
