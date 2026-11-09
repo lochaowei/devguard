@@ -156,6 +156,24 @@ export class SettingsJudge {
     if (finding) this.findings.push(finding);
   }
 
+  /**
+   * Like `compare` for a floor the project may set higher than the standard (`engines.node`): a stricter value is the
+   * project's own call, so it gets no hint to sync back (SPEC §6.1, §6.3).
+   */
+  compareFloor(key: string, actual: unknown, file: string, label: string, repair?: RepairFor): void {
+    const item = this.defs[key];
+    if (!item || this.declared(key) === undefined) return;
+    const site = { component: this.component.name, file };
+    const declared = this.component.effective[key];
+    const finding = judgeConfigValue({ key, item, declared, actual, site, label, repair });
+    if (finding && finding.rule !== "settings/stricter") this.findings.push(finding);
+  }
+
+  /** A config value that cannot be read reliably (`rule` `settings/config-value-unreadable`): a hint, never a guess. */
+  unreadable(file: string, message: string): void {
+    this.add({ level: "hint", rule: "settings/config-value-unreadable", message, file });
+  }
+
   /** A setting that must be on is off (or absent from a config whose content is fully known). */
   disabled(key: string, file: string, label: string, repair?: RepairFor): void {
     const want = this.declared(key);

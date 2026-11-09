@@ -311,6 +311,14 @@ describe("draftDeclaration: overrides from tool settings", () => {
     });
   });
 
+  it("writes a lower engines.node as a node.minVersion relaxation with a TODO reason (#118)", async () => {
+    const d = await draft({ ...tsComponent(10, 80), "web/package.json": '{ "engines": { "node": ">=20" } }' });
+    expect(d.components[0]?.overrides?.["node.minVersion"]).toEqual({
+      value: "20",
+      reason: expect.stringMatching(/^TODO.*web\/package\.json/) as unknown,
+    });
+  });
+
   describe("solution-style tsconfig (#124)", () => {
     const solution = (playground: Record<string, boolean>) => ({
       ...tsComponent(10, 80),

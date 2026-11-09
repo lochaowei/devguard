@@ -217,6 +217,18 @@ default = true
     expect(after.some((f) => f.file === "eslint.config.js" && f.level === "error")).toBe(true);
   });
 
+  it("TypeScript: adds engines.node to package.json and leaves the rest of the file alone (#118)", async () => {
+    const dir = repo({
+      ".devguard.yaml": decl("typescript"),
+      "tsconfig.json": '{ "compilerOptions": { "strict": true } }',
+      "package.json": '{\n  "name": "web",\n  "scripts": {\n    "test": "vitest"\n  }\n}\n',
+    });
+    await fixesEverything(dir);
+    expect(read(dir, "package.json")).toBe(
+      '{\n  "name": "web",\n  "scripts": {\n    "test": "vitest"\n  },\n  "engines": {\n    "node": ">=22"\n  }\n}\n',
+    );
+  });
+
   it("TypeScript: edits biome.json", async () => {
     const dir = repo({
       ".devguard.yaml": decl("typescript") + "    overrides:\n      lint.tool: biome\n",

@@ -163,7 +163,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 
 | 項目 | 預設值 | 允許替代 / 備註 |
 |---|---|---|
-| `node.minVersion` | `"22"` | 檢查 `package.json` 的 `engines.node` |
+| `node.minVersion` | `"22"` | 檢查元件目錄往上最近的 `package.json` 的 `engines.node`。下限取範圍的最低主版本（`>=20 <24`、`^20.1` 都是 20）：低於標準回報 `settings/looser`（`draft` 寫成帶 TODO 理由的放寬）；高於或等於標準沒有 finding；沒有 `engines.node` 回報錯誤，`devguard fix` 會加入 `">=22"`；`18 \|\| 20`、`*` 這類讀不出下限的範圍只給提示 |
 | `lint.tool` | `"eslint+prettier"` | 允許替代：`biome` |
 | `lint.rules` | `["typescript-eslint/strictTypeChecked"]` | ESLint flat config |
 | `format.printWidth` / `endOfLine` | `120` / `"lf"` | 風格項目（`.prettierrc` 或 `biome.json`） |

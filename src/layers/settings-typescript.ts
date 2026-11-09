@@ -3,6 +3,7 @@ import { SettingsJudge } from "../settings/judge.ts";
 import { checkBiome } from "../settings/typescript/biome.ts";
 import { checkCoverage } from "../settings/typescript/coverage.ts";
 import { checkEslint } from "../settings/typescript/eslint.ts";
+import { checkNodeVersion } from "../settings/typescript/node-version.ts";
 import { checkPrettier } from "../settings/typescript/prettier.ts";
 import { checkTsconfig, type OwnerOf } from "../settings/typescript/tsconfig.ts";
 import type { CheckLayer } from "./types.ts";
@@ -22,6 +23,7 @@ async function checkComponent(
     await checkBiome(root, judge);
   }
   await checkCoverage(root, judge);
+  await checkNodeVersion(root, judge);
 }
 
 /** Settings check for TypeScript components: tool config files vs the declared standard (SPEC §6.3, §8). */
