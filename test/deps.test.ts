@@ -333,14 +333,30 @@ describe("deps layer: Go", () => {
     expect(findings[0]?.fix).toBe("cd svc && go mod tidy");
   });
 
-  it("shows stderr when go fails without a diff", async () => {
+  it("reports missing modules, not untidy, when the module cache is empty (#83)", async () => {
+    const stderr = [
+      ...Array.from({ length: 6 }, (_, i) => `go: downloading example.com/dep${String(i)} v1.0.0`),
+      "go: example.com/app imports",
+      "\tgithub.com/goccy/go-yaml: module lookup disabled by GOPROXY=off",
+    ].join("\n");
+    const { findings } = await check({
+      declaration: decl("go", "svc/"),
+      files: { "svc/go.mod": GO_MOD, "svc/go.sum": "" },
+      tool: () => ({ code: 1, stdout: "", stderr }),
+    });
+    expect(summary(findings)).toEqual(["error:deps/go-modules-missing:svc/ (Go):svc/go.mod"]);
+    expect(findings[0]?.message).toContain("module lookup disabled by GOPROXY=off");
+    expect(findings[0]?.fix).toBe("cd svc && go mod download");
+  });
+
+  it("reports a tool failure, not untidy, for any other failure without a diff (#83)", async () => {
     const { findings } = await check({
       declaration: decl("go"),
       files: { "go.mod": "module m\n" },
-      tool: () => ({ code: 1, stdout: "", stderr: "go: module lookup disabled by GOPROXY=off" }),
+      tool: () => ({ code: 1, stdout: "", stderr: "go: go.mod file not found" }),
     });
-    expect(findings[0]?.message).toContain("GOPROXY=off");
-    expect(findings[0]?.fix).toBe("go mod tidy");
+    expect(summary(findings)).toEqual(["error:deps/tool-failed:./ (Go):go.mod"]);
+    expect(findings[0]?.message).toContain("go.mod file not found");
   });
 });
 

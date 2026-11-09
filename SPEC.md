@@ -315,7 +315,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | `complexity.cyclomatic` / `cognitive` | 10 / 15 | `cyclop.max-complexity`（預設 10）/ `gocognit.min-complexity`，**必須明確設為 15**（預設 30） |
 | `coverage.lines` | 80，排除 `// Code generated … DO NOT EDIT.` 與 `mocks/` | CLI 解析 `go tool cover -func` 的 total |
 | `test.race` | 本機不強制（Windows 需要 cgo / gcc），交給 CI | — |
-| `deps.lockfile` | `go.mod` 與 `go.sum` 必須提交，且 `go mod tidy -diff` 必須乾淨 | CLI 檢查 |
+| `deps.lockfile` | `go.mod` 與 `go.sum` 必須提交，且 `go mod tidy -diff` 必須乾淨（有 diff：`deps/go-mod-untidy`；模組快取沒有依賴、離線查不到：`deps/go-modules-missing`，修正 `go mod download`；其他失敗：`deps/tool-failed`） | CLI 檢查 |
 
 來源：[預設標準：Go](.scratch/coding-standards-guard/issues/09-default-standard-go.md)
 
