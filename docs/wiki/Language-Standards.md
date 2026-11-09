@@ -1,4 +1,4 @@
-# 各語言預設標準（`team@1.0.0`～`team@1.3.0`、`legacy@1.0.0`）與檢查對照表
+# 各語言預設標準（`team@1.0.0`～`team@1.4.0`、`legacy@1.0.0`）與檢查對照表
 
 本文整理內建預設標準 `team@1.0.0`（定義於 [`src/standard/team-1.0.0.ts`](../../src/standard/team-1.0.0.ts)）在四種語言中的預設值、設定檢查項目、程式碼檢查執行方式，以及 `--full` 測試與覆蓋率檢查邏輯。
 
@@ -12,14 +12,20 @@
 
 - Python 的 `typecheck.tool` 允許 `basedpyright`，並新增 `tools.basedpyright` `>=1.40,<2`。basedpyright 的版本都從 `main` 依序發佈、不回補舊版本線（2026-11-03 查證 PyPI 與 GitHub Releases），所以下限是目前唯一仍在維護的 1.40。
 
-`team@1.3.0`（定義於 [`src/standard/team-1.3.0.ts`](../../src/standard/team-1.3.0.ts)）是 CLI 內建的最新版本，`devguard draft` 寫入、`doctor` 建議升級到的都是它。它沿用 `team@1.2.0` 的所有項目，只移除 devguard 不再檢查的項目（minor，見 [SPEC §6](../../SPEC.md)，#64）：
+`team@1.3.0`（定義於 [`src/standard/team-1.3.0.ts`](../../src/standard/team-1.3.0.ts)）沿用 `team@1.2.0` 的所有項目，只移除 devguard 不再檢查的項目（minor，見 [SPEC §6](../../SPEC.md)，#64）：
 
 - 所有 `mirrors.*`（內部鏡像與 `mirrors.auth`）：套件、工具與 VS Code 擴充套件從哪裡下載，交給開發者使用者層級的設定。
 - 各語言的 `deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`，以及 Go 的 `tools.govulncheck`：devguard 不再執行弱點掃描。
 
-較舊的版本仍保留這些項目，但 devguard 不再依它們做任何檢查：不論宣告哪個版本，寫著它們只會得到 `declaration/retired-item` 提示；執行 `devguard standard upgrade` 到 `team@1.3.0` 會把它們從宣告中刪除。
+較舊的版本仍保留這些項目，但 devguard 不再依它們做任何檢查：不論宣告哪個版本，寫著它們只會得到 `declaration/retired-item` 提示；執行 `devguard standard upgrade` 到 `team@1.3.0` 或更新的版本會把它們從宣告中刪除。
 
-下文各語言的「工具版本範圍」列的是 `team@1.0.0` 的值，`team@1.1.0`、`team@1.2.0` 的差異標在括號中。
+`team@1.4.0`（定義於 [`src/standard/team-1.4.0.ts`](../../src/standard/team-1.4.0.ts)）是 CLI 內建的最新版本，`devguard draft` 寫入、`doctor` 建議升級到的都是它。它沿用 `team@1.3.0` 的所有項目，只放寬一個版本範圍（minor，見 [SPEC §6](../../SPEC.md)，#113）：
+
+- Python 的 `tools.mypy` 改為 `>=1.18,<3`，允許 mypy 2.x。2026-11-08 查證 PyPI：1.x 最後一版是 1.20.2（2026-04-21），2.0.0 於 2026-05-06 發佈、目前最新是 2.4.1，2.0 之後 1.x 沒有修補版；下限維持。
+
+不論宣告哪個標準版本，Python 的型別檢查器版本範圍只檢查元件宣告的 `typecheck.tool` 那一個：宣告 basedpyright 時不檢查 lockfile 中 mypy 的範圍，宣告 mypy 時不檢查 pyright／basedpyright 的範圍。
+
+下文各語言的「工具版本範圍」列的是 `team@1.0.0` 的值，`team@1.1.0`～`team@1.4.0` 的差異標在括號中。
 
 ### 既有專案的基線標準 `legacy@1.0.0`
 
@@ -97,7 +103,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 - **套件來源**：devguard 不檢查也不寫入 `[[tool.uv.index]]` 或 `[[tool.poetry.source]]`，交給 uv／Poetry 的使用者層級設定；只檢查 `pyproject.toml` 中的網址沒有內含帳密（`credentials/plaintext`）。`standard upgrade --apply` 對 Poetry 專案執行 `poetry add --group dev`
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
   - `tools.ruff`：`>=0.17,<0.18`（`team@1.1.0`：`>=0.17,<1`）
-  - `tools.mypy`：`>=1.18,<2`
+  - `tools.mypy`：`>=1.18,<2`（`team@1.4.0`：`>=1.18,<3`）
   - `tools.pyright`：`>=1.1.400,<1.2`（`team@1.1.0`：`>=1.1.400,<2`）
   - `tools.basedpyright`：`team@1.2.0` 新增，`>=1.40,<2`
   - `tools.pytest`：`>=8,<10`

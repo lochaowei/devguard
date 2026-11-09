@@ -6,7 +6,8 @@ import { isRecord } from "../shared/guards.ts";
 import { searchDirs } from "./config-files.ts";
 
 /** The Python type checkers a standard may allow for `typecheck.tool` (SPEC §6.1). */
-export type TypeChecker = "mypy" | "pyright" | "basedpyright";
+export const TYPE_CHECKERS = ["mypy", "pyright", "basedpyright"] as const;
+export type TypeChecker = (typeof TYPE_CHECKERS)[number];
 
 /**
  * The pyright-based type checkers: they share pyright's settings format (`typeCheckingMode`, `pythonVersion`,

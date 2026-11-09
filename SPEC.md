@@ -253,7 +253,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 
 ---
 
-## 6. 各語言的預設標準（`team@1.0.0` 草案，及 `team@1.1.0`～`team@1.3.0`、`legacy@1.0.0`）
+## 6. 各語言的預設標準（`team@1.0.0` 草案，及 `team@1.1.0`～`team@1.4.0`、`legacy@1.0.0`）
 
 本節的表格是 `team@1.0.0`。`team@1.1.0`（minor，§5.5）沿用 `team@1.0.0` 的所有項目，只有以下差異：
 
@@ -274,7 +274,11 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 - 所有 `mirrors.*`（§10）。
 - 各語言的 `deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`，以及 Go 的 `tools.govulncheck`（§5.3）。
 
-`devguard draft` 寫入、`doctor` 建議升級到的都是 CLI 內建的最新 `team` 版本（目前是 `team@1.3.0`）。既有專案可以改宣告基線標準 `legacy@1.0.0`（§6.5）。
+`team@1.4.0`（minor，§5.5）沿用 `team@1.3.0` 的所有項目，只有以下差異（#113）：
+
+- Python 的 `tools.mypy` 改為 `>=1.18,<3`，同時允許 mypy 1.x 與 2.x。2026-11-08 查證 PyPI：1.x 的最後一版是 1.20.2（2026-04-21），2.0.0 於 2026-05-06 發佈，目前最新是 2.4.1（2026-10-28），2.0 之後 1.x 沒有修補版。下限維持，與 `team@1.1.0` 對已停止發佈的版本線的處理一致。
+
+`devguard draft` 寫入、`doctor` 建議升級到的都是 CLI 內建的最新 `team` 版本（目前是 `team@1.4.0`）。既有專案可以改宣告基線標準 `legacy@1.0.0`（§6.5）。
 
 ### 6.1 Python
 
@@ -488,7 +492,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 | 比對項目 | 不一致時 |
 |---|---|
-| 專案鎖定的工具版本是否落在預設標準的範圍內 | 錯誤 |
+| 專案鎖定的工具版本是否落在預設標準的範圍內。Python 的型別檢查器只檢查元件宣告的 `typecheck.tool` 那一個（#113，所有標準版本）：宣告 basedpyright 的專案即使 lockfile 中有 mypy，也不檢查 mypy 的範圍 | 錯誤 |
 | VS Code 是否使用專案的工具（Ruff 與 mypy 的 `fromEnvironment`、直譯器、`js/ts.tsdk.path`；舊的 `typescript.tsdk` 也接受） | 錯誤，可用 `fix` 修正 |
 | Checkstyle 擴充套件的版本與設定檔路徑，是否和建置設定相同 | 錯誤，可用 `fix` 修正 |
 | `.claude/` 與 `.vscode/` 中由 CLI 產生或管理的內容，是否和目前的標準相符 | 錯誤，可用 `fix` 修正 |

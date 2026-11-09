@@ -15,13 +15,13 @@ const TS_ON_1_0_0 =
   "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: typescript\n    overrides:\n" +
   '      tools.eslint-plugin-sonarjs:\n        value: ">=3,<5"\n        reason: "peer dependency"\n';
 
-// team@1.2.0 (#68) and team@1.3.0 (#64) are newer: upgrades to team@1.1.0 name it as their target.
+// team@1.2.0 (#68) and team@1.4.0 (#64) are newer: upgrades to team@1.1.0 name it as their target.
 describe("standard upgrade from team@1.0.0 to team@1.1.0 (#39)", () => {
   it("doctor suggests upgrading team@1.0.0 to the newest team, past team@1.1.0", async () => {
     const dir = repo({ ".devguard.yaml": "standard: team@1.0.0\ncomponents: []\n" });
     const { findings } = await runDoctor({ cwd: dir, today: TODAY, checks: [createStandardUpgradeCheck()] });
     expect(findings).toContainEqual(
-      expect.objectContaining({ rule: "standard/upgrade-available", fix: "devguard standard upgrade team@1.3.0" }),
+      expect.objectContaining({ rule: "standard/upgrade-available", fix: "devguard standard upgrade team@1.4.0" }),
     );
   });
 
@@ -61,8 +61,14 @@ const uvLock = (packages: Record<string, string>) =>
 describe("team@1.1.0 widens Python tool ranges (#36)", () => {
   it("accepts newer ruff and pyright lines that team@1.0.0 rejects", async () => {
     const lock = uvLock({ ruff: "0.18.0", pyright: "1.2.0" });
+    // Only the declared type checker's range is checked (#113).
+    const declaration = (standard: string) =>
+      `standard: ${standard}
+components:
+  - {path: ./, language: python, overrides: {typecheck.tool: pyright}}
+`;
     const on = async (standard: string) =>
-      rules((await checkTools({ ".devguard.yaml": component(standard, "python"), "uv.lock": lock })).findings);
+      rules((await checkTools({ ".devguard.yaml": declaration(standard), "uv.lock": lock })).findings);
     expect(await on("team@1.0.0")).toEqual(["error:tool-version/out-of-range", "error:tool-version/out-of-range"]);
     expect(await on("team@1.1.0")).toEqual([]);
   });

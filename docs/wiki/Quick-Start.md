@@ -91,7 +91,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.3.0
+standard: team@1.4.0
 components:
   - path: ./
     language: python
@@ -155,7 +155,7 @@ branch = true
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.3.0
+standard: team@1.4.0
 components:
   - path: ./
     language: go
@@ -231,7 +231,7 @@ formatters:
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.3.0
+standard: team@1.4.0
 components:
   - path: ./
     language: typescript

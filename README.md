@@ -79,7 +79,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
    ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.3.0
+   standard: team@1.4.0
    components:
      - path: ./
        language: python
@@ -117,7 +117,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
      ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.3.0
+   standard: team@1.4.0
    components:
      - path: ./
        language: go
@@ -152,7 +152,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
    ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.3.0
+   standard: team@1.4.0
    components:
      - path: ./
        language: typescript
@@ -223,7 +223,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
      ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
-   standard: team@1.3.0
+   standard: team@1.4.0
    components:
      - path: ./
        language: java
@@ -270,7 +270,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 放在 repo 根目錄。最精簡的寫法：
 
 ```yaml
-standard: team@1.3.0
+standard: team@1.4.0
 components:
   - path: ./
     language: typescript
@@ -279,7 +279,7 @@ components:
 monorepo 與覆寫的寫法：
 
 ```yaml
-standard: team@1.3.0            # 必須寫確切版本
+standard: team@1.4.0            # 必須寫確切版本
 components:                     # 元件 = 目錄 + 語言
   - path: backend/
     language: go
@@ -302,7 +302,7 @@ components:                     # 元件 = 目錄 + 語言
 - 理由仍是 `TODO`、覆寫不存在的項目、值的型別錯誤、重複宣告同一個元件，都是**錯誤**。
 - 每個檔案歸屬於路徑最長且語言相符的元件；沒有元件涵蓋時，依副檔名推定語言並套用預設標準（並發出 `declaration/uncovered-files` 提示）。
 
-可以覆寫的項目與預設值，見 [src/standard/team-1.0.0.ts](src/standard/team-1.0.0.ts)（`team@1.1.0`～`team@1.3.0` 與前一版的差異見 [src/standard/team-1.1.0.ts](src/standard/team-1.1.0.ts)、[src/standard/team-1.2.0.ts](src/standard/team-1.2.0.ts)、[src/standard/team-1.3.0.ts](src/standard/team-1.3.0.ts)）、SPEC §5–§6 或 [Language-Standards.md](docs/wiki/Language-Standards.md)。
+可以覆寫的項目與預設值，見 [src/standard/team-1.0.0.ts](src/standard/team-1.0.0.ts)（`team@1.1.0`～`team@1.4.0` 與前一版的差異見 [src/standard/team-1.1.0.ts](src/standard/team-1.1.0.ts)、[src/standard/team-1.2.0.ts](src/standard/team-1.2.0.ts)、[src/standard/team-1.3.0.ts](src/standard/team-1.3.0.ts)、[src/standard/team-1.4.0.ts](src/standard/team-1.4.0.ts)）、SPEC §5–§6 或 [Language-Standards.md](docs/wiki/Language-Standards.md)。
 
 既有專案可以先宣告基線標準 `legacy@1.0.0`（[src/standard/legacy-1.0.0.ts](src/standard/legacy-1.0.0.ts)，SPEC §6.5）：不判定覆蓋率、不要求 strict 型別檢查、放寬複雜度、只禁用有已知弱點的套件，並接受 Java 8；之後以 `devguard standard upgrade` 升級到 `team@1.1.0`。
 
@@ -312,7 +312,7 @@ devguard 不檢查也不寫入套件從哪裡下載（#64）：各企業的限�
 
 devguard 只檢查提交進 repo 的設定檔沒有明碼帳密（`credentials/plaintext`）：`.npmrc` 的 `_auth`、`_authToken`、`_password` 要引用環境變數，`pyproject.toml` 中的網址不得內含密碼或 token，`.mvn/settings.xml` 的 `<password>` 要寫成 `${…}` 引用或 Maven 加密的 `{…}`。元件上層目錄的這些檔案（例如 workspace 根目錄的 `.npmrc`）也會檢查。
 
-`team@1.2.0` 以前的標準仍有 `mirrors.*` 與弱點掃描項目，但 devguard 不再依它們做任何檢查：不論宣告哪個版本，宣告中寫著它們只會得到 `declaration/retired-item` 提示；`devguard standard upgrade` 升到 `team@1.3.0` 時會把它們刪除。
+`team@1.2.0` 以前的標準仍有 `mirrors.*` 與弱點掃描項目，但 devguard 不再依它們做任何檢查：不論宣告哪個版本，宣告中寫著它們只會得到 `declaration/retired-item` 提示；`devguard standard upgrade` 升到 `team@1.3.0` 或更新的版本時會把它們刪除。
 
 ### 還沒有宣告：`devguard draft`
 
