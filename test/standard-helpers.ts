@@ -39,3 +39,26 @@ export async function upgrade(dir: string, options: { apply?: boolean; target?: 
   const code = await runStandardUpgrade({ cwd: dir, today: TODAY, apply: false, ...options, tools: noTools, write });
   return { code, out };
 }
+
+/** A pyproject.toml that meets the standard except for the type checker tables, which `typecheck` supplies. */
+export const pyproject = (typecheck: string) => `[project]
+name = "app"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "C90", "SIM", "N", "S", "TID"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101"]
+"**/test_*.py" = ["S101"]
+${typecheck}
+[tool.coverage.run]
+branch = true
+`;

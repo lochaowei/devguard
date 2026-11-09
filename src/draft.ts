@@ -20,7 +20,8 @@ import { goWorkspaces } from "./repo/go-work.ts";
 import { defaultStandard } from "./standard/registry.ts";
 import { EXTENSION_LANGUAGE, LANGUAGE_LABEL, LANGUAGES, type Language, type Standard } from "./standard/types.ts";
 import { baseName, upwards } from "./repo/paths.ts";
-import { typeCheckerConfigs, type TypeChecker } from "./settings/type-checkers.ts";
+import { typeCheckerConfigs, typeCheckingOff, type TypeChecker } from "./settings/type-checkers.ts";
+import { parseConfigText } from "./fix/edit.ts";
 import { readIfExists } from "./shared/fs.ts";
 
 /** The settings checks whose readers the draft reuses: their findings carry the values read from config files. */
@@ -155,8 +156,13 @@ const JEST_CONFIGS = ["js", "mjs", "cjs", "ts", "mts", "cts", "json"].map((e) =>
 
 interface FileProbe {
   nearest: (win: readonly string[], lose?: readonly string[]) => boolean;
-  /** The type checkers only the component's own settings are for (a `[tool.basedpyright]` table, a mypy.ini). */
+  /**
+   * The type checkers only the component's own settings are for (a `[tool.basedpyright]` table, a mypy.ini), leaving
+   * out settings with `typeCheckingMode = "off"`, which check nothing (#114).
+   */
   typeCheckers: ReadonlySet<TypeChecker>;
+  /** The pyrightconfig.json pyright would use for the component exists and does not turn type checking off. */
+  pyrightConfigOn: boolean;
   /** A Java component's build tool, as its build files and wrappers point to it (`inferBuildTool`). */
   javaBuild?: InferredBuildTool;
 }
@@ -165,13 +171,15 @@ interface FileProbe {
 interface DraftFiles {
   present: ReadonlySet<string>;
   typeCheckers: ReadonlyMap<string, ReadonlySet<TypeChecker>>;
+  /** The pyrightconfig.json files that set `typeCheckingMode = "off"`. */
+  pyrightOff: ReadonlySet<string>;
   javaBuilds: ReadonlyMap<string, InferredBuildTool>;
 }
 
 const CHOICE_RULES: Readonly<Record<Language, (p: FileProbe) => [boolean, string, string][]>> = {
   python: (p) => [
     [p.nearest(["poetry.lock"], ["uv.lock"]), "deps.manager", "poetry"],
-    [p.nearest(["pyrightconfig.json"]), "typecheck.tool", "pyright"],
+    [p.pyrightConfigOn, "typecheck.tool", "pyright"],
     // basedpyright also reads pyrightconfig.json, so its own table wins over the rule above.
     [p.typeCheckers.has("basedpyright"), "typecheck.tool", "basedpyright"],
   ],
@@ -198,11 +206,20 @@ function nearestChoice(
   return false;
 }
 
+/** Whether the nearest pyrightconfig.json above `dir` exists and leaves type checking on. */
+function nearestPyrightConfigOn(dir: string, files: DraftFiles): boolean {
+  const found = upwards(dir)
+    .map((d) => `${d}pyrightconfig.json`)
+    .find((f) => files.present.has(f));
+  return found !== undefined && !files.pyrightOff.has(found);
+}
+
 /** Infers non-default tool choices (`build.tool`, `deps.manager`, `lint.tool`, etc.) from the component's files. */
 function inferToolChoices(c: DraftComponent, files: DraftFiles): Record<string, string> {
   const probe: FileProbe = {
     nearest: (win, lose) => nearestChoice(c.dir, files.present, win, lose),
     typeCheckers: files.typeCheckers.get(c.dir) ?? new Set(),
+    pyrightConfigOn: nearestPyrightConfigOn(c.dir, files),
     javaBuild: files.javaBuilds.get(c.dir),
   };
   return Object.fromEntries(
@@ -252,19 +269,27 @@ function overridesFrom(findings: readonly Finding[], standard: Standard, languag
   return overrides;
 }
 
-/** Per Python component directory, the type checkers whose settings only they read (`typeCheckerConfigs`). */
+/**
+ * Per Python component directory, the type checkers whose settings only they read (`typeCheckerConfigs`), leaving out
+ * settings that turn type checking off (#114); and the pyrightconfig.json files that turn it off.
+ */
 async function pythonTypeCheckers(
   cwd: string,
   components: readonly DraftComponent[],
   present: ReadonlySet<string>,
-): Promise<Map<string, Set<TypeChecker>>> {
+): Promise<Pick<DraftFiles, "typeCheckers" | "pyrightOff">> {
   const read = (file: string) => (present.has(file) ? readIfExists(join(cwd, file)) : Promise.resolve(undefined));
-  const found = new Map<string, Set<TypeChecker>>();
+  const typeCheckers = new Map<string, Set<TypeChecker>>();
   for (const c of components.filter((c) => c.language === "python")) {
-    const configs = await typeCheckerConfigs(c.dir, read);
-    found.set(c.dir, new Set(configs.flatMap((config) => (config.tools.length === 1 ? config.tools : []))));
+    const configs = (await typeCheckerConfigs(c.dir, read)).filter((config) => !config.off);
+    typeCheckers.set(c.dir, new Set(configs.flatMap((config) => (config.tools.length === 1 ? config.tools : []))));
   }
-  return found;
+  const pyrightOff = new Set<string>();
+  for (const file of [...present].filter((f) => baseName(f) === "pyrightconfig.json")) {
+    const text = await read(file);
+    if (text !== undefined && typeCheckingOff(parseConfigText(file, text))) pyrightOff.add(file);
+  }
+  return { typeCheckers, pyrightOff };
 }
 
 /** Per Java component directory, the build tool its files point to (`inferBuildTool`). */
@@ -308,7 +333,7 @@ export async function draftDeclaration(options: DraftOptions): Promise<Draft> {
   const present = new Set(listed.map(normalizePath));
   const files: DraftFiles = {
     present,
-    typeCheckers: await pythonTypeCheckers(cwd, components, present),
+    ...(await pythonTypeCheckers(cwd, components, present)),
     javaBuilds: await javaBuilds(components, present),
   };
   const resolution = defaultResolution(components, standard, today, files);
