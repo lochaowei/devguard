@@ -1,8 +1,19 @@
 import { parse as parseToml, patch as patchToml, stringify as stringifyToml } from "@decimalturn/toml-patch";
-import { applyEdits, modify, parse as parseJsoncTree, type FormattingOptions, type ParseError } from "jsonc-parser";
+import {
+  applyEdits,
+  findNodeAtLocation,
+  modify,
+  parse as parseJsoncTree,
+  parseTree,
+  type Edit,
+  type FormattingOptions,
+  type Node as JsonNode,
+  type ParseError,
+} from "jsonc-parser";
 import { isScalar, isSeq, parse as parseYaml, parseDocument, type Document, type YAMLSeq } from "yaml";
 import { baseName } from "../repo/paths.ts";
 import type { KeyEdit, KeyPath } from "./repair.ts";
+import { renderKeepingLayout } from "./yaml-text.ts";
 
 /** How a structured shared file is read and written. */
 export type EditFormat = "toml" | "jsonc" | "yaml" | "lines";
@@ -197,16 +208,69 @@ function inlineShortArrays(content: string, column: number, width: number): stri
   });
 }
 
+/** The rest of a line after a value: an optional comma, then only comments (`/* … *\/`, `// …`). */
+const TRAILING_COMMENT = /^[ \t]*(?<comma>,?)(?<comment>[ \t]*(?:\/\*.*?\*\/[ \t]*)*(?:\/\/.*)?)$/;
+
+/** Where the line of a value ending at `valueEnd` ends, when the rest of it is a comment; undefined otherwise. */
+function trailingComment(text: string, valueEnd: number): { lineEnd: number; comma: boolean } | undefined {
+  const newline = text.indexOf("\n", valueEnd);
+  const lineEnd = newline < 0 ? text.length : newline;
+  const groups = TRAILING_COMMENT.exec(text.slice(valueEnd, lineEnd))?.groups;
+  if (!groups || (groups.comment ?? "").trim() === "") return undefined;
+  return { lineEnd, comma: groups.comma === "," };
+}
+
+/** The last property of the object a new key would be appended to; undefined when the key exists or there is none. */
+function lastPropertyOf(text: string, path: KeyPath): JsonNode | undefined {
+  const key = path[path.length - 1];
+  const root = parseTree(text);
+  const parent = root && findNodeAtLocation(root, path.slice(0, -1));
+  if (key === undefined || parent?.type !== "object" || findNodeAtLocation(parent, [key])) return undefined;
+  return parent.children?.at(-1);
+}
+
+/**
+ * jsonc-parser appends a property right after the previous property's value, so a comment at the end of that line
+ * would end up after the new property, describing it (#121). When the rest of that line is a comment, the new property
+ * goes on the next line with the same indent instead, and the line stays as it was apart from a missing comma, which
+ * goes before the comment. Undefined when the edit is not such an append.
+ */
+function appendBelowTrailingComment(
+  text: string,
+  path: KeyPath,
+  value: unknown,
+  options: { formattingOptions: FormattingOptions; width: number },
+): Edit[] | undefined {
+  const last = value === undefined ? undefined : lastPropertyOf(text, path);
+  if (!last) return undefined;
+  const valueEnd = last.offset + last.length;
+  const indent = text.slice(text.lastIndexOf("\n", last.offset - 1) + 1, last.offset);
+  const rest = trailingComment(text, valueEnd);
+  if (!rest || !/^[ \t]*$/.test(indent)) return undefined;
+  const { lineEnd } = rest;
+  const name = `${JSON.stringify(String(path[path.length - 1]))}: `;
+  const written = applyEdits("", modify("", [], value, { formattingOptions: options.formattingOptions }));
+  const property = `${name}${inlineShortArrays(written, indent.length + name.length, options.width)}`;
+  const content = `\n${indent}${property.replace(/\n/g, `\n${indent}`)}`;
+  if (rest.comma) return [{ offset: lineEnd, length: 0, content: `${content},` }];
+  return [
+    { offset: valueEnd, length: 0, content: "," },
+    { offset: lineEnd, length: 0, content },
+  ];
+}
+
 function editJsonc(text: string, edits: readonly KeyEdit[]): string {
   let out = text.trim() === "" ? "{}\n" : text;
   const formattingOptions = jsonFormatting(out);
   for (const e of pathEdits(edits)) {
     const value = valueAfter(e, getIn(parseJsoncTree(out), e.path));
     const width = ("layout" in e ? e.layout?.printWidth : undefined) ?? DEFAULT_WIDTH;
-    const changes = modify(out, [...e.path], value, { formattingOptions }).map((c) => ({
-      ...c,
-      content: inlineShortArrays(c.content, c.offset - out.lastIndexOf("\n", c.offset - 1) - 1, width),
-    }));
+    const changes =
+      appendBelowTrailingComment(out, e.path, value, { formattingOptions, width }) ??
+      modify(out, [...e.path], value, { formattingOptions }).map((c) => ({
+        ...c,
+        content: inlineShortArrays(c.content, c.offset - out.lastIndexOf("\n", c.offset - 1) - 1, width),
+      }));
     out = applyEdits(out, changes);
   }
   return out;
@@ -230,7 +294,7 @@ function editYaml(text: string, edits: readonly KeyEdit[]): string {
     else if (isSeq(node)) editSeq(doc, node, e);
     else doc.setIn(e.path, doc.createNode(listAfter(e, undefined)));
   }
-  return doc.toString({ lineWidth: 0 });
+  return renderKeepingLayout(doc, text);
 }
 
 function editLines(text: string, edits: readonly KeyEdit[]): string {

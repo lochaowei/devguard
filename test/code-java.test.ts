@@ -333,7 +333,7 @@ describe("java checker: build failures", () => {
     expect(findings).toEqual([
       expect.objectContaining({
         rule: "code/tool-failed",
-        message: "mvnw 執行失敗（exit 1）：[ERROR] Non-resolvable parent POM",
+        message: "mvnw 執行失敗（exit 1）：Non-resolvable parent POM",
       }),
     ]);
   });

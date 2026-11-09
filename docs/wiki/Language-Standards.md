@@ -77,7 +77,7 @@
 | `format.lineLength` | `120` | 風格項目（`[tool.ruff] line-length`） |
 | `complexity.cyclomatic` | `10` | `[tool.ruff.lint.mccabe] max-complexity` |
 | `typecheck.tool` | `"mypy"` | 允許替代：`pyright`；`team@1.2.0` 起另有 `basedpyright` |
-| `typecheck.strict` | `true` | `[tool.mypy] strict = true`，或 `[tool.pyright]` / `[tool.basedpyright]`（兩者也都讀 `pyrightconfig.json`）的 `typeCheckingMode = "strict"` |
+| `typecheck.strict` | `true` | `[tool.mypy] strict = true`，或 `[tool.pyright]` / `[tool.basedpyright]`（兩者也都讀 `pyrightconfig.json`）的 `typeCheckingMode = "strict"`。宣告的 pyright／basedpyright 設為 `typeCheckingMode = "off"` 時回報錯誤 `settings/typecheck-off`（型別檢查實際被關閉），`fix` 改為 `"strict"`（宣告 `typecheck.strict: false` 時改為 `"standard"`） |
 | `test.tool` | `"pytest"` | 搭配 `pytest-cov` |
 | `coverage.lines` | `80` | 行覆蓋率與分支覆蓋率**各自**須達 80% |
 | `deps.manager` | `"uv"` | 允許替代：`poetry` |
