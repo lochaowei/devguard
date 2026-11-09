@@ -118,7 +118,7 @@ describe("Python tests", () => {
 
   it("words the tool-failed hint with single spaces for a root component (#109)", async () => {
     const pytest = ok("", 4, "boom");
-    const r = await checkTests(project(declare("", "python")), python(undefined, pytest).tools, ["app.py"]);
+    const r = await checkTests(project(declare(".", "python")), python(undefined, pytest).tools, ["app.py"]);
     expect(r.findings[0]?.fix).toBe("在 repo 根目錄 直接執行 pytest 查看完整訊息");
   });
 
