@@ -1,5 +1,7 @@
+import { posix } from "node:path";
 import type { Finding } from "../report/finding.ts";
 import { isRecord } from "../shared/guards.ts";
+import { referencedTsconfigs } from "../settings/typescript/tsconfig.ts";
 import { typescriptToolRequest, type ToolResult } from "../tools/runner.ts";
 import { codeFinding, firstDifferentLine, runBatched, splitStaged, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
@@ -130,13 +132,24 @@ function tscFinding(target: CodeTarget, ctx: CodeCheckContext, line: string): Fi
   return undefined;
 }
 
-/** `tsc --noEmit` always checks the whole project: it reads tsconfig.json and cannot take a file list. */
+/**
+ * `tsc --noEmit` always checks the whole project: it reads tsconfig.json and cannot take a file list. A solution-style
+ * tsconfig.json checks no files itself, so each tsconfig it references is checked with `-p`, and an error found
+ * through several of them is reported once (#124).
+ */
 async function typecheck(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
-  const args = ["--noEmit", "--pretty", "false"];
-  const result = await ctx.tools.run({ ...typescriptToolRequest(target, "tsc"), args });
-  if (result.code === 0) return [];
-  const findings = result.stdout.split(/\r?\n/).flatMap((line) => tscFinding(target, ctx, line) ?? []);
-  return findings.length > 0 ? findings : [toolFailed(target, "tsc", result)];
+  const references = await referencedTsconfigs(`${target.dir}tsconfig.json`, ctx.readText);
+  const projects = references?.map((ref) => ["-p", posix.relative(target.dir, ref)]) ?? [[]];
+  const findings = new Map<string, Finding>();
+  for (const project of projects) {
+    const args = ["--noEmit", "--pretty", "false", ...project];
+    const result = await ctx.tools.run({ ...typescriptToolRequest(target, "tsc"), args });
+    if (result.code === 0) continue;
+    const found = result.stdout.split(/\r?\n/).flatMap((line) => tscFinding(target, ctx, line) ?? []);
+    if (found.length === 0) found.push(toolFailed(target, "tsc", result));
+    for (const f of found) findings.set(JSON.stringify([f.rule, f.file, f.line, f.column, f.message]), f);
+  }
+  return [...findings.values()];
 }
 
 /**
