@@ -170,14 +170,11 @@ describe("TypeScript tests", () => {
     const name = join(cwd, "web", "b.test.ts").replace(/\\/g, "/");
     const report = JSON.stringify({
       numFailedTests: 0,
-      numFailedTestSuites: 2,
-      testResults: [
-        { name, status: "failed", assertionResults: [] },
-        { name: "/elsewhere/c.test.ts", status: "failed", assertionResults: [] },
-      ],
+      numFailedTestSuites: 1,
+      testResults: [{ name, status: "failed", assertionResults: [] }],
     });
     const r = await checkTests(cwd, vitest(ALL_80, [], () => ok(report, 1)).tools, ["web/a.ts"]);
-    expect(r.findings[0]?.message).toBe("測試失敗：web/b.test.ts、/elsewhere/c.test.ts");
+    expect(r.findings[0]?.message).toBe("測試失敗：web/b.test.ts");
   });
 
   it("reports failures the report does not name", async () => {

@@ -1,4 +1,5 @@
-import { isAbsolute, join, relative } from "node:path";
+import { join } from "node:path";
+import { toRepoPath } from "../code/support.ts";
 import type { Finding } from "../report/finding.ts";
 import {
   isRecord,
@@ -45,12 +46,6 @@ const text = (v: unknown): string => (typeof v === "string" ? v : "");
 
 const records = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.filter(isRecord) : []);
 
-/** A test file's absolute path as repo-relative with forward slashes, as other findings name files (#125). */
-function repoPath(cwd: string, file: string): string {
-  const rel = relative(cwd, file);
-  return rel === "" || rel.startsWith("..") || isAbsolute(rel) ? file : rel.replace(/\\/g, "/");
-}
-
 /**
  * Whether a Jest-style JSON report has failures, and the failing tests' names (a test file by its path relative to
  * the repo root `cwd`); undefined when it is not one.
@@ -61,7 +56,9 @@ function failures(report: unknown, cwd: string): { failed: boolean; names: strin
     const failed = records(file.assertionResults).filter((a) => a.status === "failed");
     const named = failed.map((a) => text(a.fullName) || text(a.title));
     // A test file that fails to load has no failing assertions of its own.
-    return named.length === 0 && file.status === "failed" ? [repoPath(cwd, text(file.name))] : named;
+    const path = text(file.name);
+    if (named.length > 0 || file.status !== "failed") return named;
+    return path === "" ? [] : [toRepoPath(cwd, "", path)];
   });
   const suites = typeof report.numFailedTestSuites === "number" ? report.numFailedTestSuites : 0;
   return { failed: report.numFailedTests > 0 || suites > 0, names: names.filter((n) => n !== "") };

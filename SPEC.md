@@ -169,7 +169,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 - 元件依標記檔推斷：每個程式檔歸屬往上最近、含有該語言標記檔（`pyproject.toml`、`go.mod`、`package.json`、`pom.xml` 等）的目錄。下列檔案不成為元件，而是寫進草稿的 `ignore`（排在 `--ignore` 的項目之後），每項上方加一行註解說明原因（#89）：
   - `go.mod` 所在目錄或上層有 `go.work`，但這個目錄不在最近的 `go.work` 的 `use` 清單中（單行與 `use ( ... )` 區塊都支援）：寫入該目錄，註解「不在 go.work 的 use 清單中」。golangci-lint 在 workspace 模式下無法檢查這種模組。與 `go` 相同，`go.work` 不論是否被 git 忽略、即使在 repo 根目錄之上都算。例外：repo 根目錄的模組（`ignore` 無法只排除它），以及底下有 `use` 清單中模組的目錄，照舊是元件。沒有 `go.work` 的 repo，每個 `go.mod` 照舊是一個元件。
   - 往上找不到該語言標記檔的零星程式檔，且 repo 至少有一個有標記檔的元件時：寫入該檔案（同一目錄、同副檔名有多個時寫成 `<目錄>/*.<副檔名>`），註解「沒有 <語言> 的標記檔，未建立元件；若要檢查，請補上標記檔並新增元件」。整個 repo 都沒有標記檔時（例如純腳本 repo），這些檔案照舊成為 repo 根目錄的元件。
-  - TypeScript 元件的目錄沒有 `tsconfig.json`，歸屬它的程式檔又全是工具設定檔（檔名為 `*.config.ts`／`.mts`／`.cts` 或 `.<名稱>rc.ts`，例如 npm workspaces 根目錄的 `lint-staged.config.ts`），且 repo 還有其他元件時：不成為元件，這些設定檔逐一寫入，註解「只有工具設定檔，沒有 TypeScript 原始碼與 tsconfig.json，未建立元件」（#125）。
+  - TypeScript 元件的目錄沒有 `tsconfig.json`，歸屬它的 TypeScript 與 JavaScript 檔案又全是工具設定檔（檔名為 `*.config.<副檔名>` 或 `.<名稱>rc.<副檔名>`，副檔名 `ts`／`mts`／`cts`／`js`／`mjs`／`cjs`，例如 npm workspaces 根目錄的 `lint-staged.config.ts`），且 repo 還有其他元件時：不成為元件，其中的 TypeScript 設定檔逐一寫入，註解「只有工具設定檔，沒有 TypeScript 原始碼與 tsconfig.json，未建立元件」（#125）。外層還有 TypeScript 元件時不寫入，這些檔案照 §4.1 歸屬外層元件。
 
 可直接移植的參考實作（`Std` 模組中的 `resolve`、`lookup`、`draftFromDetected`、`checkToolConfigs`）：[prototypes/07-project-declaration.prototype.html](.scratch/coding-standards-guard/prototypes/07-project-declaration.prototype.html)
 

@@ -248,6 +248,32 @@ describe("draftDeclaration: files no component is made for (#89)", () => {
     expect(withSource.ignore).toBeUndefined();
   });
 
+  it("recognises .cts and .<name>rc.ts config files, but not a directory with its own JavaScript (#125)", async () => {
+    const rest = Object.fromEntries(Object.entries(remeda).filter(([path]) => path !== "eslint.config.mts"));
+    const d = parse(await draftText({ ...rest, "commitlint.config.cts": "", ".prettierrc.ts": "" })) as Drafted;
+    expect(d.ignore).toEqual([".prettierrc.ts", "commitlint.config.cts", "lint-staged.config.ts"]);
+    const withJs = parse(await draftText({ ...remeda, "index.js": "" })) as Drafted;
+    expect(paths(withJs)[0]).toEqual(["./", "typescript"]);
+  });
+
+  it("leaves a nested config-only directory's files to the TypeScript component around it (#125)", async () => {
+    const d = parse(
+      await draftText({
+        "package.json": "{}",
+        "src/index.ts": "",
+        "tools/package.json": "{}",
+        "tools/eslint.config.ts": "",
+        "web/package.json": "{}",
+        "web/src/app.ts": "",
+      }),
+    ) as Drafted;
+    expect(paths(d)).toEqual([
+      ["./", "typescript"],
+      ["web/", "typescript"],
+    ]);
+    expect(d.ignore).toBeUndefined();
+  });
+
   it("still makes a root component of a lone config-only project (#125)", async () => {
     const d = parse(await draftText({ "package.json": "{}", "eslint.config.ts": "" })) as Drafted;
     expect(paths(d)).toEqual([["./", "typescript"]]);

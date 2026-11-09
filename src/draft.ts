@@ -99,39 +99,56 @@ function strayEntries(stray: ReadonlyMap<Language, readonly string[]>): DraftIgn
   return out.sort((a, b) => byCodeUnit(a.entry, b.entry));
 }
 
-/** Tool config files such as `eslint.config.ts`, `lint-staged.config.mts` or `.prettierrc.ts`: not the project's own source. */
-const TOOL_CONFIG = /^(?:[\w.-]+\.config|\.[\w-]+rc)\.[cm]?ts$/;
+/**
+ * Tool config files such as `eslint.config.ts`, `lint-staged.config.mjs` or `.prettierrc.ts`: not the project's own
+ * source (#125).
+ */
+const TOOL_CONFIG = /^(?:[\w.-]+\.config|\.[\w-]+rc)\.[cm]?[jt]s$/;
+
+const JS_EXTENSIONS = [".js", ".jsx", ".mjs", ".cjs"];
 
 const CONFIG_ONLY = "只有工具設定檔，沒有 TypeScript 原始碼與 tsconfig.json，未建立元件";
 
 /**
- * Drops from `found` each TypeScript component whose files are all tool config files and whose directory has no
- * tsconfig.json, such as an npm workspaces root (#125), when the repo has other components; returns its files as
- * `ignore:` entries.
+ * Drops from `found` each TypeScript component that is only a home for tool config files, such as an npm workspaces
+ * root (#125), when the repo has other components: its directory has no tsconfig.json, and its TypeScript and
+ * JavaScript files (`paths` nearest to it) are all tool config files. Returns those of its files that no enclosing
+ * TypeScript component takes over as `ignore:` entries.
  */
 function configOnlyEntries(
   found: Map<string, DraftComponent>,
   owned: ReadonlyMap<string, readonly string[]>,
-  present: ReadonlySet<string>,
+  paths: readonly string[],
 ): DraftIgnore[] {
-  const out: DraftIgnore[] = [];
+  if (found.size < 2) return [];
+  const present = new Set(paths);
+  const nearestTs = (file: string) =>
+    upwards(dirOf(file)).find((d) => MARKERS.typescript.some((m) => present.has(d + m)));
+  const js = paths.filter((f) => JS_EXTENSIONS.some((e) => f.toLowerCase().endsWith(e)));
+  const dropped: string[][] = [];
   for (const [key, { dir, language }] of found) {
-    const files = owned.get(key) ?? [];
-    if (language !== "typescript" || present.has(`${dir}tsconfig.json`) || found.size === 1) continue;
+    if (language !== "typescript" || present.has(`${dir}tsconfig.json`)) continue;
+    const files = [...(owned.get(key) ?? []), ...js.filter((f) => nearestTs(f) === dir)];
     if (!files.every((f) => TOOL_CONFIG.test(baseName(f)))) continue;
     found.delete(key);
-    out.push(...files.map((entry) => ({ entry, comment: CONFIG_ONLY })));
+    dropped.push(files.filter((f) => languageOf(f) === "typescript"));
   }
-  return out.sort((a, b) => byCodeUnit(a.entry, b.entry));
+  const enclosing = (file: string) =>
+    [...found.values()].some((c) => c.language === "typescript" && file.startsWith(c.dir));
+  return dropped
+    .flat()
+    .filter((f) => !enclosing(f))
+    .sort(byCodeUnit)
+    .map((entry) => ({ entry, comment: CONFIG_ONLY }));
 }
 
 /**
  * Components inferred from the repo's files (SPEC §4.1, §4.3): each source file belongs to the nearest directory
  * holding a build or tool file of its language. Java modules nested in a Java build are one component. A go.mod
  * that the go.work above it does not use is not a component, and source files with no marker file above them make
- * no component when the repo has marked ones, nor do a TypeScript directory's tool config files alone
- * (`configOnlyEntries`): all are returned as `ignore:` entries. A repo with no marker file
- * at all gets a root component per language.
+ * no component when the repo has marked ones: both are returned as `ignore:` entries, as are a TypeScript directory's
+ * tool config files that make no component (`configOnlyEntries`). A repo with no marker file at all gets a root
+ * component per language.
  */
 export function inferComponents(files: readonly string[], workspaces: GoWorkspaces = new Map()): ComponentPlan {
   const all = files.map(normalizePath);
@@ -149,12 +166,13 @@ export function inferComponents(files: readonly string[], workspaces: GoWorkspac
     const dir = language === "java" ? marked.at(-1) : marked[0];
     if (dir === undefined) stray.set(language, [...(stray.get(language) ?? []), file]);
     else {
-      found.set(`${dir}|${language}`, { dir, language });
-      owned.set(`${dir}|${language}`, [...(owned.get(`${dir}|${language}`) ?? []), file]);
+      const key = `${dir}|${language}`;
+      found.set(key, { dir, language });
+      owned.set(key, [...(owned.get(key) ?? []), file]);
     }
   }
   const ignore = outside.sort(byCodeUnit).map((dir) => ({ entry: dir, comment: "不在 go.work 的 use 清單中" }));
-  ignore.push(...configOnlyEntries(found, owned, present));
+  ignore.push(...configOnlyEntries(found, owned, paths));
   if (found.size > 0) ignore.push(...strayEntries(stray));
   else for (const language of stray.keys()) found.set(`|${language}`, { dir: "", language });
   return {
