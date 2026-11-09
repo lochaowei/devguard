@@ -35,16 +35,23 @@ function totals(text: string | undefined): Measured[] | undefined {
 
 /**
  * pytest with pytest-cov in branch mode, then `coverage json`. The CLI judges the totals itself rather than through
- * `fail_under`, which in branch mode checks lines and branches combined (SPEC §6.1).
+ * `fail_under`, which in branch mode checks lines and branches combined (SPEC §6.1); `--cov-fail-under=0` keeps the
+ * project's own `fail_under` (coverage config or `addopts`) from turning exit 1 on passing tests (#108).
  */
 export const pythonTests: TestChecker = {
   language: "python",
   async check(target: TestTarget, ctx: TestContext): Promise<Finding[]> {
     const run = (tool: string, args: string[]) => ctx.tools.run({ ...pythonToolRequest(target, tool), args });
-    const pytest = await run("pytest", ["--cov", "--cov-branch", "--cov-report="]);
+    const pytest = await run("pytest", ["--cov", "--cov-branch", "--cov-report=", "--cov-fail-under=0"]);
     if (!PYTEST_RAN.has(pytest.code)) return [testToolFailed(target, "pytest", pytest)];
     const findings: Finding[] = [];
-    if (pytest.code === 1) findings.push(testsFailed(target, "uv run pytest", failedTests(pytest.stdout)));
+    if (pytest.code === 1) {
+      const failed = failedTests(pytest.stdout);
+      // Exit 1 with no failing test id (e.g. `-rxXs` hides the FAILED lines) is not a test failure we can name.
+      findings.push(
+        failed.length > 0 ? testsFailed(target, "uv run pytest", failed) : testToolFailed(target, "pytest", pytest),
+      );
+    }
     const out = join(ctx.reportDir, "coverage.json");
     const json = await run("coverage", ["json", "--fail-under=0", "-o", out]);
     const measured = json.code === 0 ? totals(await readReport(out)) : undefined;

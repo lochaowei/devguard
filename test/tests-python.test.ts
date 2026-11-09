@@ -48,6 +48,12 @@ describe("Python tests", () => {
     ]);
   });
 
+  it("overrides the project's own coverage floor so only devguard judges coverage (#108)", async () => {
+    const { tools, calls } = python({ covered_lines: 90, num_statements: 100, num_branches: 10, covered_branches: 9 });
+    await check(tools);
+    expect(calls[0]?.args).toContain("--cov-fail-under=0");
+  });
+
   it("passes pytest's standard range to the runner, for the install hint when it is missing (#68)", async () => {
     const { tools, calls } = python({ covered_lines: 90, num_statements: 100, num_branches: 10, covered_branches: 9 });
     await check(tools);
@@ -79,6 +85,14 @@ describe("Python tests", () => {
     const r = await check(python(totals, ok(PYTEST_FAILED, 1)).tools);
     expect(rules(r.findings)).toEqual(["error:test/failed", "error:coverage/lines"]);
     expect(r.findings[0]?.message).toBe("測試失敗：tests/test_a.py::test_parse_empty");
+  });
+
+  it("reports exit 1 with no failing test id as a tool failure with the output tail, still judging coverage (#108)", async () => {
+    const totals = { covered_lines: 90, num_statements: 100, num_branches: 10, covered_branches: 9 };
+    const pytest = ok("1371 passed, 33 skipped in 45.39s\nFAIL Required test coverage of 100.0% not reached.", 1);
+    const r = await check(python(totals, pytest).tools);
+    expect(rules(r.findings)).toEqual(["error:test/tool-failed"]);
+    expect(r.findings[0]?.message).toContain("Required test coverage");
   });
 
   it("reports a pytest usage error (e.g. pytest-cov not installed) as a tool failure without judging coverage", async () => {
