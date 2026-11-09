@@ -1,10 +1,13 @@
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Finding } from "../report/finding.ts";
-import { targetBuildTool } from "../settings/java/build.ts";
+import { targetBuildTool, type BuildTool } from "../settings/java/build.ts";
 import { mavenReportDirs } from "../settings/java/modules.ts";
+import type { ReadText } from "../settings/java/modules.ts";
+import { readBuildPlugins, type Applied } from "../settings/java/plugins.ts";
 import { parseXmlText } from "../xml/parse.ts";
 import {
+  coverageGateOff,
   judgeCoverage,
   readReport,
   reportMissing,
@@ -13,11 +16,14 @@ import {
   type CoverageMetric,
   type Measured,
 } from "./coverage.ts";
+import type { ToolResult } from "../tools/runner.ts";
 import type { TestChecker, TestContext, TestTarget } from "./types.ts";
 
 interface Build {
-  /** Wrapper arguments: run the tests, then write the JaCoCo XML report. */
-  args: string[];
+  /** Wrapper arguments: run the tests, then (with `report`) write the JaCoCo XML report. */
+  args(report: boolean): string[];
+  /** What a wrapper prints when the build does not have JaCoCo (#99): the fallback when the build file cannot tell. */
+  noJacoco: RegExp;
   /** The JaCoCo XML report, relative to the component directory. */
   report: string;
   /** The wrapper, as named in messages. */
@@ -32,7 +38,8 @@ interface Build {
 
 const MAVEN: Build = {
   // Test failures must not stop the build, so that the coverage report is still written and judged on its own.
-  args: ["-B", "-Dmaven.test.failure.ignore=true", "test", "jacoco:report"],
+  args: (report) => ["-B", "-Dmaven.test.failure.ignore=true", "test", ...(report ? ["jacoco:report"] : [])],
+  noJacoco: /No plugin found for prefix 'jacoco'/,
   report: "target/site/jacoco/jacoco.xml",
   wrapper: "mvnw",
   command: "mvnw test",
@@ -46,7 +53,8 @@ const MAVEN: Build = {
 
 const GRADLE: Build = {
   // --continue still writes the coverage report when tests fail.
-  args: ["test", "jacocoTestReport", "--continue"],
+  args: (report) => ["test", ...(report ? ["jacocoTestReport"] : []), "--continue"],
+  noJacoco: /Task 'jacocoTestReport' not found/,
   report: "build/reports/jacoco/test/jacocoTestReport.xml",
   wrapper: "gradlew",
   command: "gradlew test",
@@ -56,12 +64,6 @@ const GRADLE: Build = {
     return { failed: names.length > 0, names };
   },
 };
-
-/** The component's build tool (`targetBuildTool`). */
-async function buildOf(target: TestTarget, ctx: TestContext): Promise<Build> {
-  const tool = await targetBuildTool(target, (p) => readReport(join(ctx.cwd, p)));
-  return tool === "gradle" ? GRADLE : MAVEN;
-}
 
 const COUNTERS: Readonly<Record<string, CoverageMetric>> = { LINE: "lines", BRANCH: "branches" };
 
@@ -93,23 +95,65 @@ function addUp(reports: readonly (Counted[] | undefined)[]): Counted[] | undefin
   return [...totals.values()];
 }
 
+interface Run {
+  result: ToolResult;
+  failed: boolean;
+  names: string[];
+  /** Whether the wrapper was asked for the JaCoCo report in the run that produced `result`. */
+  withReport: boolean;
+}
+
+/**
+ * Runs the wrapper, asking for the JaCoCo report when `withReport`. When the build file could not tell whether
+ * JaCoCo is there and the wrapper says it is not, the tests run again without the report goal (#99).
+ */
+async function runBuild(build: Build, target: TestTarget, ctx: TestContext, withReport: boolean): Promise<Run> {
+  const run = async (report: boolean): Promise<Run> => {
+    const args = build.args(report);
+    const result = await ctx.tools.run({ language: "java", tool: build.wrapper, dir: target.dir, args });
+    return { result, withReport: report, ...build.failures(result.stdout) };
+  };
+  const first = await run(withReport);
+  const noJacoco = build.noJacoco.test(`${first.result.stdout}\n${first.result.stderr}`);
+  return withReport && first.result.code !== 0 && !first.failed && noJacoco ? run(false) : first;
+}
+
+/** The BUNDLE counters of the reports that were written, added up. */
+async function measure(reports: readonly string[]): Promise<Counted[] | undefined> {
+  return addUp(await Promise.all(reports.map(async (r) => bundleCounters(await readReport(r)))));
+}
+
+/** Whether the build applies JaCoCo, read from the build file; "unknown" when it cannot tell. */
+async function jacocoApplied(read: ReadText, target: TestTarget, tool: BuildTool): Promise<Applied> {
+  return (await readBuildPlugins(read, target.dir, tool))?.applied("jacoco") ?? "unknown";
+}
+
+/** The reports the build writes, removed: a report from an earlier build must not pass for this one. */
+async function staleReports(build: Build, target: TestTarget, ctx: TestContext): Promise<string[]> {
+  const read = (p: string) => readReport(join(ctx.cwd, p));
+  // A multi-module Maven build writes one report per module; their BUNDLE counters add up.
+  const dirs = build === MAVEN ? await mavenReportDirs(read, target.dir) : [target.dir];
+  const reports = dirs.map((d) => join(ctx.cwd, d, build.report));
+  for (const report of reports) await rm(report, { force: true });
+  return reports;
+}
+
 /** JUnit 5 through the project's build wrapper, with JaCoCo LINE and BRANCH held to `coverage.lines`. */
 export const javaTests: TestChecker = {
   language: "java",
   async check(target: TestTarget, ctx: TestContext): Promise<Finding[]> {
-    const build = await buildOf(target, ctx);
-    // A multi-module Maven build writes one report per module; their BUNDLE counters add up.
-    const dirs =
-      build === MAVEN ? await mavenReportDirs((p) => readReport(join(ctx.cwd, p)), target.dir) : [target.dir];
-    const reports = dirs.map((d) => join(ctx.cwd, d, build.report));
-    // A report from an earlier build must not pass for this one.
-    for (const report of reports) await rm(report, { force: true });
-    const result = await ctx.tools.run({ language: "java", tool: build.wrapper, dir: target.dir, args: build.args });
-    const { failed, names } = build.failures(result.stdout);
+    const read = (p: string) => readReport(join(ctx.cwd, p));
+    const tool = await targetBuildTool(target, read);
+    const build = tool === "gradle" ? GRADLE : MAVEN;
+    const gateOff = coverageGateOff(target.threshold);
+    // Without JaCoCo the report goal ends the build before any test runs (#99).
+    const wantReport = !gateOff && (await jacocoApplied(read, target, tool)) !== "no";
+    const reports = await staleReports(build, target, ctx);
+    const { result, failed, names, withReport } = await runBuild(build, target, ctx, wantReport);
     if (result.code !== 0 && !failed) return [testToolFailed(target, build.command, result)];
-    const findings: Finding[] = [];
-    if (failed) findings.push(testsFailed(target, build.command, names));
-    const measured = addUp(await Promise.all(reports.map(async (r) => bundleCounters(await readReport(r)))));
+    const findings: Finding[] = failed ? [testsFailed(target, build.command, names)] : [];
+    if (gateOff) return findings;
+    const measured = withReport ? await measure(reports) : undefined;
     if (measured === undefined) findings.push(reportMissing(target, target.dir + build.report, build.setup));
     else findings.push(...judgeCoverage(target, measured));
     return findings;

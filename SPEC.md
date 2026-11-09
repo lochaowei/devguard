@@ -357,6 +357,8 @@ Maven 多模組建置（`pom.xml` 有 `<modules>`）的 lint 指令在 `checksty
 
 建置檔的 plugin（#98）：設定層讀元件的建置檔（Maven `pom.xml` 的 `<build><plugins>` 與 `<pluginManagement>`；Gradle `build.gradle(.kts)` 的 `plugins {}`、`apply plugin`、`alias(libs.plugins.…)`；repo 中的 Maven parent POM 也算）。plugin 可能來自 devguard 讀不到的地方時（repo 外的 parent POM、`<profiles>`、Gradle convention plugin、`apply from`、上層 Gradle 建置、`apply false`）不回報，程式碼層照常執行。沒有 Spotless、Checkstyle 或 PMD 的 plugin 時各回報一筆 `settings/java-plugin-missing`；Checkstyle 沒有指向元件使用的 Checkstyle 設定檔（Maven `<configLocation>` 或 `checkstyle.config.location`；Gradle `configFile`／`configDirectory`，預設 `config/checkstyle/checkstyle.xml`），或 PMD 沒有指向元件使用的 ruleset（Maven `<rulesets>`；Gradle `ruleSetFiles`）時回報 `settings/java-plugin-config`，無法解析的路徑不回報。兩者依 §9.2 只印出片段（含 palantir-java-format，設定位置指向 devguard 的檔案），不修改建置檔。程式碼層不執行建置檔沒有 plugin 的工具；Gradle 的 Checkstyle 與 PMD task 分開執行，一個失敗不影響另一個的結果。JaCoCo 見 #99。
 
+JaCoCo 與測試（#99）：`check --full` 以同一份建置檔 plugin 讀取判斷專案有沒有 JaCoCo（Maven `jacoco-maven-plugin`；Gradle `jacoco` plugin）。`coverage.lines` ≤ 0（如 `legacy@1.0.0`）時，指令不帶 `jacoco:report`／`jacocoTestReport`，只跑測試，也不要求覆蓋率報告。有門檻但沒有 JaCoCo 時同樣只跑測試，照常回報 `test/failed`，另加一筆 `coverage/no-report`（附設定說明）。建置檔判斷不出來時（plugin 可能來自讀不到的地方）仍帶報告 goal；wrapper 以 `No plugin found for prefix 'jacoco'`（Maven）或 `Task 'jacocoTestReport' not found`（Gradle）結束時，改只跑測試再重跑一次，並比照沒有 JaCoCo 處理。
+
 來源：[預設標準：Java](.scratch/coding-standards-guard/issues/11-default-standard-java.md)
 
 ### 6.5 既有專案的基線標準（`legacy@1.0.0`）
