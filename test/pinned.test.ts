@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { pinnedVersions } from "../src/versions/pinned.ts";
+import { pinnedBuilds, pinnedVersions, readGradleBuild } from "../src/versions/pinned.ts";
 
 const fixture = (name: string) => readFileSync(join(import.meta.dirname, "fixtures/typescript", name), "utf8");
 
@@ -230,5 +230,44 @@ pmd {
       typescript: "5.9.3",
     });
     expect(pinnedVersions("typescript", "web/", files({ "bun.lock": "{oops" }))?.versions.size).toBe(0);
+  });
+});
+
+describe("Gradle tool versions from dependencies and subprojects (#103)", () => {
+  it("reads the version of a tool configuration's dependency, Groovy and Kotlin DSL", () => {
+    const groovy =
+      "dependencies {\n    checkstyle 'com.puppycrawl.tools:checkstyle:10.4'\n    pmd 'net.sourceforge.pmd:pmd-java:6.55.0'\n}";
+    const kts =
+      'dependencies {\n    checkstyle("com.puppycrawl.tools:checkstyle:10.4")\n    pmd("net.sourceforge.pmd:pmd-core:6.55.0")\n    spotbugs("com.github.spotbugs:spotbugs:4.8.6")\n}';
+    expect(Object.fromEntries(readGradleBuild(groovy))).toEqual({ checkstyle: "10.4", pmd: "6.55.0" });
+    expect(Object.fromEntries(readGradleBuild(kts))).toEqual({ checkstyle: "10.4", pmd: "6.55.0", spotbugs: "4.8.6" });
+  });
+
+  it("prefers the dependency over toolVersion, and ignores other artifacts and unresolved versions", () => {
+    const text =
+      "checkstyle { toolVersion = '9.0' }\ndependencies {\n    checkstyle 'com.puppycrawl.tools:checkstyle:10.4'\n    pmd 'other:thing:1.0'\n    pmd 'net.sourceforge.pmd:pmd-java:$v'\n}";
+    expect(Object.fromEntries(readGradleBuild(text))).toEqual({ checkstyle: "10.4" });
+  });
+
+  it("returns the build file of the component and of each included subproject", async () => {
+    const files: Record<string, string> = {
+      "settings.gradle": "include ':lib'",
+      "build.gradle": "plugins { id 'java' }",
+      "lib/build.gradle": "checkstyle { toolVersion '10.0' }",
+    };
+    const subdirs = () => Promise.resolve(["lib"]);
+    const builds = await pinnedBuilds("java", "", (p) => files[p], subdirs);
+    expect(builds.map((b) => [b.file, Object.fromEntries(b.versions)])).toEqual([
+      ["build.gradle", {}],
+      ["lib/build.gradle", { checkstyle: "10.0" }],
+    ]);
+  });
+
+  it("reads only pom.xml for a Maven component, and the single result for other languages", async () => {
+    const files: Record<string, string> = { "pom.xml": "<project/>", "lib/build.gradle": "", "go.mod": "module x" };
+    const none = () => Promise.resolve([]);
+    expect((await pinnedBuilds("java", "", (p) => files[p], none)).map((b) => b.file)).toEqual(["pom.xml"]);
+    expect((await pinnedBuilds("go", "", (p) => files[p], none)).map((b) => b.file)).toEqual(["go.mod"]);
+    expect(await pinnedBuilds("python", "", (p) => files[p], none)).toEqual([]);
   });
 });

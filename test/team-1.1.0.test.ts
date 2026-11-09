@@ -136,6 +136,49 @@ describe("team@1.1.0 admits the current Java tool releases (#36)", () => {
   });
 });
 
+describe("Gradle tool versions outside the component's own plugins block (#103)", () => {
+  const on = async (files: Record<string, string>) =>
+    (await checkTools({ ".devguard.yaml": component("team@1.3.0", "java"), ...files })).findings.map((f) => [
+      f.rule,
+      f.file,
+      f.message,
+    ]);
+
+  it("reports a Checkstyle dependency version out of range (disruptor)", async () => {
+    const build = "dependencies {\n    checkstyle 'com.puppycrawl.tools:checkstyle:10.4'\n}\n";
+    expect(await on({ "build.gradle": build })).toEqual([
+      ["tool-version/out-of-range", "build.gradle", expect.stringContaining("checkstyle 10.4")],
+    ]);
+  });
+
+  it("reads the Kotlin DSL dependency form", async () => {
+    const build = 'dependencies {\n    checkstyle("com.puppycrawl.tools:checkstyle:10.4")\n}\n';
+    expect(await on({ "build.gradle.kts": build })).toEqual([
+      ["tool-version/out-of-range", "build.gradle.kts", expect.stringContaining("checkstyle 10.4")],
+    ]);
+  });
+
+  it("reports a subproject's toolVersion against that subproject's build file (java-jwt)", async () => {
+    expect(
+      await on({
+        "settings.gradle": "include ':lib'\n",
+        "build.gradle": "plugins { id 'java' }\n",
+        "lib/build.gradle": "checkstyle { toolVersion '10.0' }\n",
+      }),
+    ).toEqual([["tool-version/out-of-range", "lib/build.gradle", expect.stringContaining("checkstyle 10.0")]]);
+  });
+
+  it("reports each build file with an out-of-range version once", async () => {
+    const found = await on({
+      "settings.gradle": "include ':a', ':b'\n",
+      "build.gradle": "checkstyle { toolVersion '10.0' }\n",
+      "a/build.gradle": "checkstyle { toolVersion '10.1' }\n",
+      "b/build.gradle": "checkstyle { toolVersion '12.0' }\n",
+    });
+    expect(found.map(([, file]) => file)).toEqual(["build.gradle", "a/build.gradle"]);
+  });
+});
+
 describe("team@1.1.0 keeps java.minVersion 17; Java 8 projects use legacy@1.0.0 (#36)", () => {
   const releaseFindings = async (standard: string, release: string) => {
     const { findings } = await runCheck(

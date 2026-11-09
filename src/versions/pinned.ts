@@ -3,6 +3,7 @@ import { parseConfigText } from "../fix/edit.ts";
 import { upwards } from "../repo/paths.ts";
 import { isRecord } from "../shared/guards.ts";
 import { child, descendants, parseXmlText } from "../xml/parse.ts";
+import { gradleReportDirs, type ListDirs } from "../settings/java/gradle-projects.ts";
 
 /**
  * Exact versions a component pins through its own dependency manager (SPEC §5.2). Lockfiles and pom.xml are read with
@@ -212,13 +213,37 @@ export function readMavenPlugins(text: string): Map<string, string> {
 const GRADLE_PLUGIN = /\bid\s*\(?\s*["']([^"']+)["']\s*\)?\s*version\s*\(?\s*["']([^"']+)["']/g;
 const GRADLE_TOOL = /\b(checkstyle|pmd|jacoco|spotbugs)\s*\{[^}]*?\btoolVersion\b\s*=?\s*\(?\s*["']([^"']+)["']/g;
 
-/** Plugin id → version from the `plugins {}` block, and `toolVersion` of checkstyle / pmd / jacoco / spotbugs. */
+/** `checkstyle 'group:artifact:X'` / `pmd("group:artifact:X")` in a `dependencies {}` block (Groovy and Kotlin DSL). */
+const GRADLE_TOOL_DEPENDENCY = /\b(checkstyle|pmd|spotbugs)\s*\(?\s*["'][^"':\s]+:([^"':\s]+):(\d[^"':\s]*)["']/g;
+
+/** The artifact each tool's configuration takes its version from: PMD is `pmd-java` or `pmd-core`. */
+const TOOL_ARTIFACTS: Readonly<Record<string, readonly string[]>> = {
+  checkstyle: ["checkstyle"],
+  pmd: ["pmd-java", "pmd-core"],
+  spotbugs: ["spotbugs"],
+};
+
+/** Tool → version of its configuration's dependency on the artifact that carries the tool itself. */
+function toolDependencies(text: string): [string, string][] {
+  return [...text.matchAll(GRADLE_TOOL_DEPENDENCY)].flatMap(([, tool = "", artifact = "", version = ""]) =>
+    TOOL_ARTIFACTS[tool]?.includes(artifact) ? [[tool, version]] : [],
+  );
+}
+
+/**
+ * Plugin id → version from the `plugins {}` block, and the version of checkstyle / pmd / jacoco / spotbugs: its
+ * `toolVersion`, or the dependency of its configuration, which wins because it is the version Gradle runs (#103).
+ */
 export function readGradleBuild(text: string): Map<string, string> {
   const versions = new Map<string, string>();
   for (const [, id = "", version = ""] of text.matchAll(GRADLE_PLUGIN)) versions.set(id, version);
   for (const [, tool = "", version = ""] of text.matchAll(GRADLE_TOOL)) versions.set(tool, version);
+  for (const [tool, version] of toolDependencies(text)) versions.set(tool, version);
   return versions;
 }
+
+/** Gradle build scripts in the order `java` reads them. */
+const GRADLE_BUILDS = ["build.gradle.kts", "build.gradle"];
 
 function java(dir: string, read: ReadRepoFile): Pinned | undefined {
   const readers: [string, (text: string) => Map<string, string>][] = [
@@ -240,6 +265,36 @@ const READERS: Readonly<Record<Language, (dir: string, read: ReadRepoFile) => Pi
   go,
   java,
 };
+
+/**
+ * Every build file of a Gradle component that pins versions: the one in `dir` and one per subproject (the directories
+ * `gradleReportDirs` reads, #101). Empty when `dir` is not a Gradle build.
+ */
+async function gradleBuilds(dir: string, read: ReadRepoFile, subdirs: ListDirs): Promise<Pinned[]> {
+  const dirs = await gradleReportDirs((path) => Promise.resolve(read(path)), subdirs, dir);
+  return dirs.flatMap((d) => {
+    for (const name of GRADLE_BUILDS) {
+      const text = read(d + name);
+      if (text !== undefined) return [{ file: d + name, versions: readGradleBuild(text) }];
+    }
+    return [];
+  });
+}
+
+/**
+ * `pinnedVersions` for every file the component pins versions in: the same as `pinnedVersions`, except that a Gradle
+ * multi-project build contributes the build file of each subproject too (#103).
+ */
+export async function pinnedBuilds(
+  language: Language,
+  dir: string,
+  read: ReadRepoFile,
+  subdirs: ListDirs,
+): Promise<Pinned[]> {
+  if (language === "java" && read(dir + "pom.xml") === undefined) return gradleBuilds(dir, read, subdirs);
+  const pinned = pinnedVersions(language, dir, read);
+  return pinned ? [pinned] : [];
+}
 
 /**
  * The versions pinned for the component in `dir` (normalized: "" or ending in "/"); undefined when the component
