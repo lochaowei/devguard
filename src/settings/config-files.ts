@@ -76,8 +76,11 @@ export function objectProperty(text: string, name: string): string | undefined {
   return undefined;
 }
 
+/** Signs that a code-form config merges in another config: `mergeConfig`, a spread, `extends`. */
+export const mergesOtherConfig = (text: string): boolean => /\bmergeConfig\b|\.\.\.|\bextends\b/.test(text);
+
 /** Signs that a code-form config pulls settings from somewhere this file does not show. */
-export const pullsFromElsewhere = (text: string): boolean => /\bmergeConfig\b|\.\.\.|\bpreset\b|\bextends\b/.test(text);
+export const pullsFromElsewhere = (text: string): boolean => mergesOtherConfig(text) || /\bpreset\b/.test(text);
 
 /** Follows a dotted path through nested objects. */
 export function at(v: unknown, ...keys: string[]): unknown {

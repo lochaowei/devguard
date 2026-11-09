@@ -346,6 +346,28 @@ describe("TypeScript settings check: which files coverage counts (#45)", () => {
     expect(scope(fs)[0]?.message).toMatch(/^Jest collectCoverageFrom 沒有設定/);
   });
 
+  describe("a Jest preset (#119)", () => {
+    const decl = DECL + "    overrides:\n      test.tool: jest\n";
+    const jestCheck = async (jest: string) =>
+      summary(await check(project({ ".devguard.yaml": decl, "vitest.config.ts": undefined, "jest.config.js": jest })));
+    const threshold = "coverageThreshold: { global: { lines: 80, branches: 80, functions: 80, statements: 80 } }";
+
+    it("judges a config with a ts-jest preset like any other (vercel/ms, typestack/class-validator)", async () => {
+      expect(await jestCheck(`module.exports = { preset: 'ts-jest', ${threshold} };\n`)).toEqual([
+        "error:settings/coverage-include:jest.config.js",
+      ]);
+      const noThreshold = `module.exports = {\n  preset: "ts-jest/presets/js-with-ts-esm",\n  collectCoverageFrom: ["src/**/*.ts"],\n};\n`;
+      expect(await jestCheck(noThreshold)).toEqual(["error:settings/looser:jest.config.js"]);
+    });
+
+    it("hints at both the thresholds and the file list under another preset", async () => {
+      expect(await jestCheck(`module.exports = { preset: './my-preset' };\n`)).toEqual([
+        "hint:settings/unconfirmed:jest.config.js",
+        "hint:settings/unconfirmed:jest.config.js",
+      ]);
+    });
+  });
+
   it("leaves a config that pulls its settings from elsewhere alone", async () => {
     const shared = `import base from "./base";\nexport default mergeConfig(base, { test: { coverage: {} } });\n`;
     expect(scope(await check(project({ "vitest.config.ts": shared })))).toEqual([]);

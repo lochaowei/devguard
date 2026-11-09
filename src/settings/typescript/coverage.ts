@@ -2,6 +2,7 @@ import { join } from "node:path";
 import {
   findFirst,
   literalProperty,
+  mergesOtherConfig,
   objectProperty,
   parseJsonc,
   propertyValueIndex,
@@ -39,13 +40,28 @@ function judgeThresholds(block: string, t: Thresholds, judge: SettingsJudge): vo
   }
 }
 
-/** Finds the thresholds object inside a config's text, or says why it cannot. */
-function judgeConfig(text: string, path: readonly string[], t: Thresholds, judge: SettingsJudge): void {
+/**
+ * Jest presets known to set nothing about coverage: ts-jest's (`ts-jest`, `ts-jest/presets/<name>`), which from v25
+ * to v29.2 set only `transform`, `testMatch`, `moduleFileExtensions` and `extensionsToTreatAsEsm` (#119).
+ */
+const COVERAGE_FREE_PRESET = /^ts-jest(?:\/presets\/[\w-]+)?$/;
+
+/**
+ * Whether a Jest config may take settings from somewhere this file does not show: as for any config
+ * (`pullsFromElsewhere`), except that a preset known to set nothing about coverage does not count.
+ */
+function jestPullsFromElsewhere(text: string): boolean {
+  if (mergesOtherConfig(text)) return true;
+  const preset = literalProperty(text, "preset");
+  return /\bpreset\b/.test(text) && !(typeof preset === "string" && COVERAGE_FREE_PRESET.test(preset));
+}
+
+/** Finds the thresholds object inside a config's text, or says why it cannot (`pulls`: the config may inherit it). */
+function judgeConfig(text: string, path: readonly string[], t: Thresholds, judge: SettingsJudge, pulls: boolean): void {
   let block: string | undefined = text;
   for (const key of path) block = block === undefined ? undefined : objectProperty(block, key);
   if (block !== undefined) judgeThresholds(block, t, judge);
-  else if (pullsFromElsewhere(text) || propertyValueIndex(text, path[0] ?? "") !== undefined)
-    judge.unconfirmed(t.file, ` ${t.label}`);
+  else if (pulls || propertyValueIndex(text, path[0] ?? "") !== undefined) judge.unconfirmed(t.file, ` ${t.label}`);
   else {
     const all = setAt(t.file, t.at, (want) => Object.fromEntries(METRICS.map((m) => [m, want])));
     judge.disabled("coverage.lines", t.file, t.label, all);
@@ -59,8 +75,8 @@ const SCOPE_RULE = "settings/coverage-include";
  * coverage (#45). The setting is required; the files to list are the project's, so the printed value is an example.
  * `s.at` is the object that should hold `key`; `block` is that object's text.
  */
-function judgeScope(text: string, block: string | undefined, key: string, s: Thresholds, judge: SettingsJudge): void {
-  if (block === undefined || pullsFromElsewhere(text) || propertyValueIndex(block, key) !== undefined) return;
+function judgeScope(block: string | undefined, key: string, s: Thresholds, judge: SettingsJudge): void {
+  if (block === undefined || propertyValueIndex(block, key) !== undefined) return;
   const { label } = s;
   const repair: Repair = { op: "set", file: s.file, path: [...s.at, key], value: ["src/**/*.{ts,tsx}"] };
   judge.missingSetting(
@@ -80,41 +96,38 @@ async function checkVitest(root: string, judge: SettingsJudge): Promise<void> {
     return;
   }
   const at = ["test", "coverage", "thresholds"];
-  judgeConfig(found.text, ["thresholds"], { file: found.file, label: "Vitest coverage.thresholds", at }, judge);
-  const coverage = objectProperty(found.text, "coverage");
-  judgeScope(
-    found.text,
-    coverage,
-    "include",
-    { file: found.file, label: "Vitest coverage.include", at: ["test", "coverage"] },
-    judge,
-  );
+  const pulls = pullsFromElsewhere(found.text);
+  judgeConfig(found.text, ["thresholds"], { file: found.file, label: "Vitest coverage.thresholds", at }, judge, pulls);
+  const scope = { file: found.file, label: "Vitest coverage.include", at: ["test", "coverage"] };
+  if (!pulls) judgeScope(objectProperty(found.text, "coverage"), "include", scope, judge);
+}
+
+const JEST_THRESHOLDS = ["coverageThreshold", "global"];
+
+/**
+ * A Jest config's thresholds and file list; `at` is where the config sits in `file` (`["jest"]` in package.json).
+ * When the config may inherit them from elsewhere, both are hints (#119).
+ */
+function judgeJest(text: string, file: string, at: KeyPath, judge: SettingsJudge): void {
+  const pulls = jestPullsFromElsewhere(text);
+  const label = "Jest coverageThreshold.global";
+  judgeConfig(text, JEST_THRESHOLDS, { file, label, at: [...at, ...JEST_THRESHOLDS] }, judge, pulls);
+  const scope = { file, label: "Jest collectCoverageFrom", at };
+  if (pulls) judge.unconfirmed(file, ` ${scope.label}`);
+  else judgeScope(text, "collectCoverageFrom", scope, judge);
 }
 
 async function checkJest(root: string, judge: SettingsJudge): Promise<void> {
-  const label = "Jest coverageThreshold.global";
-  const path = ["coverageThreshold", "global"];
   const names = [...CODE_EXTS, "json"].map((ext) => `jest.config.${ext}`);
   for (const { fsDir, relDir } of searchDirs(root, judge.dir)) {
     const pkg = parseJsonc((await readIfExists(join(fsDir, "package.json"))) ?? "");
     if (isRecord(pkg) && isRecord(pkg.jest)) {
-      const t = { file: `${relDir}package.json`, label, at: ["jest", ...path] };
-      const text = JSON.stringify(pkg.jest);
-      judgeConfig(text, path, t, judge);
-      judgeScope(text, text, "collectCoverageFrom", { ...t, label: "Jest collectCoverageFrom", at: ["jest"] }, judge);
+      judgeJest(JSON.stringify(pkg.jest), `${relDir}package.json`, ["jest"], judge);
       return;
     }
     const found = await findFirst(fsDir, names);
     if (found) {
-      const file = relDir + found.name;
-      judgeConfig(found.text, path, { file, label, at: path }, judge);
-      judgeScope(
-        found.text,
-        found.text,
-        "collectCoverageFrom",
-        { file, label: "Jest collectCoverageFrom", at: [] },
-        judge,
-      );
+      judgeJest(found.text, relDir + found.name, [], judge);
       return;
     }
   }
