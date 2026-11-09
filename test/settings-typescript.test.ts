@@ -383,6 +383,27 @@ describe("TypeScript settings check: which files coverage counts (#45)", () => {
         "hint:settings/unconfirmed:jest.config.js",
         "hint:settings/unconfirmed:jest.config.js",
       ]);
+      const projects = `module.exports = { preset: 'ts-jest', projects: [{ preset: './my-preset' }] };\n`;
+      expect(await jestCheck(projects)).toEqual([
+        "hint:settings/unconfirmed:jest.config.js",
+        "hint:settings/unconfirmed:jest.config.js",
+      ]);
+    });
+
+    it("hints at both when the config spreads in another", async () => {
+      expect(await jestCheck(`module.exports = { ...require('./base'), ${threshold} };\n`)).toEqual([
+        "hint:settings/unconfirmed:jest.config.js",
+      ]);
+      expect(await jestCheck(`module.exports = { ...require('./base') };\n`)).toEqual([
+        "hint:settings/unconfirmed:jest.config.js",
+        "hint:settings/unconfirmed:jest.config.js",
+      ]);
+    });
+
+    it("reads a ts-jest preset in package.json", async () => {
+      const pkg = JSON.stringify({ jest: { preset: "ts-jest", collectCoverageFrom: ["src/**"] } });
+      const fs = await check(project({ ".devguard.yaml": decl, "vitest.config.ts": undefined, "package.json": pkg }));
+      expect(summary(fs)).toEqual(["error:settings/looser:package.json"]);
     });
   });
 

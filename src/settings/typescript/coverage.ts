@@ -42,26 +42,35 @@ function judgeThresholds(block: string, t: Thresholds, judge: SettingsJudge): vo
 
 /**
  * Jest presets known to set nothing about coverage: ts-jest's (`ts-jest`, `ts-jest/presets/<name>`), which from v25
- * to v29.2 set only `transform`, `testMatch`, `moduleFileExtensions` and `extensionsToTreatAsEsm` (#119).
+ * to v29.4 set only `transform`, `testMatch`, `moduleFileExtensions` and `extensionsToTreatAsEsm` (#119).
  */
 const COVERAGE_FREE_PRESET = /^ts-jest(?:\/presets\/[\w-]+)?$/;
 
 /**
  * Whether a Jest config may take settings from somewhere this file does not show: as for any config
- * (`pullsFromElsewhere`), except that a preset known to set nothing about coverage does not count.
+ * (`pullsFromElsewhere`), except that a single preset known to set nothing about coverage does not count. A second
+ * mention of `preset` (a `projects` entry, a comment) may be another preset, so it counts.
  */
-function jestPullsFromElsewhere(text: string): boolean {
+function jestMayInherit(text: string): boolean {
   if (mergesOtherConfig(text)) return true;
+  const mentions = text.match(/\bpreset\b/g)?.length ?? 0;
   const preset = literalProperty(text, "preset");
-  return /\bpreset\b/.test(text) && !(typeof preset === "string" && COVERAGE_FREE_PRESET.test(preset));
+  return mentions > 1 || (mentions === 1 && !(typeof preset === "string" && COVERAGE_FREE_PRESET.test(preset)));
 }
 
-/** Finds the thresholds object inside a config's text, or says why it cannot (`pulls`: the config may inherit it). */
-function judgeConfig(text: string, path: readonly string[], t: Thresholds, judge: SettingsJudge, pulls: boolean): void {
+/** Finds the thresholds object inside a config's text, or says why it cannot (`mayInherit`: from another config). */
+function judgeConfig(
+  text: string,
+  path: readonly string[],
+  t: Thresholds,
+  judge: SettingsJudge,
+  mayInherit: boolean,
+): void {
   let block: string | undefined = text;
   for (const key of path) block = block === undefined ? undefined : objectProperty(block, key);
   if (block !== undefined) judgeThresholds(block, t, judge);
-  else if (pulls || propertyValueIndex(text, path[0] ?? "") !== undefined) judge.unconfirmed(t.file, ` ${t.label}`);
+  else if (mayInherit || propertyValueIndex(text, path[0] ?? "") !== undefined)
+    judge.unconfirmed(t.file, ` ${t.label}`);
   else {
     const all = setAt(t.file, t.at, (want) => Object.fromEntries(METRICS.map((m) => [m, want])));
     judge.disabled("coverage.lines", t.file, t.label, all);
@@ -96,10 +105,12 @@ async function checkVitest(root: string, judge: SettingsJudge): Promise<void> {
     return;
   }
   const at = ["test", "coverage", "thresholds"];
-  const pulls = pullsFromElsewhere(found.text);
-  judgeConfig(found.text, ["thresholds"], { file: found.file, label: "Vitest coverage.thresholds", at }, judge, pulls);
+  const mayInherit = pullsFromElsewhere(found.text);
+  const t = { file: found.file, label: "Vitest coverage.thresholds", at };
+  judgeConfig(found.text, ["thresholds"], t, judge, mayInherit);
   const scope = { file: found.file, label: "Vitest coverage.include", at: ["test", "coverage"] };
-  if (!pulls) judgeScope(objectProperty(found.text, "coverage"), "include", scope, judge);
+  // Unchanged by #119, which kept Vitest out of scope: an inherited file list goes unreported.
+  if (!mayInherit) judgeScope(objectProperty(found.text, "coverage"), "include", scope, judge);
 }
 
 const JEST_THRESHOLDS = ["coverageThreshold", "global"];
@@ -109,11 +120,11 @@ const JEST_THRESHOLDS = ["coverageThreshold", "global"];
  * When the config may inherit them from elsewhere, both are hints (#119).
  */
 function judgeJest(text: string, file: string, at: KeyPath, judge: SettingsJudge): void {
-  const pulls = jestPullsFromElsewhere(text);
+  const mayInherit = jestMayInherit(text);
   const label = "Jest coverageThreshold.global";
-  judgeConfig(text, JEST_THRESHOLDS, { file, label, at: [...at, ...JEST_THRESHOLDS] }, judge, pulls);
+  judgeConfig(text, JEST_THRESHOLDS, { file, label, at: [...at, ...JEST_THRESHOLDS] }, judge, mayInherit);
   const scope = { file, label: "Jest collectCoverageFrom", at };
-  if (pulls) judge.unconfirmed(file, ` ${scope.label}`);
+  if (mayInherit) judge.unconfirmed(file, ` ${scope.label}`);
   else judgeScope(text, "collectCoverageFrom", scope, judge);
 }
 
