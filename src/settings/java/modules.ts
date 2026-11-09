@@ -17,6 +17,11 @@ async function readPom(read: ReadText, dir: string): Promise<{ modules: string[]
   return { modules, aggregator: child(parsed.root, "packaging")?.text.trim() === "pom" };
 }
 
+/** Whether the Maven build in `dir` is multi-module: its pom.xml lists `<modules>`. */
+export async function isMavenMultiModule(read: ReadText, dir: string): Promise<boolean> {
+  return ((await readPom(read, dir))?.modules.length ?? 0) > 0;
+}
+
 /**
  * The directories of a Maven build that write their own `target/` reports: the build in `dir` itself, or, for an
  * aggregator (`<packaging>pom</packaging>` with `<modules>`), each of its modules, recursively. Normalized

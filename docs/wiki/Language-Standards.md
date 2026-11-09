@@ -221,6 +221,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 - **程式碼檢查（`code` 層）**：
   - `format`：`mvnw -B -ntp spotless:check`（或 Gradle `spotlessCheck --console=plain -q`）
   - `lint`：`mvnw -B -ntp checkstyle:check pmd:check -Dcheckstyle.failOnViolation=false -Dpmd.failOnViolation=false`（或 Gradle `checkstyleMain checkstyleTest pmdMain pmdTest --continue --console=plain -q`），解析產生的 Checkstyle（`target/checkstyle-result.xml` 或 `build/reports/checkstyle/*.xml`）與 PMD（`target/pmd.xml` 或 `build/reports/pmd/*.xml`）XML 報告。
+  - Maven 多模組（`pom.xml` 有 `<modules>`）時，指令在 `checkstyle:check` 之前加上 `test-compile`，讓 reactor 先編譯並解析兄弟模組；因此會先編譯整個建置，比較慢，編譯失敗時回報 `code/tool-failed`，訊息是建置輸出中的錯誤行。報告從各模組的 `target/` 讀取。
 - **自動修正程式碼（`fix --code`）**：
   - `mvnw -B -ntp spotless:apply`（或 `gradlew spotlessApply --console=plain -q`）。
 - **測試與覆蓋率（`tests` 層，`--full`）**：
