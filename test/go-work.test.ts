@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { goWorkModules, goWorkspaces } from "../src/repo/go-work.ts";
+import { goWorkDirs, goWorkModules, goWorkspaces } from "../src/repo/go-work.ts";
 
 /** go.work files as `go work init ./a` and then `go work use ./b` wrote them (Go 1.26.5). */
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/go/${name}`, import.meta.url), "utf8");
@@ -72,5 +72,20 @@ describe("goWorkspaces", () => {
   it("leaves out modules with no go.work above them", async () => {
     const dir = tree({ "a/go.mod": "module a\n" });
     expect((await goWorkspaces(dir, ["a/"])).size).toBe(0);
+  });
+
+  it("goWorkDirs: the directory of the nearest go.work in the repo that uses each module (#88)", async () => {
+    const dir = tree({
+      "go.work": "use (\n\t./repo/a\n)\n",
+      "repo/go.work": "use ./a\n",
+      "repo/svc/go.work": "use ./x\n",
+    });
+    const found = await goWorkDirs(join(dir, "repo"), ["", "a/", "b/", "svc/x/", "svc/y/"]);
+    expect(Object.fromEntries(found)).toEqual({ "a/": "", "svc/x/": "svc/" });
+  });
+
+  it("goWorkDirs: leaves out a module only a go.work above the repo root uses", async () => {
+    const dir = tree({ "go.work": "use ./repo/a\n", "repo/a/go.mod": "module a\n" });
+    expect((await goWorkDirs(join(dir, "repo"), ["a/"])).size).toBe(0);
   });
 });

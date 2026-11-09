@@ -94,7 +94,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 
 - 四種格式套用同樣的檢查與 rule id；finding 的 `file` 是採用的那一份，能取得行號時附上（TOML 目前沒有行號）。
 - 多個 Go 元件共用同一份設定檔（例如根目錄的 `.golangci.yml`）時，相同的 finding 只列一次、只算一次，修正也只套用一次。在回報它的元件中，列在目錄就是設定檔所在目錄的那個下；沒有時（例如設定放在 `go.work` 所在、不是元件的目錄），列在其中目錄最上層的那個下（同層依宣告順序）。因此只有一個元件回報的 finding（例如它的覆寫多要求一個 linter）照舊列在那個元件下（#92）。
-- `devguard fix` 沿用採用的那一份的格式修改它（TOML 就改 TOML、JSON 就改 JSON）。只有整條路徑上都沒有任何 golangci 設定檔時，才回報 `settings/golangci-missing` 並建立 `.golangci.yml`。
+- `devguard fix` 沿用採用的那一份的格式修改它（TOML 就改 TOML、JSON 就改 JSON）。只有整條路徑上都沒有任何 golangci 設定檔時，才回報 `settings/golangci-missing` 並建立 `.golangci.yml`。建立的位置讓能共用的模組只有一份（#88）：元件在 repo 內某個 `go.work` 的 `use` 清單中時，建在 `go.work` 所在目錄；否則依元件或它上層最上面的 Go 元件決定（那個元件在 `go.work` 的 `use` 清單中時建在 `go.work` 所在目錄，否則建在它的目錄）；互不包含的元件各建一份。共用的那一份包含每個元件的有效標準（含覆寫）要加的設定。golangci-lint 會往上找設定，所以這些模組都會採用它。
 - 語法錯誤依格式回報 `settings/golangci-yaml-syntax`、`settings/golangci-toml-syntax` 或 `settings/golangci-json-syntax`，不當成缺檔，也不自動修正。
 - 不是 v2 格式（沒有 `version`、`version: "1"` 或其他值）時，這份檔案**只**回報 `settings/golangci-version`，不檢查 linter、門檻、depguard、formatter，也沒有自動修正，所以 `fix` 不會改動 v1 設定檔（v1 的 `enable-all`、`linters-settings` 與 v2 的寫法不同，寫入 v2 的鍵只會得到一份 golangci-lint 無法載入的檔案）。先執行 `golangci-lint migrate`，再重新執行 `devguard check`。`go.mod` 照常檢查。
 - 同一層有不只一份時，回報 `hint` `settings/golangci-multiple`，說明 golangci-lint 採用哪一份、其他的會被忽略。
