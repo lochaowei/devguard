@@ -7,6 +7,7 @@ import { goEnv } from "./go-env.ts";
 import { PYTHON_MANAGERS, pythonManager, type PythonManager } from "./python-manager.ts";
 import { isEnoent, readIfExistsSync } from "../shared/fs.ts";
 import { pyName, pyprojectDependencies } from "../deps/manifests.ts";
+import { typescriptInstall } from "./typescript-install.ts";
 
 export interface ToolRequest {
   language: Language;
@@ -26,6 +27,11 @@ export interface ToolRequest {
    * pyproject.toml lists it, the install hint adds it to the dev dependencies in this range (#68).
    */
   range?: string;
+  /**
+   * TypeScript only: the component's `deps.manager`. When the tool is missing and no lockfile says how the packages
+   * are installed, the install hint uses this manager (#117).
+   */
+  manager?: string;
 }
 
 /**
@@ -38,6 +44,15 @@ export function pythonToolRequest(
 ): Omit<ToolRequest, "args"> {
   const range = component.effective[`tools.${tool}`];
   return { language: "python", tool, dir: component.dir, ...(typeof range === "string" ? { range } : {}) };
+}
+
+/** A run of the TypeScript `tool` in a component's directory, with its `deps.manager` for the install hint (#117). */
+export function typescriptToolRequest(
+  component: { dir: string; effective: Readonly<Record<string, unknown>> },
+  tool: string,
+): Omit<ToolRequest, "args"> {
+  const manager = component.effective["deps.manager"];
+  return { language: "typescript", tool, dir: component.dir, ...(typeof manager === "string" ? { manager } : {}) };
 }
 
 export interface ToolResult {
@@ -212,7 +227,9 @@ function typescript(req: ToolRequest, dirs: readonly string[], env: Env): Resolv
   const name = env.windows ? `${req.tool}.cmd` : req.tool;
   const bin = dirs.map((d) => env.path.join(d, "node_modules", ".bin", name)).find((p) => env.exists(p));
   if (!bin) {
-    return { ok: false, message: `找不到 ${req.tool}：node_modules 中沒有安裝`, install: inDir(req.dir, "npm ci") };
+    const root = dirs.at(-1) ?? "";
+    const how = typescriptInstall(req.dir, req.manager, (file) => env.readText(env.path.join(root, file)));
+    return { ok: false, message: `找不到 ${req.tool}：node_modules 中沒有安裝`, install: inDir(how.dir, how.command) };
   }
   return { ok: true, command: { file: bin, args: [...(req.args ?? [])], cwd } };
 }

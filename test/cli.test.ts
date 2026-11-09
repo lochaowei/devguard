@@ -211,6 +211,16 @@ describe("devguard check", () => {
     expect(r.err).toContain("npm ci");
   });
 
+  it("exits 2 with the declared manager's install when there is no lockfile (#117)", async () => {
+    const component = "  - path: ./\n    language: typescript\n    overrides:\n      deps.manager: pnpm\n";
+    const dir = project(`standard: team@1.0.0\ncomponents:\n${component}`);
+    rmSync(join(dir, "package-lock.json"));
+    writeFileSync(join(dir, "a.ts"), "export const a = 1;\n");
+    const r = await run(["check", "--cwd", dir, "--only", "lint", join(dir, "a.ts")], "real");
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("安裝：pnpm install\n");
+  });
+
   it("exits 2 with `uv sync` when the Python tools are not installed", async () => {
     const dir = project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: python}\n");
     writeFileSync(join(dir, "a.py"), "a = 1\n");
