@@ -35,6 +35,8 @@ devguard install [--yes] [--cwd <dir>]
       | lefthook | `pre-commit.jobs` / `pre-push.jobs` 各加一個 `name: devguard`（原本用 `commands` 寫法的則加在 `commands.devguard`） |
       | husky | 在 `.husky/pre-commit`、`.husky/pre-push` 結尾加一行呼叫 devguard 的指令 |
 
+      YAML 設定檔中與 devguard 項目無關的既有內容逐字保留，例如其他 hook 的 `args: ["--fix"]`、`types: [python]` 不會被改成 `[ "--fix" ]`。
+
       用 pre-commit 框架需要 **pre-commit 4.4.0 以上**：`language: unsupported` 是 4.4.0 才加入的值（`system` 的新名稱）。設定了 `minimum_pre_commit_version` 後，版本太舊時 pre-commit 會直接說明需要的版本。
 
    3. **沒有框架**：寫入 git 實際讀取的 hook 檔（`git rev-parse --git-path hooks/<名稱>`，通常是 `.git/hooks/`；有設定 `core.hooksPath` 時就是那個目錄）。
