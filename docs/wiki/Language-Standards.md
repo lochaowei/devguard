@@ -236,3 +236,4 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
   - `mvnw -B -ntp spotless:apply`（或 `gradlew spotlessApply --console=plain -q`）。
 - **測試與覆蓋率（`tests` 層，`--full`）**：
   - 執行 `mvnw -B -Dmaven.test.failure.ignore=true test jacoco:report`（或 Gradle `test jacocoTestReport --continue`），解析 `jacoco.xml`（或 `jacocoTestReport.xml`）根層級的 `LINE` 與 `BRANCH` counter。
+  - 由建置檔判斷有沒有 JaCoCo（Maven `jacoco-maven-plugin`；Gradle `jacoco` plugin）。`coverage.lines` ≤ 0（如 `legacy@1.0.0`）時不帶 `jacoco:report`／`jacocoTestReport`，只跑測試。有門檻但沒有 JaCoCo 時也只跑測試，照常回報 `test/failed`，另加一筆 `coverage/no-report`（附設定說明）。建置檔判斷不出來時，若 wrapper 回報找不到 JaCoCo，同樣改只跑測試。

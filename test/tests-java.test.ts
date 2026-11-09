@@ -49,7 +49,9 @@ function setup(files: Record<string, string>, declaration = CORE) {
   return { dir, check: (tools: ReturnType<typeof javaTools>["tools"]) => checkTests(dir, tools, ["core/src/A.java"]) };
 }
 
-const MAVEN = { "core/pom.xml": "<project/>" };
+const POM = (plugins: string) =>
+  `<project><build><plugins><plugin><artifactId>${plugins}</artifactId></plugin></plugins></build></project>`;
+const MAVEN = { "core/pom.xml": POM("jacoco-maven-plugin") };
 const GRADLE = { "core/build.gradle": "plugins { id 'java'; id 'jacoco' }" };
 
 const SUREFIRE_FAILED = `[INFO] Results:
@@ -80,7 +82,7 @@ describe("Java tests", () => {
   it("adds up the JaCoCo reports of a multi-module Maven build", async () => {
     const files = {
       "core/pom.xml":
-        "<project><packaging>pom</packaging><modules><module>a</module><module>b</module></modules></project>",
+        "<project><packaging>pom</packaging><modules><module>a</module><module>b</module></modules><build><plugins><plugin><artifactId>jacoco-maven-plugin</artifactId></plugin></plugins></build></project>",
       "core/a/pom.xml": "<project/>",
       "core/b/pom.xml": "<project/>",
     };
@@ -168,6 +170,61 @@ describe("Java tests", () => {
 
     it("runs the declared build tool", async () => {
       expect(await wrapperOf(declare("core/", "java", "{build.tool: maven}"))).toEqual(["mvnw"]);
+    });
+  });
+
+  describe("without JaCoCo (#99)", () => {
+    const BARE_POM = { "core/pom.xml": "<project/>" };
+    const BARE_GRADLE = { "core/build.gradle": "plugins { id 'java' }" };
+    const LEGACY = declare("core/", "java").replace("team@1.0.0", "legacy@1.0.0");
+    const argsOf = (calls: { args?: readonly string[] }[]) => calls.map((c) => (c.args ?? []).join(" "));
+
+    it("runs only the tests under a coverage threshold of 0, and reports the test errors", async () => {
+      const { dir, check } = setup(BARE_POM, LEGACY);
+      const { tools, calls } = javaTools(() => dir, MAVEN_REPORT, undefined, ok(SUREFIRE_FAILED));
+      const r = await check(tools);
+      expect(argsOf(calls)).toEqual(["-B -Dmaven.test.failure.ignore=true test"]);
+      expect(rules(r.findings)).toEqual(["error:test/failed"]);
+    });
+
+    it("skips the report goal under a threshold of 0 even when JaCoCo is applied", async () => {
+      const { dir, check } = setup(GRADLE, LEGACY);
+      const { tools, calls } = javaTools(() => dir, GRADLE_REPORT, undefined);
+      expect((await check(tools)).findings).toEqual([]);
+      expect(argsOf(calls)).toEqual(["test --continue"]);
+    });
+
+    it("runs Gradle tests without the report task and adds coverage/no-report", async () => {
+      const { dir, check } = setup(BARE_GRADLE);
+      const out = "CalcTest > add() FAILED\n";
+      const { tools, calls } = javaTools(() => dir, GRADLE_REPORT, undefined, ok(out, 1));
+      const r = await check(tools);
+      expect(argsOf(calls)).toEqual(["test --continue"]);
+      expect(rules(r.findings)).toEqual(["error:test/failed", "error:coverage/no-report"]);
+      expect(r.findings[1]?.fix).toContain("jacoco plugin");
+    });
+
+    it("runs the tests again without the report goal when the wrapper says JaCoCo is missing", async () => {
+      // The build file cannot tell (a Maven profile may add the plugin): the wrapper's complaint does.
+      const unknown = {
+        "core/pom.xml":
+          "<project><profiles><profile><build><plugins><plugin><artifactId>jacoco-maven-plugin</artifactId></plugin></plugins></build></profile></profiles></project>",
+      };
+      const { dir, check } = setup(unknown);
+      let n = 0;
+      const tools = fakeTools(() => {
+        n += 1;
+        return n === 1
+          ? ok("[ERROR] No plugin found for prefix 'jacoco' in the current project", 1)
+          : ok(SUREFIRE_FAILED);
+      });
+      const r = await check(tools.tools);
+      expect(argsOf(tools.calls)).toEqual([
+        "-B -Dmaven.test.failure.ignore=true test jacoco:report",
+        "-B -Dmaven.test.failure.ignore=true test",
+      ]);
+      expect(rules(r.findings)).toEqual(["error:test/failed", "error:coverage/no-report"]);
+      expect(dir).toBeTruthy();
     });
   });
 
