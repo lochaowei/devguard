@@ -242,8 +242,12 @@ function python(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
 
 function typescript(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
   const cwd = dirs[0] ?? "";
-  const name = env.windows ? `${req.tool}.cmd` : req.tool;
-  const bin = dirs.map((d) => env.path.join(d, "node_modules", ".bin", name)).find((p) => env.exists(p));
+  // npm, pnpm and Yarn write a `.cmd` shim on Windows; Bun 1.x writes `.exe` (and `.bunx`), checked on 1.4.4 (#122).
+  // The nearest directory wins; within one, `.cmd` does, as before.
+  const names = env.windows ? [".cmd", ".exe"].map((ext) => req.tool + ext) : [req.tool];
+  const bin = dirs
+    .flatMap((d) => names.map((name) => env.path.join(d, "node_modules", ".bin", name)))
+    .find((p) => env.exists(p));
   if (!bin) {
     const root = dirs.at(-1) ?? "";
     const how = typescriptInstall(req.dir, req.manager, (file) => env.readText(env.path.join(root, file)));

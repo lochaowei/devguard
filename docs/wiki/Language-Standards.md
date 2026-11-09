@@ -172,7 +172,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 | `test.tool` | `"vitest"` | 允許替代：`jest` |
 | `coverage.lines` | `80` | `lines`、`branches`、`functions`、`statements` 四項皆須達 80%；必須設定 Vitest `coverage.include`（或 Jest `collectCoverageFrom`），沒有測試的檔案才會算進去 |
 | `deps.manager` | `"npm"` | 允許替代：`pnpm`、`yarn` |
-| `deps.lockfile` | `true` | 必須提交 `package-lock.json`、`pnpm-lock.yaml` 或 `yarn.lock` |
+| `deps.lockfile` | `true` | 必須提交 `package-lock.json`、`pnpm-lock.yaml` 或 `yarn.lock`。只有 Bun 的 `bun.lock`／`bun.lockb` 時，`deps/lockfile-missing` 會說明 Bun 不是允許的套件管理工具，請改用 npm／pnpm／yarn 並提交其 lockfile |
 | `deps.banned` | `["moment", "request", "node-fetch"]` | 直接依賴禁用套件 |
 | `deps.bannedApis` | `[]` | ESLint `no-restricted-imports` |
 
@@ -180,7 +180,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 
 ### 執行方式
 
-- **工具執行器**：`node_modules/.bin/<tool>`（Windows 下 `.cmd` 自動透過 `cmd.exe /d /s /c` 啟動；鎖定版本讀取自 `package-lock.json`、`pnpm-lock.yaml` 或 `yarn.lock`）。
+- **工具執行器**：`node_modules/.bin/<tool>`（Windows 下依序找 `.cmd`、`.exe`（Bun 產生的 shim），`.cmd` 自動透過 `cmd.exe /d /s /c` 啟動；鎖定版本讀取自 `package-lock.json`、`pnpm-lock.yaml` 或 `yarn.lock`）。
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
   - `tools.eslint`：`>=10,<11`、`tools.prettier`：`>=3,<4`、`tools.typescript`：`>=6,<7`、`tools.typescript-eslint`：`>=8,<9`、`tools.eslint-plugin-sonarjs`：`>=3,<4`（`team@1.1.0` 已移除這一項）
   - `tools.biome`（`@biomejs/biome`）：`>=2,<3`
