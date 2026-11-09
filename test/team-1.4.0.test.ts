@@ -94,7 +94,7 @@ describe("only the declared type checker's range is checked, in every standard (
   });
 });
 
-/** The start of elysia's real bun.lock (Bun is its only package manager), with a few of its packages. */
+/** The start of elysia's real bun.lock (Bun is its only package manager); the package entries are trimmed and their hashes shortened. */
 const BUN_LOCK = readFileSync(join(import.meta.dirname, "fixtures/typescript/bun.lock"), "utf8");
 
 const bunProject = (standard: string) =>
