@@ -356,3 +356,61 @@ describe("python settings layer", () => {
     ]);
   });
 });
+
+describe("a sub-component that uses a parent directory's settings (#106)", () => {
+  /** The root (python.minVersion 3.10) and docs/, which has no settings of its own (the standard's 3.11). */
+  const DECL =
+    "standard: team@1.4.0\ncomponents:\n" +
+    "  - path: ./\n    language: python\n    overrides:\n" +
+    '      python.minVersion: { value: "3.10", reason: "supports 3.10" }\n' +
+    "      typecheck.tool: pyright\n" +
+    "  - path: docs/\n    language: python\n    overrides:\n      typecheck.tool: pyright\n";
+  const ROOT = GOOD.replace('">=3.11"', '">=3.10"')
+    .replace('"py311"', '"py310"')
+    .replace("[tool.mypy]\nstrict = true\n", "");
+  const files = {
+    ".devguard.yaml": DECL,
+    "pyproject.toml": ROOT,
+    "pyrightconfig.json": '{ "typeCheckingMode": "strict", "pythonVersion": "3.10" }',
+    "docs/requirements.txt": "sphinx\n",
+  };
+  const findings = async (extra: Record<string, string> = {}) =>
+    (
+      await runCheck({ cwd: project({ ...files, ...extra }), today: TODAY }, [declarationLayer, pythonSettingsLayer])
+    ).findings.filter((f) => f.rule.startsWith("settings/"));
+
+  it("reports what differs from the parent's files without a repair, naming the file that owns them", async () => {
+    const docs = (await findings()).filter((f) => f.component === "docs/ (Python)");
+    expect(docs.length).toBeGreaterThan(0);
+    for (const f of docs) {
+      expect(f.repairs).toBeUndefined();
+      expect(f.file === "pyproject.toml" || f.file === "pyrightconfig.json").toBe(true);
+      expect(f.fix).toContain(`${f.file ?? ""} 是上層共用的設定`);
+    }
+    expect(docs.map((f) => f.rule)).not.toContain("settings/pyproject-missing");
+  });
+
+  it("leaves the root component's own findings and repairs as they are", async () => {
+    const root = (await findings()).filter((f) => f.component === "./ (Python)");
+    expect(root).toEqual([]);
+    const loose = (
+      await findings({ "pyproject.toml": ROOT.replace("max-complexity = 10", "max-complexity = 20") })
+    ).filter((f) => f.component === "./ (Python)");
+    expect(loose.map((f) => f.rule)).toEqual(["settings/looser"]);
+    expect(loose[0]?.repairs).toHaveLength(1);
+  });
+
+  it("still asks for a pyproject.toml when no parent directory has one", async () => {
+    const lone = await runCheck(
+      {
+        cwd: project({
+          ".devguard.yaml": "standard: team@1.4.0\ncomponents:\n  - path: svc/\n    language: python\n",
+          "svc/requirements.txt": "regex\n",
+        }),
+        today: TODAY,
+      },
+      [declarationLayer, pythonSettingsLayer],
+    );
+    expect(lone.findings.map((f) => [f.rule, f.file])).toEqual([["settings/pyproject-missing", "svc/pyproject.toml"]]);
+  });
+});

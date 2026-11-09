@@ -63,6 +63,8 @@ devguard fix --code [檔案…] [--yes] [--cwd <dir>]
 
 修改 TOML 共用檔（例如 `pyproject.toml`）時，`fix` 會先確認修改後的內容仍是合法的 TOML。不合法時該檔**不寫入**，改為印出 `pyproject.toml：錯誤：修改後不是合法的 TOML，不會修改；請自行套用` 與要套用的修改；同一次的其他檔案照常處理，這不會讓 `fix` 失敗：其他檔案寫入成功時 exit code 仍是 `0`。
 
+沿用上層設定的 Python 子元件（元件目錄沒有自己的 `pyproject.toml`、`ruff.toml` 或 `pyrightconfig.json`，工具讀的是上層目錄的那一份）：`fix` 不修改上層的共用設定，也不在子元件目錄建立新的設定檔（#106）。子元件的標準與那份設定不一致時，`check` 回報不附自動修正的 finding，例如 `需手動修正：pyproject.toml 是上層共用的設定，devguard fix 不修改它：請調整 docs/ (Python) 在宣告中的 overrides，或由擁有它的元件修改 pyproject.toml`。擁有那份設定的上層元件，`fix` 照常修改。
+
 ### 路徑上有檔案而不是目錄
 
 預覽前，`fix` 會檢查每個要寫入的檔案：上層路徑中已經存在、卻不是目錄的項目（例如 `.claude/skills` 是一般檔案）會讓那個檔案無法寫入。這種檔案**不寫入**，改為印出一筆錯誤；其他檔案（包括 git hook）照常預覽與套用，最後以 exit `1` 結束，即使其他檔案已經套用（`已套用。` 之後仍是 `1`）：
