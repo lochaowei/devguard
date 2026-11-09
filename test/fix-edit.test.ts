@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { editConfigText, parseConfigText } from "../src/fix/edit.ts";
 
@@ -177,6 +179,67 @@ describe("editConfigText: JSONC", () => {
       editConfigText("x.json", "", [{ op: "set", path: ["recommendations"], value, layout: { printWidth } }]);
     expect(edit(120)).toContain('"recommendations": ["dbaeumer');
     expect(edit()).toContain('"recommendations": [\n');
+  });
+
+  describe("appending after a last property with a trailing comment (#121)", () => {
+    const add = (text: string) =>
+      editConfigText("tsconfig.json", text, [
+        { op: "set", path: ["compilerOptions", "noImplicitOverride"], value: true },
+        { op: "set", path: ["compilerOptions", "noFallthroughCasesInSwitch"], value: true },
+      ]);
+
+    it("keeps the last line of a tsc --init tsconfig (elysia), comment and alignment, and adds below it", () => {
+      const text = readFileSync(join(import.meta.dirname, "fixtures/typescript/elysia-tsconfig.json"), "utf8");
+      const out = add(text);
+      expect(out).toContain(
+        '    "skipLibCheck": true,                                 /* Skip type checking all .d.ts files. */\n' +
+          '    "noImplicitOverride": true,\n    "noFallthroughCasesInSwitch": true,\n  },\n',
+      );
+      expect(out.replace(/ {4}"no(ImplicitOverride|FallthroughCasesInSwitch)": true,\n/g, "")).toBe(text);
+      expect(parseConfigText("tsconfig.json", out)).toMatchObject({
+        compilerOptions: { skipLibCheck: true, noImplicitOverride: true, noFallthroughCasesInSwitch: true },
+      });
+    });
+
+    it("keeps a // comment on the last line", () => {
+      const out = add('{\n  "compilerOptions": {\n    "strict": true, // the team default\n  }\n}\n');
+      expect(out).toBe(
+        '{\n  "compilerOptions": {\n    "strict": true, // the team default\n' +
+          '    "noImplicitOverride": true,\n    "noFallthroughCasesInSwitch": true,\n  }\n}\n',
+      );
+    });
+
+    it("puts the missing comma after the value and before the comment", () => {
+      const out = add('{\n  "compilerOptions": {\n    "strict": true /* on */ // really\n  }\n}\n');
+      expect(out).toBe(
+        '{\n  "compilerOptions": {\n    "strict": true, /* on */ // really\n' +
+          '    "noImplicitOverride": true,\n    "noFallthroughCasesInSwitch": true\n  }\n}\n',
+      );
+    });
+
+    it("adds right after the last property, before comment lines that follow it", () => {
+      const out = add('{\n  "compilerOptions": {\n    "strict": true // on\n    // "noEmit": true\n  }\n}\n');
+      expect(out).toBe(
+        '{\n  "compilerOptions": {\n    "strict": true, // on\n    "noImplicitOverride": true,\n' +
+          '    "noFallthroughCasesInSwitch": true\n    // "noEmit": true\n  }\n}\n',
+      );
+    });
+
+    it("does the same in a CRLF file", () => {
+      const out = add('{\r\n  "compilerOptions": {\r\n    "strict": true, // on\r\n  }\r\n}\r\n');
+      expect(out).toBe(
+        '{\r\n  "compilerOptions": {\r\n    "strict": true, // on\r\n    "noImplicitOverride": true,\r\n' +
+          '    "noFallthroughCasesInSwitch": true,\r\n  }\r\n}\r\n',
+      );
+    });
+
+    it("writes a last property without a comment as before", () => {
+      const out = add('{\n  "compilerOptions": {\n    "strict": true\n  }\n}\n');
+      expect(out).toBe(
+        '{\n  "compilerOptions": {\n    "strict": true,\n    "noImplicitOverride": true,\n' +
+          '    "noFallthroughCasesInSwitch": true\n  }\n}\n',
+      );
+    });
   });
 
   it("leaves arrays already in the file as they are", () => {
