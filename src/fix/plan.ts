@@ -28,9 +28,9 @@ export interface Printed {
    * project already configures a type checker other than the declared one (#68). `unparseable`: editing a shared TOML
    * file would leave it unparseable, so it is not written (#105). `foreign`: a CLI-owned file devguard did not generate,
    * so it is not overwritten (#100). `blocked`: a file sits where the path needs a directory, so it cannot be written
-   * (#129).
+   * (#129). `hook`: a git hook devguard did not write, left alone, so devguard's hook is not installed (#126).
    */
-  category: "snippet" | "user" | "conflict" | "typecheck" | "unparseable" | "foreign" | "blocked";
+  category: "snippet" | "user" | "conflict" | "typecheck" | "unparseable" | "foreign" | "blocked" | "hook";
   lines: string[];
 }
 
@@ -237,6 +237,7 @@ const PRINT_LABEL = {
   unparseable: "錯誤：修改後不是合法的 TOML，不會修改；請自行套用",
   foreign: "這份檔案不是 devguard 產生的，不會覆寫；請自行加入以下內容",
   blocked: "錯誤：路徑上有檔案而不是目錄，無法寫入；請自行處理",
+  hook: "既有的 git hook，不是 devguard 產生的，未修改；devguard 的檢查不會執行，請自行加入",
 } as const;
 
 /** A diff line (`-` / `+` / ` ` marker) with any credential it shows masked (SPEC §10.3). */

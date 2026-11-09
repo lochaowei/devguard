@@ -11,6 +11,15 @@ import { readFileSync } from "node:fs";
 export const lefthookWrote = (hook: GitHookName): string =>
   readFileSync(new URL(`./fixtures/lefthook/${hook}`, import.meta.url), "utf8");
 
+/**
+ * The hook husky 4.1.0–4.3.8 wrote (`getHookScript`), with the machine-specific paths made generic: it ends by loading
+ * `husky.sh`, which exits, so nothing after it runs (#126).
+ */
+export const HUSKY_V4_HOOK = readFileSync(new URL("./fixtures/husky-v4/pre-commit", import.meta.url), "utf8");
+
+/** `text` with `line` put right after its first line (the `#!` line). */
+export const afterShebang = (text: string, line: string): string => text.replace(/\n/, `\n${line}\n`);
+
 export const TODAY = "2026-10-22";
 
 /** Parses and resolves a declaration text; fails the test if the YAML itself cannot be read. */

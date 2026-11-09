@@ -87,6 +87,17 @@ $ DEVGUARD_PRE_PUSH=full devguard doctor --quiet
 
 被改過的 hook 用 `devguard fix --yes` 或 `devguard install --yes` 都能恢復；被刪掉的要用 `install`。
 
+### git hook 檔不是 devguard 產生的
+
+沒有 hook 框架、hook 檔是手寫的或其他工具（例如 husky v4）寫的時，`doctor` 確認它有呼叫 devguard（`… hook git-<名稱>`），而且呼叫會被執行：只有出現在第一個**結束腳本**的頂層指令之前才算。結束腳本的指令是 `exit`、執行其他程式的 `exec`（只做導向的 `exec 1>&2` 不算），以及用 `.`／`source` 載入其他腳本（husky v4 的 `. "$(dirname "$0")/husky.sh"` 就是這種，`husky.sh` 跑完會直接結束）。條件式（`if`、`&&`、`||`）或函式中的 `exit` 不算。
+
+```text
+  錯誤  git pre-commit hook（C:\work\demo\.git\hooks\pre-commit）不是 devguard 產生的，對 devguard 的呼叫在「. "$(dirname "$0")/husky.sh"」之後，不會執行，應移到開頭  [environment/hook-foreign]
+        需手動修正：加在這個 hook 的開頭（#! 那一行之後的下一行）：command -v devguard >/dev/null 2>&1 || { … }; devguard hook git-pre-commit "$@" || exit $?
+```
+
+完全沒有呼叫 devguard 時，訊息是「不是 devguard 產生的，也沒有呼叫 devguard」，修正方式相同。見 [`install` 的既有的 git hook](Command-install.md#既有的-git-hook)。
+
 ### pre-push 的問題什麼時候算錯誤
 
 pre-push hook 預設不跑任何檢查（見 [`hook git-pre-push`](Command-hook.md#git-pre-push)），所以沒有設定 `DEVGUARD_PRE_PUSH=full` 時，pre-push 的 `hook-missing`、`hook-modified`、`hook-foreign`、`framework-entry-missing`、`framework-not-installed` 只列為**提示**，訊息結尾註明「doctor 所在的 shell 沒有設定 DEVGUARD_PRE_PUSH=full，push 時不跑測試，所以只列為提示」。提示不影響 exit code，`--quiet` 也不會印出。設定之後，這些就和 pre-commit 的問題一樣是錯誤。
