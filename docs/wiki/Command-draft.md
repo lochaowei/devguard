@@ -44,6 +44,7 @@ $ devguard draft
 
    - **不在 `go.work` 中的 Go 模組**：`go.mod` 的目錄或上層有 `go.work`，但不在它的 `use` 清單中（常見的是測試資料裡讓 go 工具略過目錄的哨兵 `go.mod`）。golangci-lint 在 workspace 模式下無法檢查這種模組。註解：`# 不在 go.work 的 use 清單中`。和 `go` 一樣，被 git 忽略的 `go.work`、或在 repo 根目錄之上的 `go.work` 也算。repo 根目錄的模組，以及底下有 `use` 清單中模組的目錄，照舊是元件。沒有 `go.work` 的 repo，每個 `go.mod` 都是一個元件。
    - **零星的程式檔**：往上找不到該語言的標記檔，而 repo 已經有其他有標記檔的元件，例如 Go 專案測試資料裡的 `.py`、Java 專案根目錄的一支腳本。同一目錄、同副檔名有多個時寫成 `<目錄>/*.<副檔名>`。註解：`# 沒有 Python 的標記檔，未建立元件；若要檢查，請補上標記檔並新增元件`。
+   - **只有工具設定檔的 TypeScript 目錄**：例如 npm workspaces 的根目錄只有 `package.json` 與 `eslint.config.ts`、`lint-staged.config.ts` 這類設定檔（檔名為 `*.config.<副檔名>` 或 `.<名稱>rc.<副檔名>`，副檔名 `ts`、`mts`、`cts`、`js`、`mjs`、`cjs`），沒有 `tsconfig.json` 也沒有自己的 TypeScript 或 JavaScript 原始碼（子元件的檔案不算）。其中的 TypeScript 設定檔逐一寫進 `ignore`，註解：`# 只有工具設定檔，沒有 TypeScript 原始碼與 tsconfig.json，未建立元件`（#125）。外層還有 TypeScript 元件時不寫進 `ignore`，這些檔案歸屬外層元件。repo 沒有其他元件時，這個目錄照舊是元件。
 
    整個 repo 都沒有任何標記檔時（例如純腳本 repo），零星的程式檔照舊成為 repo 根目錄的元件。
 

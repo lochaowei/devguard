@@ -7,8 +7,13 @@ import { checkPrettier } from "../settings/typescript/prettier.ts";
 import { checkTsconfig, type OwnerOf } from "../settings/typescript/tsconfig.ts";
 import type { CheckLayer } from "./types.ts";
 
-async function checkComponent(root: string, judge: SettingsJudge, ownerOf: OwnerOf): Promise<void> {
-  await checkTsconfig(root, judge, ownerOf);
+async function checkComponent(
+  root: string,
+  judge: SettingsJudge,
+  ownerOf: OwnerOf,
+  inner: readonly string[],
+): Promise<void> {
+  await checkTsconfig(root, judge, ownerOf, inner);
   const lintTool = judge.declared("lint.tool");
   if (lintTool === "eslint+prettier") {
     await checkEslint(root, judge);
@@ -36,7 +41,8 @@ export const typescriptSettingsLayer: CheckLayer = {
     for (const component of resolution.components) {
       if (component.language !== "typescript") continue;
       const judge = new SettingsJudge(standard, component);
-      await checkComponent(join(cwd, component.dir), judge, ownerOf);
+      const inner = dirs.filter((d) => d !== component.dir && d.startsWith(component.dir));
+      await checkComponent(join(cwd, component.dir), judge, ownerOf, inner);
       findings.push(...judge.findings);
     }
     return { findings };

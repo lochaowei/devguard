@@ -57,7 +57,7 @@ devguard fix --code [檔案…] [--yes] [--cwd <dir>]
 | 檔案類別 | 對象 | `fix` 的處理 |
 |---|---|---|
 | `generated`：CLI 全權產生 | `checkstyle.xml`、`pmd-ruleset.xml`（與 `pmd.xml`、`config/pmd/*.xml`）、`.claude/rules/*`、`.claude/skills/standards-doctor/*`、`.githooks/*`、git hook 檔 | 整份重新產生，檔頭加上 `由 CLI 產生（devguard），請勿手動修改`。檔案存在但**不是 devguard 產生的**（非空白、沒有這個檔頭）時**不寫入**，見下方說明 |
-| `managed`：結構化的共用檔 | `pyproject.toml`、golangci 設定檔（golangci-lint 採用的 `.golangci.json` / `.toml` / `.yaml` / `.yml`，沒有時建立 `.golangci.yml`）、`tsconfig.json`、`.prettierrc`、`biome.json`、`package.json`、`.gitattributes`、`.npmrc`、`.vscode/*.json`、`.claude/settings.json` 等 | 只改 CLI 管理的 key，保留註解、空行、欄位順序與換行字元（原本是 CRLF 就寫 CRLF，新建的檔案用 LF）。YAML 檔中修改沒有碰到的行逐字不變，包括 `[revive]` 或 `[ revive ]` 的寫法與行尾註解前的對齊空白 |
+| `managed`：結構化的共用檔 | `pyproject.toml`、golangci 設定檔（golangci-lint 採用的 `.golangci.json` / `.toml` / `.yaml` / `.yml`，沒有時建立 `.golangci.yml`：在 `go.work` 所在目錄（模組在它的 `use` 清單中時），否則在最上層的 Go 元件目錄，多個模組共用這一份（#88））、`tsconfig.json`、`.prettierrc`、`biome.json`、`package.json`、`.gitattributes`、`.npmrc`、`.vscode/*.json`、`.claude/settings.json` 等 | 只改 CLI 管理的 key，保留註解、空行、欄位順序與換行字元（原本是 CRLF 就寫 CRLF，新建的檔案用 LF）。YAML 檔中修改沒有碰到的行逐字不變，包括 `[revive]` 或 `[ revive ]` 的寫法與行尾註解前的對齊空白 |
 | `snippet`：建置檔與程式碼形式的設定 | `pom.xml`、`build.gradle(.kts)`、`eslint.config.js`、`vitest.config.ts` 等 | **不寫入**，只印出要手動套用的片段 |
 | `user`：使用者層級設定 | repo 以外的路徑，例如 `~/.m2/settings.xml` | **不寫入**，只印出修改說明 |
 
@@ -92,6 +92,8 @@ checkstyle.xml：這份檔案不是 devguard 產生的，不會覆寫；請自�
       <property name="illegalPkgs" value="sun"/>
     </module>
 ```
+
+**建立 `tsconfig.json` 時排除子元件：** TypeScript 元件沒有 `tsconfig.json`、底下又有其他 TypeScript 元件（例如宣告了 monorepo 根目錄 `./` 與 `packages/*`）時，`fix` 建立的 `tsconfig.json` 加上 `exclude`，列出子元件的目錄與 `node_modules`，讓 `tsc` 不把子元件與依賴的檔案算進這個元件（#125）。沒有子元件時不寫 `exclude`。
 
 檔案不存在、空白，或帶有 `由 CLI 產生` 檔頭時，照常整份重新產生。要讓 devguard 接手一份自己寫的檔案，請刪除它再執行 `fix`。
 

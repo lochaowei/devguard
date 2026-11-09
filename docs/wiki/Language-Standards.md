@@ -94,7 +94,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 
 - 四種格式套用同樣的檢查與 rule id；finding 的 `file` 是採用的那一份，能取得行號時附上（TOML 目前沒有行號）。
 - 多個 Go 元件共用同一份設定檔（例如根目錄的 `.golangci.yml`）時，相同的 finding 只列一次、只算一次，修正也只套用一次。在回報它的元件中，列在目錄就是設定檔所在目錄的那個下；沒有時（例如設定放在 `go.work` 所在、不是元件的目錄），列在其中目錄最上層的那個下（同層依宣告順序）。因此只有一個元件回報的 finding（例如它的覆寫多要求一個 linter）照舊列在那個元件下（#92）。
-- `devguard fix` 沿用採用的那一份的格式修改它（TOML 就改 TOML、JSON 就改 JSON）。只有整條路徑上都沒有任何 golangci 設定檔時，才回報 `settings/golangci-missing` 並建立 `.golangci.yml`。
+- `devguard fix` 沿用採用的那一份的格式修改它（TOML 就改 TOML、JSON 就改 JSON）。只有整條路徑上都沒有任何 golangci 設定檔時，才回報 `settings/golangci-missing` 並建立 `.golangci.yml`。建立的位置讓能共用的模組只有一份（#88）：元件在 repo 內某個 `go.work` 的 `use` 清單中時，建在 `go.work` 所在目錄；否則依元件或它上層最上面的 Go 元件決定（那個元件在 `go.work` 的 `use` 清單中時建在 `go.work` 所在目錄，否則建在它的目錄）；互不包含的元件各建一份。共用的那一份包含每個元件的有效標準（含覆寫）要加的設定。golangci-lint 會往上找設定，所以這些模組都會採用它。
 - 語法錯誤依格式回報 `settings/golangci-yaml-syntax`、`settings/golangci-toml-syntax` 或 `settings/golangci-json-syntax`，不當成缺檔，也不自動修正。
 - 不是 v2 格式（沒有 `version`、`version: "1"` 或其他值）時，這份檔案**只**回報 `settings/golangci-version`，不檢查 linter、門檻、depguard、formatter，也沒有自動修正，所以 `fix` 不會改動 v1 設定檔（v1 的 `enable-all`、`linters-settings` 與 v2 的寫法不同，寫入 v2 的鍵只會得到一份 golangci-lint 無法載入的檔案）。先執行 `golangci-lint migrate`，再重新執行 `devguard check`。`go.mod` 照常檢查。
 - 同一層有不只一份時，回報 `hint` `settings/golangci-multiple`，說明 golangci-lint 採用哪一份、其他的會被忽略。
@@ -172,7 +172,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 | `test.tool` | `"vitest"` | 允許替代：`jest` |
 | `coverage.lines` | `80` | `lines`、`branches`、`functions`、`statements` 四項皆須達 80%；必須設定 Vitest `coverage.include`（或 Jest `collectCoverageFrom`），沒有測試的檔案才會算進去 |
 | `deps.manager` | `"npm"` | 允許替代：`pnpm`、`yarn` |
-| `deps.lockfile` | `true` | 必須提交 `package-lock.json`、`pnpm-lock.yaml` 或 `yarn.lock` |
+| `deps.lockfile` | `true` | 必須提交 `package-lock.json`、`pnpm-lock.yaml` 或 `yarn.lock`。只有 Bun 的 `bun.lock`／`bun.lockb` 時，`deps/lockfile-missing` 會說明 Bun 不是允許的套件管理工具，請改用 npm／pnpm／yarn 並提交其 lockfile |
 | `deps.banned` | `["moment", "request", "node-fetch"]` | 直接依賴禁用套件 |
 | `deps.bannedApis` | `[]` | ESLint `no-restricted-imports` |
 
@@ -180,7 +180,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 
 ### 執行方式
 
-- **工具執行器**：`node_modules/.bin/<tool>`（Windows 下 `.cmd` 自動透過 `cmd.exe /d /s /c` 啟動；鎖定版本讀取自 `package-lock.json`、`pnpm-lock.yaml` 或 `yarn.lock`）。
+- **工具執行器**：`node_modules/.bin/<tool>`（Windows 下依序找 `.cmd`、`.exe`（Bun 產生的 shim），`.cmd` 自動透過 `cmd.exe /d /s /c` 啟動；鎖定版本讀取自 `package-lock.json`、`pnpm-lock.yaml` 或 `yarn.lock`）。
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
   - `tools.eslint`：`>=10,<11`、`tools.prettier`：`>=3,<4`、`tools.typescript`：`>=6,<7`、`tools.typescript-eslint`：`>=8,<9`、`tools.eslint-plugin-sonarjs`：`>=3,<4`（`team@1.1.0` 已移除這一項）
   - `tools.biome`（`@biomejs/biome`）：`>=2,<3`
@@ -221,9 +221,13 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
   - Maven plugins：`maven-checkstyle-plugin`（`>=3.6,<4`）、`maven-pmd-plugin`（`>=3.26,<4`）、`spotless-maven-plugin`（`>=2.44,<3`；`team@1.1.0`：`>=2.44,<4`）、`jacoco-maven-plugin`（`>=0.8.12,<0.9`）、`maven-enforcer-plugin`（`>=3.5,<4`）
   - Gradle plugin 與 `toolVersion`：`spotless-gradle-plugin` / `com.diffplug.spotless`（`>=7,<8`；`team@1.1.0`：`>=7,<9`）、`checkstyle`（`>=10.21,<11`；`team@1.1.0`：`>=10.21,<15`）、`pmd`（`>=7,<8`）、`jacoco`（`>=0.8.12,<0.9`）
+- **建置檔的 plugin（設定層）**：讀元件的建置檔（Maven：`pom.xml` 的 `<build><plugins>` 與 `<pluginManagement>`；Gradle：`build.gradle(.kts)` 的 `plugins {}`、`apply plugin`、版本目錄的 `alias(libs.plugins.…)`）；Maven 的 parent POM 在 repo 中時（`<relativePath>`，預設 `../pom.xml`）也算。plugin 可能來自 devguard 讀不到的地方時（repo 外的 parent POM、`<profiles>`、Gradle 的 buildSrc／`includeBuild` convention plugin、`apply from`、上層 Gradle 建置、根建置的 `apply false`）不回報，程式碼層照常執行該工具。建置檔不會被修改，`fix` 只印出要加入的片段。
+  - `settings/java-plugin-missing`：沒有 Spotless（`spotless-maven-plugin` / `com.diffplug.spotless`）、Checkstyle（`maven-checkstyle-plugin` / `checkstyle`）或 PMD（`maven-pmd-plugin` / `pmd`）plugin，各一筆錯誤；片段含 palantir-java-format，Checkstyle / PMD 的片段指向 devguard 的設定檔。
+  - `settings/java-plugin-config`：Checkstyle 沒有指向元件使用的 Checkstyle 設定檔（Maven `<configLocation>` 或 `checkstyle.config.location` 屬性；Gradle `configFile` / `configDirectory`，沒有設定時是 `config/checkstyle/checkstyle.xml`），或 PMD 沒有指向元件使用的 ruleset（Maven `<rulesets>`；Gradle `ruleSetFiles`）。Maven 沒有設定時 Checkstyle 用內建的 `sun_checks.xml`。路徑可以用 `${project.basedir}`、`${maven.multiModuleProjectDirectory}`、`$rootDir`、`rootProject.file(…)` 等；其他無法解析的寫法不回報。
 - **程式碼檢查（`code` 層）**：
+  - 建置檔沒有某個工具的 plugin 時不執行那個工具（由設定層回報），不會產生 `code/tool-failed`。Gradle 的 Checkstyle 與 PMD task 分開執行，一個失敗不影響另一個的結果。
   - `format`：`mvnw -B -ntp spotless:check`（或 Gradle `spotlessCheck --console=plain -q`）
-  - `lint`：`mvnw -B -ntp checkstyle:check pmd:check -Dcheckstyle.failOnViolation=false -Dpmd.failOnViolation=false`（或 Gradle `checkstyleMain checkstyleTest pmdMain pmdTest --continue --console=plain -q`），解析產生的 Checkstyle（`target/checkstyle-result.xml` 或 `build/reports/checkstyle/*.xml`）與 PMD（`target/pmd.xml` 或 `build/reports/pmd/*.xml`）XML 報告。
+  - `lint`：`mvnw -B -ntp checkstyle:check pmd:check -Dcheckstyle.failOnViolation=false -Dpmd.failOnViolation=false`（或 Gradle `checkstyleMain checkstyleTest --continue --console=plain -q` 與 `pmdMain pmdTest --continue --console=plain -q` 兩次執行），解析產生的 Checkstyle（`target/checkstyle-result.xml` 或 `build/reports/checkstyle/*.xml`）與 PMD（`target/pmd.xml` 或 `build/reports/pmd/*.xml`）XML 報告。
   - Maven 多模組（`pom.xml` 有 `<modules>`）時，指令在 `checkstyle:check` 之前加上 `test-compile`，讓 reactor 先編譯並解析兄弟模組；因此會先編譯整個建置，比較慢，編譯失敗時回報 `code/tool-failed`，訊息是建置輸出中的錯誤行。報告從各模組的 `target/` 讀取。
 - **自動修正程式碼（`fix --code`）**：
   - `mvnw -B -ntp spotless:apply`（或 `gradlew spotlessApply --console=plain -q`）。
