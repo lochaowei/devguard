@@ -204,6 +204,23 @@ describe("java checker: Gradle lint", () => {
     ]);
   });
 
+  it("reads the Checkstyle report of every subproject (#101)", async () => {
+    const { tools, calls } = fakeWrapper();
+    const texts = {
+      "svc/build.gradle": "plugins { id 'java' }",
+      "svc/settings.gradle": "include ':java-jwt'\nproject(':java-jwt').projectDir = file('lib')\n",
+      "svc/lib/build.gradle": "plugins { id 'checkstyle' }",
+      "svc/lib/build/reports/checkstyle/main.xml": sample("checkstyle-result.xml"),
+    };
+    const findings = await check(target({ categories: only("lint") }), tools, texts);
+    expect(calls).toEqual([gradleRun("checkstyleMain", "checkstyleTest")]);
+    expect(findings.map((f) => f.rule)).toEqual([
+      "checkstyle/UnusedImports",
+      "checkstyle/CyclomaticComplexity",
+      "checkstyle/MissingJavadocMethod",
+    ]);
+  });
+
   it("runs Checkstyle and PMD apart, so one failing does not lose the other's findings (#98)", async () => {
     const { tools } = fakeWrapper({ pmdMain: { code: 1, stderr: "Could not resolve all files" } });
     const texts = { ...GRADLE, "svc/build/reports/checkstyle/main.xml": sample("checkstyle-result.xml") };

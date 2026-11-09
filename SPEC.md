@@ -137,6 +137,7 @@ ignore:                         # 選填：不歸屬任何元件、不受檢查�
   - 測試以元件為單位，不受 `ignore` 影響：每個宣告的元件照常執行，`check --full` 仍是完整的檢查。`ignore` 的某一項涵蓋整個元件目錄時：**提示**（`declaration/ignored-component`），說明這個元件的檔案檢查都會略過。
   - `ignore` 管不到的範圍：以整個目錄為單位執行的工具（元件的 `eslint .`、`tsc`、`mypy` 等）與覆蓋率工具（Vitest / Jest 的 `coverage.include`、coverage.py、JaCoCo）依各自的設定決定範圍；要排除的檔案也要寫進該工具的設定。
   - 不是非空字串的清單時：**錯誤**（`declaration/invalid`），整份清單不生效。
+- Java 的多模組（Maven）或多專案（Gradle）建置以根目錄為一個元件，測試與程式碼檢查讀取每個模組或子專案的報告，見 §6.4（#101）。
 - 四種語言以外的檔案不在檢查範圍內。例外：指定檔案時（含 `--staged` 與各 hook，見 §7.1），TypeScript 元件內的非原始碼檔案交給該元件的 linter 與 formatter，由工具決定是否處理。
 
 ### 4.2 覆寫規則
@@ -358,6 +359,8 @@ Maven 多模組建置（`pom.xml` 有 `<modules>`）的 lint 指令在 `checksty
 建置檔的 plugin（#98）：設定層讀元件的建置檔（Maven `pom.xml` 的 `<build><plugins>` 與 `<pluginManagement>`；Gradle `build.gradle(.kts)` 的 `plugins {}`、`apply plugin`、`alias(libs.plugins.…)`；repo 中的 Maven parent POM 也算）。plugin 可能來自 devguard 讀不到的地方時（repo 外的 parent POM、`<profiles>`、Gradle convention plugin、`apply from`、上層 Gradle 建置、`apply false`）不回報，程式碼層照常執行。沒有 Spotless、Checkstyle 或 PMD 的 plugin 時各回報一筆 `settings/java-plugin-missing`；Checkstyle 沒有指向元件使用的 Checkstyle 設定檔（Maven `<configLocation>` 或 `checkstyle.config.location`；Gradle `configFile`／`configDirectory`，預設 `config/checkstyle/checkstyle.xml`），或 PMD 沒有指向元件使用的 ruleset（Maven `<rulesets>`；Gradle `ruleSetFiles`）時回報 `settings/java-plugin-config`，無法解析的路徑不回報。兩者依 §9.2 只印出片段（含 palantir-java-format，設定位置指向 devguard 的檔案），不修改建置檔。程式碼層不執行建置檔沒有 plugin 的工具；Gradle 的 Checkstyle 與 PMD task 分開執行，一個失敗不影響另一個的結果。JaCoCo 見 #99。
 
 JaCoCo 與測試（#99）：`check --full` 以同一份建置檔 plugin 讀取判斷專案有沒有 JaCoCo（Maven `jacoco-maven-plugin`；Gradle `jacoco` plugin）。`coverage.lines` ≤ 0（如 `legacy@1.0.0`）時，指令不帶 `jacoco:report`／`jacocoTestReport`，只跑測試，也不要求覆蓋率報告。有門檻但沒有 JaCoCo 時同樣只跑測試，照常回報 `test/failed`，另加一筆 `coverage/no-report`（附設定說明）。建置檔判斷不出來時（plugin 可能來自讀不到的地方）仍帶報告 goal；wrapper 以 `No plugin found for prefix 'jacoco'`（Maven）或 `Task 'jacocoTestReport' not found`（Gradle）結束時，改只跑測試再重跑一次，並比照沒有 JaCoCo 處理。
+
+Gradle 多專案建置（#101）：`settings.gradle(.kts)` 的 `include` 的子專案也各自寫報告，與 Maven 多模組相同，以元件目錄為一個元件。報告目錄是元件目錄加上 `include` 的子專案目錄（預設 `:a:b` 在 `a/b/`，支援 `project(':x').projectDir = file('lib')` 與 `File(settingsDir, "lib")`）；`include` 或 `projectDir` 的寫法讀不出來時，改掃描元件底下所有有 `build.gradle(.kts)` 的目錄（不含 `build/`、`.gradle/`、`buildSrc/`、`node_modules/`，以及有自己的 `settings.gradle(.kts)` 的獨立建置）。測試層從每個報告目錄讀 `build/reports/jacoco/test/jacocoTestReport.xml`，BUNDLE counter 加總後判定，一份都沒有才回報 `coverage/no-report`；程式碼層讀每個報告目錄的 `build/reports/checkstyle/{main,test}.xml` 與 `build/reports/pmd/{main,test}.xml`。建置前先刪除這些報告，只讀這次執行寫出的報告，不會讀到舊的。Checkstyle、PMD、Spotless、JaCoCo 只要元件目錄或任何一個子專案的建置檔套用就會執行。子專案建置檔中的工具版本與 plugin 設定檢查不在此範圍（#98、#103）。
 
 來源：[預設標準：Java](.scratch/coding-standards-guard/issues/11-default-standard-java.md)
 

@@ -2,6 +2,7 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Finding } from "../report/finding.ts";
 import { targetBuildTool, type BuildTool } from "../settings/java/build.ts";
+import { gradleApplied, gradleReportDirs, listDirsIn } from "../settings/java/gradle-projects.ts";
 import { mavenReportDirs } from "../settings/java/modules.ts";
 import type { ReadText } from "../settings/java/modules.ts";
 import { readBuildPlugins, type Applied } from "../settings/java/plugins.ts";
@@ -123,16 +124,23 @@ async function measure(reports: readonly string[]): Promise<Counted[] | undefine
   return addUp(await Promise.all(reports.map(async (r) => bundleCounters(await readReport(r)))));
 }
 
-/** Whether the build applies JaCoCo, read from the build file; "unknown" when it cannot tell. */
-async function jacocoApplied(read: ReadText, target: TestTarget, tool: BuildTool): Promise<Applied> {
+/** The directories whose `build.report` the build writes: each Maven module or Gradle project (SPEC §4.1). */
+function reportDirs(build: Build, target: TestTarget, ctx: TestContext): Promise<string[]> {
+  const read = (p: string) => readReport(join(ctx.cwd, p));
+  return build === MAVEN ? mavenReportDirs(read, target.dir) : gradleReportDirs(read, listDirsIn(ctx.cwd), target.dir);
+}
+
+/**
+ * Whether the build applies JaCoCo, read from the build file; "unknown" when it cannot tell. A multi-project Gradle
+ * build may apply it only in its subprojects.
+ */
+async function jacocoApplied(read: ReadText, target: TestTarget, tool: BuildTool, dirs: string[]): Promise<Applied> {
+  if (tool === "gradle") return gradleApplied(read, dirs, "jacoco");
   return (await readBuildPlugins(read, target.dir, tool))?.applied("jacoco") ?? "unknown";
 }
 
 /** The reports the build writes, removed: a report from an earlier build must not pass for this one. */
-async function staleReports(build: Build, target: TestTarget, ctx: TestContext): Promise<string[]> {
-  const read = (p: string) => readReport(join(ctx.cwd, p));
-  // A multi-module Maven build writes one report per module; their BUNDLE counters add up.
-  const dirs = build === MAVEN ? await mavenReportDirs(read, target.dir) : [target.dir];
+async function staleReports(build: Build, dirs: readonly string[], ctx: TestContext): Promise<string[]> {
   const reports = dirs.map((d) => join(ctx.cwd, d, build.report));
   for (const report of reports) await rm(report, { force: true });
   return reports;
@@ -147,8 +155,9 @@ export const javaTests: TestChecker = {
     const build = tool === "gradle" ? GRADLE : MAVEN;
     const gateOff = coverageGateOff(target.threshold);
     // Without JaCoCo the report goal ends the build before any test runs (#99).
-    const wantReport = !gateOff && (await jacocoApplied(read, target, tool)) !== "no";
-    const reports = await staleReports(build, target, ctx);
+    const dirs = await reportDirs(build, target, ctx);
+    const wantReport = !gateOff && (await jacocoApplied(read, target, tool, dirs)) !== "no";
+    const reports = await staleReports(build, dirs, ctx);
     const { result, failed, names, withReport } = await runBuild(build, target, ctx, wantReport);
     if (result.code !== 0 && !failed) return [testToolFailed(target, build.command, result)];
     const findings: Finding[] = failed ? [testsFailed(target, build.command, names)] : [];
