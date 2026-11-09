@@ -29,6 +29,13 @@ export interface TypeCheckerConfig {
   where: string;
   /** The type checkers that read it: pyrightconfig.json is read by pyright and basedpyright alike. */
   tools: readonly TypeChecker[];
+  /** It sets pyright's `typeCheckingMode = "off"`, so it checks no types (#114). */
+  off: boolean;
+}
+
+/** Whether pyright-format settings turn type checking off: `typeCheckingMode = "off"` (#114). */
+export function typeCheckingOff(settings: unknown): boolean {
+  return isRecord(settings) && settings.typeCheckingMode === "off";
 }
 
 const OWN_FILES: readonly (readonly [string, readonly TypeChecker[]])[] = [
@@ -46,22 +53,31 @@ function pyprojectTool(doc: unknown): Record<string, unknown> | undefined {
  * The type checker settings in the component directory `dir` (normalized, "" for the repo root): the `[tool.mypy]`,
  * `[tool.pyright]` and `[tool.basedpyright]` tables of its pyproject.toml, then mypy.ini / .mypy.ini and
  * pyrightconfig.json. `read` returns a repo-relative file's text, or undefined when it does not exist.
+ * pyright and basedpyright take a pyrightconfig.json over a pyproject.toml table in the same directory, so a table
+ * counts as off when that file turns type checking off, whatever the table says (#114).
  */
 export async function typeCheckerConfigs(
   dir: string,
   read: (file: string) => Promise<string | undefined>,
 ): Promise<TypeCheckerConfig[]> {
   const configs: TypeCheckerConfig[] = [];
+  const pyrightText = await read(`${dir}pyrightconfig.json`);
+  const pyrightJson = pyrightText === undefined ? undefined : parseConfigText("pyrightconfig.json", pyrightText);
+  const pyrightOff = (table: unknown) => typeCheckingOff(pyrightText === undefined ? table : pyrightJson);
   const pyproject = `${dir}pyproject.toml`;
   const text = await read(pyproject);
   const doc = text === undefined ? undefined : parseConfigText("pyproject.toml", text);
   const tool = pyprojectTool(doc) ?? {};
   for (const checker of TYPE_CHECKERS) {
-    if (isRecord(tool[checker])) configs.push({ file: pyproject, where: `[tool.${checker}]`, tools: [checker] });
+    const table = tool[checker];
+    if (!isRecord(table)) continue;
+    const off = isPyrightTool(checker) && pyrightOff(table);
+    configs.push({ file: pyproject, where: `[tool.${checker}]`, tools: [checker], off });
   }
   for (const [name, tools] of OWN_FILES) {
     const file = dir + name;
-    if ((await read(file)) !== undefined) configs.push({ file, where: name, tools });
+    if ((await read(file)) === undefined) continue;
+    configs.push({ file, where: name, tools, off: tools.some(isPyrightTool) && pyrightOff(undefined) });
   }
   return configs;
 }

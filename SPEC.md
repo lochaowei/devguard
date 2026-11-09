@@ -292,8 +292,8 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | `lint.rules` | `E, W, F, I, B, UP, C90, SIM, N, S, TID`；測試檔放寬 `S101` | 一律寫入 `lint.select`（會取代 Ruff 的預設規則集；Ruff 0.16 起預設規則大幅增加），不使用 `extend-select`；`per-file-ignores` |
 | `format.lineLength` | 120（風格） | Ruff `line-length` |
 | `complexity.cyclomatic` | 10 | Ruff C901 `max-complexity` |
-| `typecheck.tool` | `mypy`；允許替代工具 `pyright`（`team@1.2.0` 起另有 `basedpyright`） | `[tool.mypy]` / `[tool.pyright]`（或 `pyrightconfig.json`）/ `[tool.basedpyright]`（或 `pyrightconfig.json`）。basedpyright 以 `basedpyright --outputjson` 執行，輸出格式與 pyright 相同。`devguard draft` 遇到 `pyrightconfig.json` 寫入 `pyright`，遇到 `[tool.basedpyright]` 寫入 `basedpyright`。專案已有宣告的工具不讀的型別檢查器設定（`[tool.mypy]`／`mypy.ini`、`[tool.pyright]`、`[tool.basedpyright]`、`pyrightconfig.json`）時，`devguard install` 的預覽發出警告，說明可以宣告 `typecheck.tool` 改用既有工具；`install` 不修改宣告 |
-| `typecheck.strict` | `true` | mypy `strict` / pyright、basedpyright `typeCheckingMode = "strict"` |
+| `typecheck.tool` | `mypy`；允許替代工具 `pyright`（`team@1.2.0` 起另有 `basedpyright`） | `[tool.mypy]` / `[tool.pyright]`（或 `pyrightconfig.json`）/ `[tool.basedpyright]`（或 `pyrightconfig.json`）。basedpyright 以 `basedpyright --outputjson` 執行，輸出格式與 pyright 相同。`devguard draft` 遇到 `pyrightconfig.json` 寫入 `pyright`，遇到 `[tool.basedpyright]` 寫入 `basedpyright`；`typeCheckingMode = "off"` 的設定（只是關掉編輯器的檢查）不作為推斷依據（#114）。與 pyright 相同，同一目錄的 `pyrightconfig.json` 優先於 `[tool.pyright]`／`[tool.basedpyright]`，元件目錄兩者都沒有時才往上層找。專案已有宣告的工具不讀的型別檢查器設定（`[tool.mypy]`／`mypy.ini`、`[tool.pyright]`、`[tool.basedpyright]`、`pyrightconfig.json`）時，`devguard install` 的預覽發出警告，說明可以宣告 `typecheck.tool` 改用既有工具；`install` 不修改宣告 |
+| `typecheck.strict` | `true` | mypy `strict` / pyright、basedpyright `typeCheckingMode = "strict"`。宣告的 pyright／basedpyright 實際生效的設定是 `typeCheckingMode = "off"` 時，型別檢查等於被關閉，回報錯誤 `settings/typecheck-off`（不是 `typecheck.strict` 的偏離），`fix` 改為 `"strict"`（宣告 `typecheck.strict: false` 時改為 pyright 的預設 `"standard"`）；未宣告的檢查器設為 off 不回報（#114） |
 | `test.tool` | pytest + pytest-cov | — |
 | `coverage.lines` | 行覆蓋率與分支覆蓋率**各自**都要達到 80%（`branch = true`），與 TS、Java 一致 | CLI 執行 `coverage json`，從 `totals` 分別計算行與分支的覆蓋率並自行判定。不使用 `fail_under`，因為它在 branch 模式下檢查的是行加分支的合併總數。 |
 | `deps.manager` | `uv`；允許替代工具 `poetry` | 決定 `deps.lockfile` 要求哪個 lockfile。執行工具（§5.2）與 `standard upgrade`（§5.5）不讀這個項目，只看最近的 Python lockfile：`poetry.lock` 時用 Poetry，否則用 uv |
@@ -466,7 +466,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
   - 檔案內含 CLI 標記與 checksum。
   - 不使用 pre-commit、lefthook 或 husky 等框架。
 - **既有 hook 框架**：專案已經在用這類框架時，CLI 不覆寫它的 hook，而是在它的設定中注入一條呼叫 `devguard` 的項目：
-  - pre-commit：一條 `language: unsupported` 的 local hook。`unsupported` 是 pre-commit 4.4.0 加入的值（`system` 的新名稱），所以需要 pre-commit 4.4.0 以上；CLI 同時確保頂層的 `minimum_pre_commit_version` 至少為 `"4.4.0"`：沒有就加上，較低就調高，較高就保留。版本不夠時，pre-commit 會自己回報需要的最低版本，而不是只說不認得 `unsupported`。
+  - pre-commit：一條 `language: unsupported` 的 local hook。`unsupported` 是 pre-commit 4.4.0 加入的值（`system` 的新名稱），所以需要 pre-commit 4.4.0 以上；CLI 同時確保頂層的 `minimum_pre_commit_version` 至少為 `"4.4.0"`：沒有就加上，較低就調高，較高就保留。版本不夠時，pre-commit 會自己回報需要的最低版本，而不是只說不認得 `unsupported`。設定沒有頂層 `default_stages` 時，CLI 也加上 `default_stages: [pre-commit]`：pre-commit 對沒寫 `stages` 的 hook 預設在所有已安裝的 hook 型別執行，安裝 pre-push hook 型別後，專案原本只在 commit 執行的 hook 會在每次 push 也執行。已有 `default_stages`（任何值）時不動。
   - husky：`.husky/pre-commit` 中加一行
   - lefthook：加一個 job（YAML、TOML、JSON / JSONC 設定檔都支援）
   - pre-commit 與 lefthook 的項目要等框架的安裝指令（`pre-commit install --hook-type pre-commit --hook-type pre-push`、`lefthook install`）把 hook 寫進 hooks 目錄才會執行。`install` 結束時（預覽與套用都一樣）用與「已安裝」環境檢查相同的判斷確認；還沒寫入時印出這條指令作為下一步。`install` 不自己執行它，這則提示也不影響 exit code。
@@ -481,7 +481,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 - **pre-push 的完整測試由開發者開啟**：`install` 照常安裝 pre-push hook，但 hook 只在環境變數 `DEVGUARD_PRE_PUSH` 為 `full` 時，才執行 `check --full` 中的測試與覆蓋率；未設定或其他值時直接放行，什麼都不印。開關放在開發者的環境而不是專案宣告，所以不改變 §4 的格式，切換時也不需要重新執行 `install`。
 - **「已安裝」的環境檢查**
   1. 讀取 `core.hooksPath` 及其設定來源。
-  2. 若使用既有框架，確認其設定中有呼叫 CLI 的項目；使用 pre-commit 或 lefthook 框架時，另外確認 `pre-commit install --hook-type pre-commit --hook-type pre-push`／`lefthook install` 已執行（hooks 目錄中有該框架為 pre-commit、pre-push 產生的 hook）；使用 pre-commit 框架時，也確認設定的 `minimum_pre_commit_version` 至少為 `"4.4.0"`（缺少或較低都是錯誤，`devguard install` 會修正）。沒有使用框架時，確認 hook 檔存在、有 CLI 標記，且 checksum 正確。
+  2. 若使用既有框架，確認其設定中有呼叫 CLI 的項目；使用 pre-commit 或 lefthook 框架時，另外確認 `pre-commit install --hook-type pre-commit --hook-type pre-push`／`lefthook install` 已執行（hooks 目錄中有該框架為 pre-commit、pre-push 產生的 hook）；使用 pre-commit 框架時，也確認設定的 `minimum_pre_commit_version` 至少為 `"4.4.0"`（缺少或較低都是錯誤，`devguard install` 會修正），且有 CLI 的 pre-push 項目時設定了頂層 `default_stages`（缺少是錯誤，不依 `DEVGUARD_PRE_PUSH` 降為提示，`devguard install` 會修正）。沒有使用框架時，確認 hook 檔存在、有 CLI 標記，且 checksum 正確。
   3. `core.hooksPath` 指向 `/dev/null` 或不存在的目錄時，回報錯誤。
 
   步驟 2 中 pre-push 的問題（hook 不存在或被修改、框架設定缺項目、框架尚未寫入 pre-push hook），在沒有設定 `DEVGUARD_PRE_PUSH=full` 時只列為**提示**，因為這時 pre-push 本來就不跑任何檢查；設定之後才算錯誤。

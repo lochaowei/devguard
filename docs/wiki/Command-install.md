@@ -31,13 +31,15 @@ devguard install [--yes] [--cwd <dir>]
 
       | 框架 | 加入的內容 |
       |---|---|
-      | pre-commit | `repos` 中加一個 `repo: local`，hook id 為 `devguard`（pre-commit 階段）與 `devguard-pre-push`，`language: unsupported`、`always_run: true`；並把頂層的 `minimum_pre_commit_version` 設為至少 `"4.4.0"`（沒有就加在檔尾，較低就只改寫這個值，較高就保留；檔案其餘部分維持原樣） |
+      | pre-commit | `repos` 中加一個 `repo: local`，hook id 為 `devguard`（pre-commit 階段）與 `devguard-pre-push`，`language: unsupported`、`always_run: true`；並把頂層的 `minimum_pre_commit_version` 設為至少 `"4.4.0"`（沒有就加在檔尾，較低就只改寫這個值，較高就保留）；沒有頂層 `default_stages` 時在檔尾加上 `default_stages: [pre-commit]`（已有就不動，任何值都一樣）。檔案其餘部分維持原樣 |
       | lefthook | `pre-commit.jobs` / `pre-push.jobs` 各加一個 `name: devguard`（原本用 `commands` 寫法的則加在 `commands.devguard`） |
       | husky | 在 `.husky/pre-commit`、`.husky/pre-push` 結尾加一行呼叫 devguard 的指令 |
 
       YAML 設定檔中與 devguard 項目無關的既有內容逐字保留，例如其他 hook 的 `args: ["--fix"]`、`types: [python]` 不會被改成 `[ "--fix" ]`。
 
       用 pre-commit 框架需要 **pre-commit 4.4.0 以上**：`language: unsupported` 是 4.4.0 才加入的值（`system` 的新名稱）。設定了 `minimum_pre_commit_version` 後，版本太舊時 pre-commit 會直接說明需要的版本。
+
+      `default_stages: [pre-commit]` 的原因：pre-commit 對沒寫 `stages` 的 hook 預設在所有已安裝的 hook 型別執行。依下一步安裝 pre-push hook 型別後，專案原本只在 commit 跑的 hook 會在每次 `git push` 也跑：push 被專案自己的 hook 擋下，`ruff-check --fix` 之類的 hook 還會在 push 時改動檔案。加上這一行，那些 hook 維持只在 commit 執行；devguard 自己的兩個項目各自寫了 `stages`，不受影響。想讓某個 hook 在 push 也跑，就自行設定 `default_stages`（例如 `[pre-commit, pre-push]`）或該 hook 的 `stages`，`install` 不會改動。
 
    3. **沒有框架**：寫入 git 實際讀取的 hook 檔（`git rev-parse --git-path hooks/<名稱>`，通常是 `.git/hooks/`；有設定 `core.hooksPath` 時就是那個目錄）。
       - 檔案不存在，或是 devguard 產生的：寫入或更新。

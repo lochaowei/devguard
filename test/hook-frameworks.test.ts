@@ -88,6 +88,77 @@ describe("install into an existing hook framework (SPEC §7.4)", () => {
     expect(text).toContain("rev: v0.6.0 # pinned");
   });
 
+  describe("pre-commit: default_stages keeps the project's own hooks off git push (#95)", () => {
+    it("adds `default_stages: [pre-commit]` at the top level and changes nothing else", async () => {
+      const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": PRE_COMMIT_CONFIG });
+      const out = io();
+      await runInstall({ cwd: dir, today: TODAY, io: out });
+      const text = read(dir, ".pre-commit-config.yaml");
+      expect((parse(text) as { default_stages: string[] }).default_stages).toEqual(["pre-commit"]);
+      expect(text).toMatch(/^default_stages: \[pre-commit\]$/m);
+      expect(text.startsWith(PRE_COMMIT_CONFIG.trimEnd())).toBe(true);
+      expect(out.out).toContain("+default_stages: [pre-commit]");
+    });
+
+    it.each([
+      ["commit and push", "default_stages: [pre-commit, pre-push]  # both, on purpose\n", ["pre-commit", "pre-push"]],
+      ["a block list", "default_stages:\n  - pre-commit\n  - manual\n", ["pre-commit", "manual"]],
+    ])("leaves an existing default_stages alone (%s)", async (_, line, value) => {
+      const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": line + PRE_COMMIT_CONFIG });
+      await runInstall({ cwd: dir, today: TODAY, io: io() });
+      const text = read(dir, ".pre-commit-config.yaml");
+      expect((parse(text) as { default_stages: unknown }).default_stages).toEqual(value);
+      expect(text.match(/default_stages/g)).toHaveLength(1);
+    });
+
+    it("adds only default_stages to a config devguard was installed into before, and nothing on a second run", async () => {
+      const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": PRE_COMMIT_CONFIG });
+      await runInstall({ cwd: dir, today: TODAY, io: io() });
+      const installed = read(dir, ".pre-commit-config.yaml");
+      const older = installed.replace(/^default_stages: .*\n/m, "");
+      writeFileSync(join(dir, ".pre-commit-config.yaml"), older);
+      const plan = await planFrameworkHooks(dir, { name: "pre-commit", file: ".pre-commit-config.yaml" }, [
+        "pre-commit",
+        "pre-push",
+      ]);
+      expect(plan.writes.map((w) => w.after)).toEqual([`${older}default_stages: [pre-commit]\n`]);
+      await runInstall({ cwd: dir, today: TODAY, io: io() });
+      expect(read(dir, ".pre-commit-config.yaml")).toBe(`${older}default_stages: [pre-commit]\n`);
+      const again = io();
+      await runInstall({ cwd: dir, today: TODAY, io: again });
+      expect(again.out).not.toContain(".pre-commit-config.yaml：");
+    });
+
+    it("adds the keys before a document end marker, so the config stays one YAML document", async () => {
+      const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": `${PRE_COMMIT_CONFIG}...\n# after\n` });
+      await runInstall({ cwd: dir, today: TODAY, io: io() });
+      const text = read(dir, ".pre-commit-config.yaml");
+      const parsed = parse(text) as { default_stages: string[]; minimum_pre_commit_version: string };
+      expect(parsed).toMatchObject({ default_stages: ["pre-commit"], minimum_pre_commit_version: "4.4.0" });
+      expect(text).toMatch(/^default_stages: \[pre-commit\]\n\.\.\./m);
+    });
+
+    it("writes the added lines in the file's own CRLF line endings", async () => {
+      const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": PRE_COMMIT_CONFIG });
+      await runInstall({ cwd: dir, today: TODAY, io: io() });
+      const crlf = read(dir, ".pre-commit-config.yaml")
+        .replace(/^(minimum_pre_commit_version|default_stages): .*\n/gm, "")
+        .replaceAll("\n", "\r\n");
+      writeFileSync(join(dir, ".pre-commit-config.yaml"), crlf);
+      await runInstall({ cwd: dir, today: TODAY, io: io() });
+      const text = read(dir, ".pre-commit-config.yaml");
+      expect(text).toBe(`${crlf}minimum_pre_commit_version: "4.4.0"\r\ndefault_stages: [pre-commit]\r\n`);
+    });
+
+    it("sets it in a flow mapping at the top level too", async () => {
+      const config = "{repos: [{repo: local, hooks: []}]}\n";
+      const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": config });
+      await runInstall({ cwd: dir, today: TODAY, io: io() });
+      const parsed = parse(read(dir, ".pre-commit-config.yaml")) as { default_stages: string[] };
+      expect(parsed.default_stages).toEqual(["pre-commit"]);
+    });
+  });
+
   it("pre-commit: raises a too-old minimum version when the devguard entries are already there", async () => {
     const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": PRE_COMMIT_CONFIG });
     await runInstall({ cwd: dir, today: TODAY, io: io() });
