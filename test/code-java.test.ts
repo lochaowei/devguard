@@ -77,6 +77,36 @@ describe("java checker: Maven multi-module lint", () => {
     expect(files.some((f) => f?.startsWith("svc/core/") === true)).toBe(true);
     expect(files.some((f) => f?.startsWith("svc/web/api/") === true)).toBe(true);
   });
+
+  it("compiles the reactor before the lint goals so modules can resolve their siblings (#102)", async () => {
+    const { tools, calls } = fakeWrapper();
+    const texts = {
+      "svc/pom.xml": "<project><packaging>pom</packaging><modules><module>core</module></modules></project>",
+      "svc/core/pom.xml": "<project/>",
+    };
+    await check(target({ categories: only("lint", "format") }), tools, texts);
+    expect(calls.map((c) => c.args?.filter((a) => !a.startsWith("-")))).toEqual([
+      ["test-compile", "checkstyle:check", "pmd:check"],
+      ["spotless:check"],
+    ]);
+  });
+
+  it("compiles first whenever the pom lists modules, also when it is not only an aggregator", async () => {
+    const { tools, calls } = fakeWrapper();
+    const texts = { "svc/pom.xml": "<project><modules><module>core</module></modules></project>" };
+    await check(target({ categories: only("lint") }), tools, texts);
+    expect(calls[0]?.args?.filter((a) => !a.startsWith("-"))).toEqual([
+      "test-compile",
+      "checkstyle:check",
+      "pmd:check",
+    ]);
+  });
+
+  it("runs only the lint goals for a single-module build", async () => {
+    const { tools, calls } = fakeWrapper();
+    await check(target({ categories: only("lint") }), tools, MAVEN);
+    expect(calls[0]?.args?.filter((a) => !a.startsWith("-"))).toEqual(["checkstyle:check", "pmd:check"]);
+  });
 });
 
 describe("java checker: Maven lint", () => {

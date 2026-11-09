@@ -348,6 +348,8 @@ solution-style 的 `tsconfig.json`（`"files": []`、沒有 `include`、有 `ref
 | `coverage.lines` | JaCoCo BUNDLE 層級，LINE 與 BRANCH 都要 0.80；排除 Lombok 產生的程式碼 | `jacoco:check`；在 `lombok.config` 設定 `lombok.addLombokGeneratedAnnotation = true` |
 | `deps.lockfile` | Maven：Enforcer 的 `banDynamicVersions`（一條規則同時禁止版本範圍、LATEST / RELEASE 與 SNAPSHOT）加上 `dependencyConvergence`；Gradle：dependency locking 加上 `gradle.lockfile` | — |
 
+Maven 多模組建置（`pom.xml` 有 `<modules>`）的 lint 指令在 `checkstyle:check pmd:check` 之前加上 `test-compile` phase：只執行 plugin goal 時，reactor 解析不到尚未建置的兄弟模組（本機 `~/.m2` 沒有它們的 SNAPSHOT 時整個指令失敗），PMD 的型別解析也因此有 classpath。所以多模組的 lint 會先編譯，比較慢；編譯失敗時回報 `code/tool-failed`，訊息是建置輸出中的錯誤行。報告從各模組的 `target/` 讀取。單一模組的 Maven、Spotless 與 Gradle 不加 phase。
+
 來源：[預設標準：Java](.scratch/coding-standards-guard/issues/11-default-standard-java.md)
 
 ### 6.5 既有專案的基線標準（`legacy@1.0.0`）

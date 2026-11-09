@@ -1,7 +1,7 @@
 import type { Finding, Level } from "../report/finding.ts";
 import { descendants, parseXmlText, type XmlEl } from "../xml/parse.ts";
 import { targetBuildTool, type BuildTool } from "../settings/java/build.ts";
-import { mavenReportDirs } from "../settings/java/modules.ts";
+import { isMavenMultiModule, mavenReportDirs } from "../settings/java/modules.ts";
 import { codeFinding, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
 
@@ -122,6 +122,8 @@ async function gradleLint(target: CodeTarget, ctx: CodeCheckContext): Promise<Fi
 
 async function lint(target: CodeTarget, ctx: CodeCheckContext, build: BuildTool): Promise<Finding[]> {
   if (build === "gradle") return gradleLint(target, ctx);
+  // Plugin goals alone do not resolve sibling modules from the reactor; a lifecycle phase first does (#102).
+  const multiModule = await isMavenMultiModule(ctx.readText, target.dir);
   const result = await ctx.tools.run({
     language: "java",
     tool: "mvnw",
@@ -129,6 +131,7 @@ async function lint(target: CodeTarget, ctx: CodeCheckContext, build: BuildTool)
     args: [
       "-B",
       "-ntp",
+      ...(multiModule ? ["test-compile"] : []),
       "checkstyle:check",
       "pmd:check",
       "-Dcheckstyle.failOnViolation=false",
