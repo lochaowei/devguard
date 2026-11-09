@@ -1,5 +1,9 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { pinnedVersions } from "../src/versions/pinned.ts";
+
+const fixture = (name: string) => readFileSync(join(import.meta.dirname, "fixtures/typescript", name), "utf8");
 
 const files =
   (map: Record<string, string>) =>
@@ -212,5 +216,19 @@ pmd {
       "@biomejs/biome": "2.3.1",
       eslint: "10.1.0",
     });
+  });
+
+  it("reads hoisted TypeScript versions from Bun's text bun.lock (JSONC, trailing commas) (#138)", () => {
+    const fromBun = pinnedVersions("typescript", "", files({ "bun.lock": fixture("bun.lock") }));
+    expect(fromBun?.file).toBe("bun.lock");
+    // `exact-mirror/typescript` is a copy nested under another package, not the one the project runs.
+    expect(Object.fromEntries(fromBun?.versions ?? [])).toEqual({
+      "@types/bun": "1.3.2",
+      cookie: "1.1.1",
+      eslint: "9.39.1",
+      memoirist: "0.4.0",
+      typescript: "5.9.3",
+    });
+    expect(pinnedVersions("typescript", "web/", files({ "bun.lock": "{oops" }))?.versions.size).toBe(0);
   });
 });

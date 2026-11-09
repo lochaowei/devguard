@@ -37,7 +37,7 @@ src/
 │   ├── team-1.1.0.ts       team@1.1.0：沿用 team@1.0.0，移除 eslint-plugin-sonarjs、放寬版本範圍
 │   ├── team-1.2.0.ts       team@1.2.0：沿用 team@1.1.0，新增替代型別檢查工具 basedpyright
 │   ├── team-1.3.0.ts       team@1.3.0：沿用 team@1.2.0，移除鏡像與弱點掃描項目
-│   ├── team-1.4.0.ts       team@1.4.0：沿用 team@1.3.0，mypy 範圍放寬到 <3
+│   ├── team-1.4.0.ts       team@1.4.0：沿用 team@1.3.0，mypy 範圍放寬到 <3，TypeScript 允許 Bun
 │   ├── legacy-1.0.0.ts     legacy@1.0.0：既有專案的基線，沿用 team@1.1.0 並放寬，升級目標是 team@1.1.0
 │   └── registry.ts         內建標準版本查找、未知/過新/已移除/已棄用版本判定、draft 使用的預設標準（最新 team）
 ├── declaration/

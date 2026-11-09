@@ -26,7 +26,12 @@ const LOCKFILES: readonly Lockfile[] = [
 ];
 
 /** The plain install of each `deps.manager`, for a project that has no lockfile yet. */
-const INSTALLS: Readonly<Record<string, string>> = { npm: "npm install", pnpm: "pnpm install", yarn: "yarn install" };
+const INSTALLS: Readonly<Record<string, string>> = {
+  npm: "npm install",
+  pnpm: "pnpm install",
+  yarn: "yarn install",
+  bun: "bun install",
+};
 
 export interface TypescriptInstall {
   /** Repo directory to run it in, normalized ("" for the repo root, otherwise ending in "/"). */

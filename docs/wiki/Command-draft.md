@@ -57,7 +57,7 @@ $ devguard draft
    | Python | `typecheck.tool: basedpyright` | 元件的 `pyproject.toml` 有 `[tool.basedpyright]`，且它不是 `typeCheckingMode = "off"`（優先於上一列；同一目錄的 `pyrightconfig.json` 設為 off 時，pyright 以它為準，這個表也不算） |
    | TypeScript | `lint.tool: biome` | 有 `biome.json(c)`（比 `eslint.config.*` 近） |
    | TypeScript | `test.tool: jest` | 有 `jest.config.*`（比 `vitest.config.*` 近） |
-   | TypeScript | `deps.manager: pnpm` / `yarn` | 有 `pnpm-lock.yaml` / `yarn.lock`（比 `package-lock.json` 近） |
+   | TypeScript | `deps.manager: pnpm` / `yarn` / `bun` | 有 `pnpm-lock.yaml` / `yarn.lock` / `bun.lock`（比 `package-lock.json` 近；同一層有多個時依這個順序，`bun.lock` 最後） |
    | Java | `build.tool: gradle` | 元件目錄只有 Gradle 建置檔（`build.gradle(.kts)`、`settings.gradle(.kts)`）沒有 `pom.xml`；兩者都有時，只提交了 `gradlew`（元件目錄或上層）而沒有 `mvnw` |
 
    Java 元件同時有 `pom.xml` 與 Gradle 建置檔，而 wrapper 無法區分（兩種都有或都沒有）時，預設為 maven，並在草稿的該元件上方加註解 `# 同時有 pom.xml 與 build.gradle，預設為 maven，請確認 build.tool`。

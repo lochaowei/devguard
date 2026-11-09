@@ -278,9 +278,10 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 - 所有 `mirrors.*`（§10）。
 - 各語言的 `deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`，以及 Go 的 `tools.govulncheck`（§5.3）。
 
-`team@1.4.0`（minor，§5.5）沿用 `team@1.3.0` 的所有項目，只有以下差異（#113）：
+`team@1.4.0`（minor，§5.5）沿用 `team@1.3.0` 的所有項目，只有以下差異（#113、#138）：
 
 - Python 的 `tools.mypy` 改為 `>=1.18,<3`，同時允許 mypy 1.x 與 2.x。2026-11-08 查證 PyPI：1.x 的最後一版是 1.20.2（2026-04-21），2.0.0 於 2026-05-06 發佈，目前最新是 2.4.1（2026-10-28），2.0 之後 1.x 沒有修補版。下限維持，與 `team@1.1.0` 對已停止發佈的版本線的處理一致。
+- TypeScript 的 `deps.manager` 增加替代工具 `bun`（預設仍是 `npm`，#138）。它的 lockfile 只認文字格式的 `bun.lock`（Bun 1.2 起）；Bun 1.2 之前的二進位 `bun.lockb` 讀不到套件版本，不算 lockfile。`bun test` 不算測試工具，`test.tool` 仍只允許 Vitest／Jest。
 
 `devguard draft` 寫入、`doctor` 建議升級到的都是 CLI 內建的最新 `team` 版本（目前是 `team@1.4.0`）。既有專案可以改宣告基線標準 `legacy@1.0.0`（§6.5）。
 
@@ -329,8 +330,8 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | `complexity.cyclomatic` / `cognitive` | 10 / 15 | ESLint `complexity` / `eslint-plugin-sonarjs` 的 `cognitive-complexity`（**授權為 LGPL-3.0-only，見 §12**；`team@1.1.0` 起不再要求，ESLint 只檢查 `complexity`）；使用 Biome 時改開 `noExcessiveCognitiveComplexity`。`team@1.1.0` 與 `legacy@1.0.0` 下，`cognitive` 只在使用 Biome 時強制，使用 ESLint 時只是參考值 |
 | `test.tool` | `vitest`；允許替代工具 `jest` | — |
 | `coverage.lines` | lines、branches、functions、statements 都是 80；覆蓋率必須涵蓋元件所有的原始碼，不只被測試 import 的檔案 | `coverage.thresholds` / `coverageThreshold.global`；並且必須設定 `coverage.include` / `collectCoverageFrom`，否則為錯誤 |
-| `deps.manager` | `npm`；允許替代工具 `pnpm`、`yarn` | — |
-| `deps.lockfile` | lockfile 必須提交；CI 使用 `npm ci`。只有 Bun 的 `bun.lock`／`bun.lockb` 時，訊息說明 Bun 不是允許的套件管理工具（允許 npm／pnpm／yarn） | CLI 檢查 |
+| `deps.manager` | `npm`；允許替代工具 `pnpm`、`yarn`（`team@1.4.0` 起加上 `bun`） | 決定 `deps.lockfile` 要求哪個 lockfile：`package-lock.json`（或 `npm-shrinkwrap.json`）、`pnpm-lock.yaml`、`yarn.lock`、`bun.lock` |
+| `deps.lockfile` | lockfile 必須提交，由元件目錄往上找；CI 使用 `npm ci`。`deps.manager` 不是 `bun`、卻只有 Bun 的 `bun.lock`／`bun.lockb` 時，標準允許 `bun`（`team@1.4.0` 起）就提示把 `deps.manager` 設成 `bun`，否則說明 Bun 不是允許的套件管理工具（#122）。`deps.manager: bun` 卻只有 `bun.lockb` 時，提示執行 `bun install --save-text-lockfile` 轉換成 `bun.lock`（#138） | CLI 檢查 |
 
 元件沒有 `tsconfig.json` 時，`fix` 建立的檔案設定 `typecheck.strict` 與 `typecheck.options`；元件底下有其他 TypeScript 元件時再加上 `exclude`：最外層子元件的目錄（相對於這個元件）與 `node_modules`（設定 `exclude` 會取代 TypeScript 預設排除的 `node_modules`），讓 `tsc` 不檢查子元件與依賴的檔案（#125）。
 

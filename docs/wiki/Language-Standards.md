@@ -19,9 +19,10 @@
 
 較舊的版本仍保留這些項目，但 devguard 不再依它們做任何檢查：不論宣告哪個版本，寫著它們只會得到 `declaration/retired-item` 提示；執行 `devguard standard upgrade` 到 `team@1.3.0` 或更新的版本會把它們從宣告中刪除。
 
-`team@1.4.0`（定義於 [`src/standard/team-1.4.0.ts`](../../src/standard/team-1.4.0.ts)）是 CLI 內建的最新版本，`devguard draft` 寫入、`doctor` 建議升級到的都是它。它沿用 `team@1.3.0` 的所有項目，只放寬一個版本範圍（minor，見 [SPEC §6](../../SPEC.md)，#113）：
+`team@1.4.0`（定義於 [`src/standard/team-1.4.0.ts`](../../src/standard/team-1.4.0.ts)）是 CLI 內建的最新版本，`devguard draft` 寫入、`doctor` 建議升級到的都是它。它沿用 `team@1.3.0` 的所有項目，只放寬一個版本範圍並多允許一個套件管理工具（minor，見 [SPEC §6](../../SPEC.md)，#113、#138）：
 
 - Python 的 `tools.mypy` 改為 `>=1.18,<3`，允許 mypy 2.x。2026-11-08 查證 PyPI：1.x 最後一版是 1.20.2（2026-04-21），2.0.0 於 2026-05-06 發佈、目前最新是 2.4.1，2.0 之後 1.x 沒有修補版；下限維持。
+- TypeScript 的 `deps.manager` 允許 `bun`（預設仍是 `npm`）。lockfile 只認文字格式的 `bun.lock`；Bun 1.2 之前的二進位 `bun.lockb` 不算。`bun test` 不算測試工具。
 
 不論宣告哪個標準版本，Python 的型別檢查器版本範圍只檢查元件宣告的 `typecheck.tool` 那一個：宣告 basedpyright 時不檢查 lockfile 中 mypy 的範圍，宣告 mypy 時不檢查 pyright／basedpyright 的範圍。
 
@@ -171,8 +172,8 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 | `complexity.cyclomatic` / `cognitive` | `10` / `15` | ESLint `complexity` / `sonarjs/cognitive-complexity`（或 Biome `noExcessiveCognitiveComplexity`）。`team@1.1.0` 起使用 ESLint 時只檢查 `complexity`，不檢查 `sonarjs/cognitive-complexity`，`cognitive` 只是參考值（`legacy@1.0.0` 相同）；Biome 照舊強制 |
 | `test.tool` | `"vitest"` | 允許替代：`jest` |
 | `coverage.lines` | `80` | `lines`、`branches`、`functions`、`statements` 四項皆須達 80%；必須設定 Vitest `coverage.include`（或 Jest `collectCoverageFrom`），沒有測試的檔案才會算進去 |
-| `deps.manager` | `"npm"` | 允許替代：`pnpm`、`yarn` |
-| `deps.lockfile` | `true` | 必須提交 `package-lock.json`、`pnpm-lock.yaml` 或 `yarn.lock`。只有 Bun 的 `bun.lock`／`bun.lockb` 時，`deps/lockfile-missing` 會說明 Bun 不是允許的套件管理工具，請改用 npm／pnpm／yarn 並提交其 lockfile |
+| `deps.manager` | `"npm"` | 允許替代：`pnpm`、`yarn`（`team@1.4.0` 起加上 `bun`） |
+| `deps.lockfile` | `true` | 必須提交 `deps.manager` 的 lockfile：`package-lock.json`、`pnpm-lock.yaml`、`yarn.lock` 或 `bun.lock`（元件目錄或上層）。`deps.manager` 不是 `bun`、卻只有 Bun 的 `bun.lock`／`bun.lockb` 時，`deps/lockfile-missing` 在 `team@1.4.0` 起提示把 `deps.manager` 設成 `bun`，較舊的標準則說明 Bun 不是允許的套件管理工具，請改用 npm／pnpm／yarn 並提交其 lockfile。`deps.manager: bun` 卻只有二進位的 `bun.lockb` 時，提示執行 `bun install --save-text-lockfile` 轉換成 `bun.lock` |
 | `deps.banned` | `["moment", "request", "node-fetch"]` | 直接依賴禁用套件 |
 | `deps.bannedApis` | `[]` | ESLint `no-restricted-imports` |
 
@@ -180,7 +181,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 
 ### 執行方式
 
-- **工具執行器**：`node_modules/.bin/<tool>`（Windows 下依序找 `.cmd`、`.exe`（Bun 產生的 shim），`.cmd` 自動透過 `cmd.exe /d /s /c` 啟動；鎖定版本讀取自 `package-lock.json`、`pnpm-lock.yaml` 或 `yarn.lock`）。
+- **工具執行器**：`node_modules/.bin/<tool>`（Windows 下依序找 `.cmd`、`.exe`（Bun 產生的 shim），`.cmd` 自動透過 `cmd.exe /d /s /c` 啟動；鎖定版本讀取自 `package-lock.json`、`pnpm-lock.yaml`、`yarn.lock` 或 `bun.lock`）。
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
   - `tools.eslint`：`>=10,<11`、`tools.prettier`：`>=3,<4`、`tools.typescript`：`>=6,<7`、`tools.typescript-eslint`：`>=8,<9`、`tools.eslint-plugin-sonarjs`：`>=3,<4`（`team@1.1.0` 已移除這一項）
   - `tools.biome`（`@biomejs/biome`）：`>=2,<3`

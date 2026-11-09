@@ -182,6 +182,7 @@ const DEPENDENCY_FILES = new Set([
   "npm-shrinkwrap.json",
   "pnpm-lock.yaml",
   "yarn.lock",
+  "bun.lock",
   "go.mod",
   "go.sum",
   "pom.xml",
