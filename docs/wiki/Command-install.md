@@ -43,7 +43,7 @@ devguard install [--yes] [--cwd <dir>]
 
    3. **沒有框架**：寫入 git 實際讀取的 hook 檔（`git rev-parse --git-path hooks/<名稱>`，通常是 `.git/hooks/`；有設定 `core.hooksPath` 時就是那個目錄）。
       - 檔案不存在，或是 devguard 產生的：寫入或更新。
-      - 檔案存在但不是 devguard 產生的：**不覆寫**，只印出要自己加進去的那一行。
+      - 檔案存在但不是 devguard 產生的（手寫的，或 husky v4 等其他工具寫的）：**不覆寫**，只印出要自己加在 hook **開頭**（`#!` 那一行之後的下一行）的那一行，見[既有的 git hook](#既有的-git-hook)。這個 hook 算是沒有安裝，`install` 最後列出它並以 exit `1` 結束。
       - `core.hooksPath` 指向 `/dev/null` 或 `nul`（停用所有 hook）：不寫 hook 檔，只印出衝突。
    4. 檢查 `core.hooksPath` 有沒有衝突，有的話印出來。例如用 pre-commit 框架時設了 `core.hooksPath`（pre-commit 會拒絕安裝），或用 husky 時沒有指向 `.husky/_`。
 2. **規劃設定**：與 `fix` 相同的可修正檢查層，差別是 Claude Code 層會**建立**整套 `.claude/` 設定（`fix` 只更新已存在的）。
@@ -85,6 +85,26 @@ command -v devguard >/dev/null 2>&1 || { echo 'devguard：找不到 CLI（devgua
 - PATH 上找不到 `devguard` 時會**擋下** commit / push 並印出安裝方式，不會默默放行。
 - `pre-push` hook 一律安裝，但預設不跑任何檢查：完整測試與覆蓋率只在開發者設定 `DEVGUARD_PRE_PUSH=full` 時執行，否則交給 CI 的 `check --full`。切換時不需要重新執行 `install`。見 [`hook git-pre-push`](Command-hook.md#git-pre-push)。
 
+### 既有的 git hook
+
+hooks 目錄中已經有不是 devguard 產生的 hook 時（例如 husky v4 寫的），`install` 不修改它，預覽改為印出：
+
+```text
+.git/hooks/pre-commit：既有的 git hook，不是 devguard 產生的，未修改；devguard 的檢查不會執行，請自行加入
+    加在這個 hook 的開頭（#! 那一行之後的下一行）：
+    command -v devguard >/dev/null 2>&1 || { echo '…' >&2; exit 1; }; devguard hook git-pre-commit "$@" || exit $?
+```
+
+套用其他設定之後，`install` 另外列出沒有安裝的 hook 與路徑，並以 exit `1` 結束（沒有其他檔案要寫入時也一樣）：
+
+```text
+以下 git hook 沒有安裝（既有的 hook 不是 devguard 產生的）；請照上方的說明加入那一行：
+    .git/hooks/pre-commit
+```
+
+- 這一行不用 `exec`，devguard 通過後會繼續執行 hook 原本的內容；devguard 失敗時以它的狀態結束 hook（`|| exit $?`），commit / push 會被擋下。
+- 一定要加在**開頭**：hook 中結束腳本的指令之後的內容不會執行。husky v4 的 hook 以 `. "$(dirname "$0")/husky.sh"` 結尾，`husky.sh` 跑完會直接結束（找不到 husky 設定時也是 `exit 0`），加在結尾的那一行永遠不會執行。[`doctor`](Command-doctor.md#git-hook-檔不是-devguard-產生的) 會檢查呼叫的位置。
+
 ### 產生的 Claude Code 設定
 
 | 檔案 | 內容 |
@@ -104,7 +124,7 @@ command -v devguard >/dev/null 2>&1 || { echo 'devguard：找不到 CLI（devgua
 | Exit code | 情況 |
 |---|---|
 | `0` | 已套用，或沒有需要寫入的檔案 |
-| `1` | 有需要寫入的檔案但沒有套用（拒絕、非互動環境沒有 `--yes`）；或有檔案因為路徑上有檔案而不是目錄而無法寫入（例如 Windows 上未展開成 symlink 的 `.claude/skills`），即使其他檔案與 git hook 已經套用。見 [fix 的路徑上有檔案而不是目錄](Command-fix.md#路徑上有檔案而不是目錄) |
+| `1` | 有需要寫入的檔案但沒有套用（拒絕、非互動環境沒有 `--yes`）；或有 git hook 因為既有的 hook 不是 devguard 產生的而沒有安裝，即使其他設定已經套用，見[既有的 git hook](#既有的-git-hook)；或有檔案因為路徑上有檔案而不是目錄而無法寫入（例如 Windows 上未展開成 symlink 的 `.claude/skills`），即使其他檔案與 git hook 已經套用。見 [fix 的路徑上有檔案而不是目錄](Command-fix.md#路徑上有檔案而不是目錄) |
 | `2` | 沒有 hook 框架且不是 git repo：`<dir> 不是 git repo，無法安裝 git hook`；或其他 CLI 失敗 |
 
 「下一步」的提示不影響 exit code。
@@ -150,7 +170,7 @@ $ devguard install --yes
 
 | 現象 | 原因與處理 |
 |---|---|
-| `這個 hook 不是 devguard 產生的，不會覆寫；請在其中加上：…` | 已經有手寫或其他工具的 hook 檔。把印出的那一行加進去，或改用 hook 框架 |
+| `既有的 git hook，不是 devguard 產生的，未修改…`，`install` 以 exit `1` 結束 | 已經有手寫或其他工具（例如 husky v4）的 hook 檔。把印出的那一行加在 hook 開頭（`#!` 之後的下一行），或改用 hook 框架。見[既有的 git hook](#既有的-git-hook) |
 | `core.hooksPath = … ：pre-commit 在 core.hooksPath 有設定時拒絕安裝 hook` | 照訊息移除 `core.hooksPath`，再執行 `pre-commit install` 與 `pre-commit install --hook-type pre-push` |
 | `core.hooksPath 未設定，husky 的 hook 沒有安裝；請執行 npx husky` | husky 的 hook 要靠 `core.hooksPath` 生效。執行 `npx husky` |
 | `下一步：執行 pre-commit install --hook-type pre-commit --hook-type pre-push…`／`下一步：執行 lefthook install…`，或 `doctor` 說 pre-commit／lefthook 的 hook 沒有安裝 | 框架設定中有項目還不夠，要執行這條指令把 hook 寫進 hooks 目錄 |

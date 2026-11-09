@@ -46,7 +46,7 @@ devguard check [檔案…] [--staged] [--only lint|format|typecheck] [--full]
 | 1 | `declaration` | `config` | 解析 `.devguard.yaml`、驗證標準版本、比對覆寫與偏離理由 / 到期日、檢查同語言風格一致性 |
 | 2 | `uncovered-files` | `config` | 沒有被任何元件涵蓋的四語言程式檔，套用推定的預設標準並給提示 |
 | 3 | `settings-python` | `config` | `pyproject.toml` 的 Ruff、mypy / pyright / basedpyright 設定 |
-| 4 | `settings-go` | `config` | `go.mod` 的 Go 版本與 golangci-lint 採用的設定檔（`.golangci.json` / `.toml` / `.yaml` / `.yml`，查找順序見 [Language-Standards](Language-Standards.md)） |
+| 4 | `settings-go` | `config` | `go.mod` 的 Go 版本與 golangci-lint 採用的設定檔（`.golangci.json` / `.toml` / `.yaml` / `.yml`，查找順序見 [Language-Standards](Language-Standards.md)）。多個元件共用同一份設定檔時，相同的 finding 只列一次，列在回報它的元件中目錄就是設定檔所在目錄的那個下，沒有時列在其中最上層的那個下（#92） |
 | 5 | `settings-java` | `config` | Maven / Gradle 建置檔、Wrapper、`checkstyle.xml`、PMD ruleset、`lombok.config` |
 | 6 | `deps` | `config` | lockfile 是否已提交、直接依賴是否違反 `deps.banned` |
 | 7 | `settings-typescript` | `config` | `package.json`、`tsconfig.json`、ESLint flat config、Prettier、Biome、Vitest / Jest 覆蓋率門檻 |
@@ -185,7 +185,7 @@ $ devguard check --strict > /dev/null; echo $?
 
 | 現象 | 原因與處理 |
 |---|---|
-| `找不到 eslint：node_modules 中沒有安裝`，exit `2` | `check` 遇到專案工具沒有安裝會直接中止。照提示安裝（`npm ci`、`uv sync`、`poetry install` 等）。標準要求的 Python 工具（例如 `basedpyright`）沒有列在 `pyproject.toml` 的依賴中時，`uv sync` 也裝不到它，提示改為 `uv add --dev "basedpyright>=1.40,<2"`（Poetry 專案為 `poetry config virtualenvs.in-project true && poetry add --group dev "…"`，讓工具裝進 devguard 會找的專案內 `.venv`），範圍取標準的 `tools.*`；想看完整的環境問題清單改跑 [`doctor`](Command-doctor.md)，它會把缺工具列成一筆錯誤並繼續 |
+| `找不到 eslint：node_modules 中沒有安裝`，exit `2` | `check` 遇到專案工具沒有安裝會直接中止。照提示安裝（`npm ci`、`uv sync`、`poetry install` 等）。TypeScript 的提示依最近的 lockfile 決定套件管理工具與目錄：`npm ci`、`pnpm install --frozen-lockfile`、`yarn install --immutable`（Yarn Berry）／`yarn install --frozen-lockfile`（Yarn classic）、`bun install --frozen-lockfile`，在 lockfile 所在的目錄（workspace 根目錄）執行；沒有 lockfile 時是 `deps.manager` 的一般安裝（例如 `npm install`），在最近的有 `package.json` 的目錄執行。同一個目錄有多個 lockfile 時，`deps.manager` 的那一個優先。標準要求的 Python 工具（例如 `basedpyright`）沒有列在 `pyproject.toml` 的依賴中時，`uv sync` 也裝不到它，提示改為 `uv add --dev "basedpyright>=1.40,<2"`（Poetry 專案為 `poetry config virtualenvs.in-project true && poetry add --group dev "…"`，讓工具裝進 devguard 會找的專案內 `.venv`），範圍取標準的 `tools.*`；想看完整的環境問題清單改跑 [`doctor`](Command-doctor.md)，它會把缺工具列成一筆錯誤並繼續 |
 | `找不到 uv`，exit `2` | uv 專案的 Python 工具透過 `uv run` 執行，devguard 只在 PATH 上找 uv。照提示選一種方式安裝（官方安裝腳本、`pipx install uv`、`pip install uv`、`scoop install uv`）。已用 `pip install uv` 安裝卻仍出現時，uv 在 Python 的 Scripts 目錄（Windows）或 `~/.local/bin`（其他平台），預設不在 PATH 上：把該目錄加進 PATH，重開終端機後以 `uv --version` 確認 |
 | TypeScript 專案卻出現 `找不到 golangci-lint` | 檔案清單來自 `git ls-files`（含未被忽略的未追蹤檔）。沒有 `.gitignore` 時 `node_modules/` 裡的 `.go`、`.py` 等檔案也會被當成專案檔案。把 `node_modules/`、`.venv/` 等加進 `.gitignore` |
 | `eslint 執行失敗（exit 2）…` `[code/tool-failed]` | 工具本身執行失敗（缺設定檔、缺 plugin 等）。訊息附上工具輸出的最多 5 行：Maven 取 `[ERROR]` 的原因（略過 `[INFO]`／`[WARNING]` 與結尾的 `Re-run Maven…`、`[Help 1]`），Gradle 取 `* What went wrong:` 段落，其他工具取開頭幾行（`test/tool-failed` 取結尾幾行）。照提示在元件目錄直接執行該工具看完整訊息 |
