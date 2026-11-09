@@ -103,7 +103,8 @@ hooks 目錄中已經有不是 devguard 產生的 hook 時（例如 husky v4 寫
 ```
 
 - 這一行不用 `exec`，devguard 通過後會繼續執行 hook 原本的內容；devguard 失敗時以它的狀態結束 hook（`|| exit $?`），commit / push 會被擋下。
-- 一定要加在**開頭**：hook 中結束腳本的指令之後的內容不會執行。husky v4 的 hook 以 `. "$(dirname "$0")/husky.sh"` 結尾，`husky.sh` 跑完會直接結束（找不到 husky 設定時也是 `exit 0`），加在結尾的那一行永遠不會執行。[`doctor`](Command-doctor.md#git-hook-檔不是-devguard-產生的) 會檢查呼叫的位置。
+- 一定要加在**開頭**：hook 中結束腳本的指令之後的內容不會執行。husky 4.1.0–4.3.8 的 hook 以 `. "$(dirname "$0")/husky.sh"` 結尾，`husky.sh` 跑完會直接結束（找不到 husky 設定時也是 `exit 0`）；husky 4.0.x 的 hook 從結尾的 `case` 中結束。加在這兩種 hook 結尾的那一行永遠不會執行。[`doctor`](Command-doctor.md#git-hook-檔不是-devguard-產生的) 會檢查呼叫的位置。
+- 既有的 hook 已經呼叫 devguard 時，`install` 把它算成已安裝，不印出這一行。呼叫在載入其他腳本（`. ~/.nvm/nvm.sh` 等，`husky.sh` 以外）之後時也算，`doctor` 只列為提示。
 
 ### 產生的 Claude Code 設定
 

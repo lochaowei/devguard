@@ -89,14 +89,29 @@ $ DEVGUARD_PRE_PUSH=full devguard doctor --quiet
 
 ### git hook 檔不是 devguard 產生的
 
-沒有 hook 框架、hook 檔是手寫的或其他工具（例如 husky v4）寫的時，`doctor` 確認它有呼叫 devguard（`… hook git-<名稱>`），而且呼叫會被執行：只有出現在第一個**結束腳本**的頂層指令之前才算。結束腳本的指令是 `exit`、執行其他程式的 `exec`（只做導向的 `exec 1>&2` 不算），以及用 `.`／`source` 載入其他腳本（husky v4 的 `. "$(dirname "$0")/husky.sh"` 就是這種，`husky.sh` 跑完會直接結束）。條件式（`if`、`&&`、`||`）或函式中的 `exit` 不算。
+沒有 hook 框架、hook 檔是手寫的或其他工具（例如 husky v4）寫的時，`doctor` 確認它有呼叫 devguard（以 `… hook git-<名稱>` 為指令；`echo` 等只印出文字的指令、here-document 的內容、函式中的呼叫都不算），而且呼叫會被執行：只有出現在第一個**結束腳本**的頂層指令之前才算。結束腳本的指令是：
+
+- `exit`，包括頂層的 `{ exit 0; }`。條件式（`if`、`&&`、`||`）、函式、here-document 中的 `exit`，以及背景執行的 `exit 0 &` 不算。
+- 執行其他程式的 `exec`（只做導向的 `exec 1>&2` 不算）。
+- husky 4.1.0–4.3.8 的 hook 結尾的 `. "$(dirname "$0")/husky.sh"`：`husky.sh` 跑完會直接結束。
+- husky 4.0.x 的 hook（整份腳本內嵌）結尾的 `case $packageManager in … esac`：husky 跑完會直接結束。
+
+husky 1–3 的 hook 跑完 husky 後不會結束，加在結尾的呼叫會執行，但 hook 的 exit code 會變成 devguard 的，husky 失敗不再擋下 commit；仍建議加在開頭。
 
 ```text
   錯誤  git pre-commit hook（C:\work\demo\.git\hooks\pre-commit）不是 devguard 產生的，對 devguard 的呼叫在「. "$(dirname "$0")/husky.sh"」之後，不會執行，應移到開頭  [environment/hook-foreign]
         需手動修正：加在這個 hook 的開頭（#! 那一行之後的下一行）：command -v devguard >/dev/null 2>&1 || { … }; devguard hook git-pre-commit "$@" || exit $?
 ```
 
-完全沒有呼叫 devguard 時，訊息是「不是 devguard 產生的，也沒有呼叫 devguard」，修正方式相同。見 [`install` 的既有的 git hook](Command-install.md#既有的-git-hook)。
+完全沒有呼叫 devguard 時，訊息是「不是 devguard 產生的，也沒有呼叫 devguard」，修正方式相同。
+
+呼叫出現在用 `.`／`source` 載入其他腳本（`husky.sh` 以外，例如 `. ~/.nvm/nvm.sh`）之後時，doctor 不讀被載入的腳本，無法確定它會不會結束 hook，所以只列為**提示**（不影響 exit code，`--quiet` 不印出），`install` 也把這個 hook 算成已安裝：
+
+```text
+  提示  git pre-commit hook（C:\work\demo\.git\hooks\pre-commit）不是 devguard 產生的，對 devguard 的呼叫在「. ~/.nvm/nvm.sh」之後，載入的腳本如果結束 hook 就不會執行，建議移到開頭  [environment/hook-foreign]
+```
+
+見 [`install` 的既有的 git hook](Command-install.md#既有的-git-hook)。
 
 ### pre-push 的問題什麼時候算錯誤
 

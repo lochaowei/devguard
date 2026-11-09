@@ -5,12 +5,12 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runDoctor } from "../src/doctor.ts";
 import { createGitHooksCheck, type FrameworkEntryProbe } from "../src/environment/git-hooks.ts";
-import { foreignHookLine, renderHookFile, type GitHookName } from "../src/hooks/file.ts";
+import { devguardCall, foreignHookLine, renderHookFile, type GitHookName } from "../src/hooks/file.ts";
 import { runInstall } from "../src/hooks/install.ts";
 import { nodeExec, type Exec } from "../src/process/exec.ts";
 import type { Finding } from "../src/report/finding.ts";
 import { ToolMissingError, type ToolRunner } from "../src/tools/runner.ts";
-import { afterShebang, HUSKY_V4_HOOK, lefthookWrote, rules, TODAY } from "./helpers.ts";
+import { afterShebang, HUSKY_V3_HOOK, HUSKY_V40_HOOK, HUSKY_V4_HOOK, lefthookWrote, rules, TODAY } from "./helpers.ts";
 import { isolateGit } from "./git-isolation.ts";
 
 // Real git runs here: keep it off any repo or config outside this file's temp directories.
@@ -159,6 +159,75 @@ describe("git hooks installed (SPEC §7.4)", () => {
         "",
       ].join("\n");
       expect(await findingsFor(text)).toEqual([]);
+    });
+
+    it("lists a call after loading a script other than husky.sh only as a hint (#163)", async () => {
+      const [finding, ...rest] = await findingsFor(`#!/bin/sh\n. ~/.nvm/nvm.sh\n${LINE}\n`);
+      expect(rest).toEqual([]);
+      expect(finding).toMatchObject({ level: "hint", rule: "environment/hook-foreign" });
+      expect(finding?.message).toContain(". ~/.nvm/nvm.sh");
+      expect(finding?.message).toContain("載入的腳本如果結束 hook 就不會執行");
+      expect(finding?.fix).toContain("開頭");
+    });
+
+    it("reports a call at the end of husky 4.0.x's inline hook, which exits from run_command (#163)", async () => {
+      expect(await findingsFor(afterShebang(HUSKY_V40_HOOK, LINE))).toEqual([]);
+      const [finding] = await findingsFor(`${HUSKY_V40_HOOK}${LINE}\n`);
+      expect(finding).toMatchObject({ level: "error", rule: "environment/hook-foreign" });
+      expect(finding?.message).toContain("case $packageManager in");
+    });
+
+    it("accepts a call at the end of a husky 1–3 hook, which does not exit (#163)", async () => {
+      expect(await findingsFor(`${HUSKY_V3_HOOK}${LINE}\n`)).toEqual([]);
+    });
+  });
+
+  describe("where the call is, read as the shell runs it (#163)", () => {
+    const CALL = 'devguard hook git-pre-commit "$@" || exit $?';
+    const callIn = (...lines: string[]) => devguardCall(["#!/bin/sh", ...lines, ""].join("\n"), "pre-commit");
+
+    it.each([
+      ["an exit in a `function f {` body", ["function fail {", "  exit 1", "}", CALL]],
+      ["an exit in a `function f() {` body", ["function fail() {", "  exit 1", "}", CALL]],
+      ["an exit in a body whose { is on the next line", ["fail()", "{", "  exit 1", "}", CALL]],
+      ["a here-document line starting with exit", ["cat <<EOF", "exit now", "EOF", CALL]],
+      ["a quoted here-document marker", ["cat <<'EOF'", "exit now", "EOF", CALL]],
+      ["a <<- here-document ended by a tab-indented marker", ["cat <<-EOF", "\texit now", "\tEOF", CALL]],
+      ["an exit run in the background", ["exit 0 &", CALL]],
+      ["an exit whose output is redirected", ['[ -n "$CI" ] && exit 1 >&2', CALL]],
+      ["the line install prints", [foreignHookLine("pre-commit")]],
+    ])("runs after %s", (_, lines) => {
+      expect(callIn(...lines)).toEqual({ kind: "runs" });
+    });
+
+    it.each([
+      [
+        "a here-document line starting with if, then a top-level exit",
+        ["cat <<EOF", "if you see this", "EOF", "exit 0"],
+        "exit 0",
+      ],
+      ["a top-level { exit 0; }", ["{ exit 0; }"], "{ exit 0; }"],
+      ["an exit earlier on the same line", [`exit 0; ${CALL}`], `exit 0; ${CALL}`],
+    ])("is unreachable after %s", (_, lines, after) => {
+      expect(callIn(...lines, CALL)).toEqual({ kind: "unreachable", after });
+    });
+
+    it.each([
+      ["an unquoted mention in echo", ["echo please run devguard hook git-pre-commit"]],
+      ["a call only in a function never called", ["check() {", `  ${CALL}`, "}"]],
+      ["a call only in a here-document", ["cat <<EOF", CALL, "EOF"]],
+    ])("is missing with %s", (_, lines) => {
+      expect(callIn(...lines)).toEqual({ kind: "missing" });
+    });
+
+    it("is uncertain after loading a script other than husky.sh, and runs before it", () => {
+      expect(callIn('. "$(dirname "$0")/_/lib.sh"', CALL)).toEqual({
+        kind: "uncertain",
+        after: '. "$(dirname "$0")/_/lib.sh"',
+      });
+      expect(callIn("source ~/.nvm/nvm.sh", CALL)).toMatchObject({ kind: "uncertain" });
+      expect(callIn(CALL, ". ~/.nvm/nvm.sh")).toEqual({ kind: "runs" });
+      expect(callIn(". ~/.nvm/nvm.sh", "exit 0", CALL)).toEqual({ kind: "unreachable", after: "exit 0" });
     });
   });
 });

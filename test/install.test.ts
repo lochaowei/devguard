@@ -159,6 +159,15 @@ describe("devguard install (SPEC §3.2, §7.4)", () => {
       expect(out.out).not.toContain("既有的 git hook");
     });
 
+    it("counts a call after loading a script other than husky.sh as installed, as doctor only hints (#163)", async () => {
+      const hook = `#!/bin/sh\n. ~/.nvm/nvm.sh\n${foreignHookLine("pre-commit")}\n`;
+      const dir = repo({ ".devguard.yaml": DECL, ".git/hooks/pre-commit": hook });
+      const out = io();
+      expect(await runInstall({ cwd: dir, today: TODAY, io: out })).toBe(0);
+      expect(read(dir, ".git/hooks/pre-commit")).toBe(hook);
+      expect(out.out).not.toContain("沒有安裝");
+    });
+
     it("exits 1 when the foreign hooks are all there is", async () => {
       const dir = repo({ ".devguard.yaml": DECL, ".git/hooks/pre-commit": HUSKY_V4_HOOK });
       await runInstall({ cwd: dir, today: TODAY, io: io() });

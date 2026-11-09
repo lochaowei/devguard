@@ -56,25 +56,35 @@ async function hooksPathProblem(
   return undefined;
 }
 
+/**
+ * A hook devguard did not write must call devguard where the call runs (`devguardCall`). A call after a loaded script
+ * other than husky.sh is only a hint: doctor cannot tell whether that script ends the hook (#163).
+ */
+function foreignHookProblem(hook: GitHookName, path: string, text: string): Finding | undefined {
+  const call = devguardCall(text, hook);
+  if (call.kind === "runs") return undefined;
+  const why =
+    call.kind === "missing"
+      ? "也沒有呼叫 devguard"
+      : call.kind === "unreachable"
+        ? `對 devguard 的呼叫在「${call.after}」之後，不會執行，應移到開頭`
+        : `對 devguard 的呼叫在「${call.after}」之後，載入的腳本如果結束 hook 就不會執行，建議移到開頭`;
+  const found = problem(
+    "hook-foreign",
+    `git ${hook} hook（${path}）不是 devguard 產生的，${why}`,
+    `${FOREIGN_HOOK_PLACEMENT}：${foreignHookLine(hook)}`,
+  );
+  return call.kind === "uncertain" ? { ...found, level: "hint" } : found;
+}
+
 /** §7.4 step 2 without a hook framework: the hook file exists, has devguard's marker and an intact checksum. */
 function hookFileProblem(hook: GitHookName, installed: InstalledHook): Finding | undefined {
   const { path, status, text = "" } = installed;
   switch (status.kind) {
     case "missing":
       return problem("hook-missing", `沒有安裝 git ${hook} hook（${path}）`);
-    case "foreign": {
-      const call = devguardCall(text, hook);
-      if (call.kind === "runs") return undefined;
-      const why =
-        call.kind === "missing"
-          ? "也沒有呼叫 devguard"
-          : `對 devguard 的呼叫在「${call.after}」之後，不會執行，應移到開頭`;
-      return problem(
-        "hook-foreign",
-        `git ${hook} hook（${path}）不是 devguard 產生的，${why}`,
-        `${FOREIGN_HOOK_PLACEMENT}：${foreignHookLine(hook)}`,
-      );
-    }
+    case "foreign":
+      return foreignHookProblem(hook, path, text);
     case "devguard":
       if (status.intact && status.hook === hook) return undefined;
       return problem("hook-modified", `git ${hook} hook（${path}）被修改過，checksum 不符`);
