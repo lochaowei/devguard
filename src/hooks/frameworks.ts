@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { isMap, isScalar, parse, parseDocument, Scalar } from "yaml";
 import { editConfigText, parseConfigText } from "../fix/edit.ts";
 import type { ChangePlan, FileWrite } from "../fix/plan.ts";
+import { yamlText } from "../fix/yaml-text.ts";
 import { nodeExec, type Exec } from "../process/exec.ts";
 import { hookCommandLine, type GitHookName } from "./file.ts";
 import { INSTALLED_HOOKS, installedHook, type InstalledHook } from "./location.ts";
@@ -132,7 +133,7 @@ function requireMinimumVersion(text: string): string {
     value.type = Scalar.QUOTE_DOUBLE;
     doc.set(MIN_VERSION_KEY, value);
   }
-  return doc.toString({ lineWidth: 0 });
+  return yamlText(doc, text);
 }
 
 /** What pre-commit needs to write every hook type devguard installs. */

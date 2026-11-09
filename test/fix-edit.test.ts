@@ -195,9 +195,79 @@ describe("editConfigText: YAML", () => {
     ]);
     expect(out).toContain("# golangci config");
     expect(out).toContain("# security first");
-    expect(out).toContain("enable: [ gosec, cyclop ]");
+    expect(out).toContain("enable: [gosec, cyclop] # security first");
     expect(out).toContain("disable: []");
     expect(out).toMatch(/cyclop:\n\s+max-complexity: 10/);
+  });
+
+  describe("keeps the lines an edit does not touch byte for byte (#87)", () => {
+    const GOLANGCI = [
+      'version: "2"',
+      "linters:",
+      "  disable:",
+      "    - lll         # too noisy",
+      "    - wsl         # style",
+      "  exclusions:",
+      "    rules:",
+      "      - linters: [revive]",
+      "        path: _test\\.go",
+      "",
+    ].join("\n");
+    const addGosec = [{ op: "add" as const, path: ["linters", "enable"], value: "gosec" }];
+    /** The output's lines with the original's removed in order; fails if an original line is missing or changed. */
+    const added = (original: string, out: string) => {
+      const lines = out.split("\n");
+      const extra: string[] = [];
+      let i = 0;
+      for (const line of original.split("\n")) {
+        while (i < lines.length && lines[i] !== line) extra.push(lines[i++] ?? "");
+        expect(i, `kept: ${line}`).toBeLessThan(lines.length);
+        i++;
+      }
+      return [...extra, ...lines.slice(i)];
+    };
+
+    it("keeps comment alignment and unpadded flow sequences, adding only the new lines", () => {
+      const out = editConfigText(".golangci.yml", GOLANGCI, addGosec);
+      expect(added(GOLANGCI, out)).toEqual(["  enable:", "    - gosec"]);
+      expect(parseConfigText(".golangci.yml", out)).toEqual({
+        version: "2",
+        linters: {
+          disable: ["lll", "wsl"],
+          exclusions: { rules: [{ linters: ["revive"], path: "_test\\.go" }] },
+          enable: ["gosec"],
+        },
+      });
+    });
+
+    it("keeps a padded flow sequence padded", () => {
+      const padded = GOLANGCI.replace("[revive]", "[ revive ]");
+      expect(added(padded, editConfigText(".golangci.yml", padded, addGosec))).toEqual(["  enable:", "    - gosec"]);
+    });
+
+    it("keeps quotes and flow sequences in .pre-commit-config.yaml hooks it does not touch", () => {
+      const config = [
+        "repos:",
+        "  - repo: https://github.com/astral-sh/ruff-pre-commit",
+        "    rev: v0.6.0",
+        "    hooks:",
+        "      - id: ruff",
+        '        args: ["--fix"]',
+        "      - id: ruff-format",
+        "        args: [--check]",
+        "        types: [python]",
+        '        additional_dependencies: ["pyright@1.1.413"]',
+        "",
+      ].join("\n");
+      const local = { repo: "local", hooks: [{ id: "devguard", entry: "devguard hook git-pre-commit" }] };
+      const out = editConfigText(".pre-commit-config.yaml", config, [{ op: "add", path: ["repos"], value: local }]);
+      expect(added(config, out).length).toBeGreaterThan(0);
+    });
+  });
+
+  it("does not put back a line whose edit changed only whitespace in a value", () => {
+    const out = editConfigText("x.yml", "name: a  b # two spaces\n", [{ op: "set", path: ["name"], value: "a b" }]);
+    expect(parseConfigText("x.yml", out)).toEqual({ name: "a b" });
   });
 
   it("treats a .prettierrc that is not JSON as YAML", () => {
