@@ -176,6 +176,8 @@ default = true
     expect(read(dir, "pmd-ruleset.xml")).toContain("由 CLI 產生");
     expect(read(dir, "pom.xml")).toBe(pom);
     expect(after.map((f) => f.rule)).toContain("settings/looser");
+    // The build plugins are only printed as snippets (#98).
+    expect(after.map((f) => f.rule)).toContain("settings/java-plugin-missing");
   });
 
   it("Java: never overwrites a checkstyle.xml or PMD ruleset devguard did not generate, prints what to add (#100)", async () => {

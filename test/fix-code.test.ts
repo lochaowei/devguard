@@ -297,19 +297,25 @@ describe("devguard fix --code (SPEC §9.1, §9.3)", () => {
       expect(result.code).toBe(0);
     });
 
+    const SPOTLESS_POM =
+      "<project><build><plugins><plugin><artifactId>spotless-maven-plugin</artifactId></plugin></plugins></build></project>";
+
     const spotless = (req: ToolRequest): Reply =>
       req.args?.some((a) => a === "spotless:check" || a === "spotlessCheck")
         ? { code: 1, stdout: "The following files had format violations:\n    src/App.java\n        @@ -1 +1 @@\n" }
         : {};
 
     it("Java with Maven: spotless:apply through the wrapper", async () => {
-      const files = { ".devguard.yaml": decl("app", "java"), "app/pom.xml": "<project/>" };
+      const files = { ".devguard.yaml": decl("app", "java"), "app/pom.xml": SPOTLESS_POM };
       const result = await fixWith(files, ["app/src/App.java"], spotless);
       expect(result.fixes).toEqual([{ tool: "mvnw", dir: "app/", args: ["-B", "-ntp", "spotless:apply"] }]);
     });
 
     it("Java with Gradle: spotlessApply through the wrapper", async () => {
-      const files = { ".devguard.yaml": decl("app", "java"), "app/build.gradle": "" };
+      const files = {
+        ".devguard.yaml": decl("app", "java"),
+        "app/build.gradle": "plugins { id 'com.diffplug.spotless' }\n",
+      };
       const result = await fixWith(files, ["app/src/App.java"], spotless);
       expect(result.fixes).toEqual([
         { tool: "gradlew", dir: "app/", args: ["spotlessApply", "--console=plain", "-q"] },
