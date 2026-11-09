@@ -166,6 +166,9 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 - 與預設相同的項目省略。
 - 比預設寬鬆的項目帶上 `TODO` 理由，要填寫之後才算通過。
 - `draft --ignore <路徑或 glob>`（可重複）：符合的檔案不用來推斷元件，清單原樣寫進草稿的 `ignore`。
+- 元件依標記檔推斷：每個程式檔歸屬往上最近、含有該語言標記檔（`pyproject.toml`、`go.mod`、`package.json`、`pom.xml` 等）的目錄。下列檔案不成為元件，而是寫進草稿的 `ignore`（排在 `--ignore` 的項目之後），每項上方加一行註解說明原因（#89）：
+  - `go.mod` 所在目錄或上層有 `go.work`，但這個目錄不在最近的 `go.work` 的 `use` 清單中（單行與 `use ( ... )` 區塊都支援）：寫入該目錄，註解「不在 go.work 的 use 清單中」。golangci-lint 在 workspace 模式下無法檢查這種模組。與 `go` 相同，`go.work` 不論是否被 git 忽略、即使在 repo 根目錄之上都算。例外：repo 根目錄的模組（`ignore` 無法只排除它），以及底下有 `use` 清單中模組的目錄，照舊是元件。沒有 `go.work` 的 repo，每個 `go.mod` 照舊是一個元件。
+  - 往上找不到該語言標記檔的零星程式檔，且 repo 至少有一個有標記檔的元件時：寫入該檔案（同一目錄、同副檔名有多個時寫成 `<目錄>/*.<副檔名>`），註解「沒有 <語言> 的標記檔，未建立元件；若要檢查，請補上標記檔並新增元件」。整個 repo 都沒有標記檔時（例如純腳本 repo），這些檔案照舊成為 repo 根目錄的元件。
 
 可直接移植的參考實作（`Std` 模組中的 `resolve`、`lookup`、`draftFromDetected`、`checkToolConfigs`）：[prototypes/07-project-declaration.prototype.html](.scratch/coding-standards-guard/prototypes/07-project-declaration.prototype.html)
 
@@ -253,7 +256,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 
 ---
 
-## 6. 各語言的預設標準（`team@1.0.0` 草案，及 `team@1.1.0`～`team@1.3.0`、`legacy@1.0.0`）
+## 6. 各語言的預設標準（`team@1.0.0` 草案，及 `team@1.1.0`～`team@1.4.0`、`legacy@1.0.0`）
 
 本節的表格是 `team@1.0.0`。`team@1.1.0`（minor，§5.5）沿用 `team@1.0.0` 的所有項目，只有以下差異：
 
@@ -274,7 +277,11 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 - 所有 `mirrors.*`（§10）。
 - 各語言的 `deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`，以及 Go 的 `tools.govulncheck`（§5.3）。
 
-`devguard draft` 寫入、`doctor` 建議升級到的都是 CLI 內建的最新 `team` 版本（目前是 `team@1.3.0`）。既有專案可以改宣告基線標準 `legacy@1.0.0`（§6.5）。
+`team@1.4.0`（minor，§5.5）沿用 `team@1.3.0` 的所有項目，只有以下差異（#113）：
+
+- Python 的 `tools.mypy` 改為 `>=1.18,<3`，同時允許 mypy 1.x 與 2.x。2026-11-08 查證 PyPI：1.x 的最後一版是 1.20.2（2026-04-21），2.0.0 於 2026-05-06 發佈，目前最新是 2.4.1（2026-10-28），2.0 之後 1.x 沒有修補版。下限維持，與 `team@1.1.0` 對已停止發佈的版本線的處理一致。
+
+`devguard draft` 寫入、`doctor` 建議升級到的都是 CLI 內建的最新 `team` 版本（目前是 `team@1.4.0`）。既有專案可以改宣告基線標準 `legacy@1.0.0`（§6.5）。
 
 ### 6.1 Python
 
@@ -299,7 +306,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | 項目 | 預設值 | 落地方式 |
 |---|---|---|
 | `go.minVersion` | 1.26（`go.mod` 較高時以專案為準） | `go.mod` |
-| `lint.tool` | golangci-lint v2，**≥2.12** | golangci-lint 採用的設定檔（`version: "2"`）：從元件目錄往上到 repo 根目錄，最近一層有設定檔的目錄，同層依 `.golangci.json` > `.golangci.toml` > `.golangci.yaml` > `.golangci.yml` 取第一份。檢查與修正都針對這一份並沿用它的格式；同層有多份時提示其他的會被忽略；整條路徑都沒有時才建立 `.golangci.yml` |
+| `lint.tool` | golangci-lint v2，**≥2.12** | golangci-lint 採用的設定檔（`version: "2"`）：從元件目錄往上到 repo 根目錄，最近一層有設定檔的目錄，同層依 `.golangci.json` > `.golangci.toml` > `.golangci.yaml` > `.golangci.yml` 取第一份。檢查與修正都針對這一份並沿用它的格式；同層有多份時提示其他的會被忽略；整條路徑都沒有時才建立 `.golangci.yml`。不是 v2 格式時只回報 `settings/golangci-version`（先 `golangci-lint migrate` 再重新 check），不檢查其他設定、不修正（#86） |
 | `lint.rules` | v2 預設組加上 `gosec, revive, errorlint, bodyclose, misspell, cyclop, gocognit, gomodguard_v2, depguard` | `linters.enable`；depguard 一定要寫明確規則 |
 | `format.tools` | gofumpt + goimports（風格） | golangci-lint formatters；gopls `formatting.gofumpt` |
 | `complexity.cyclomatic` / `cognitive` | 10 / 15 | `cyclop.max-complexity`（預設 10）/ `gocognit.min-complexity`，**必須明確設為 15**（預設 30） |
@@ -331,7 +338,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | 項目 | 預設值 | 落地方式 |
 |---|---|---|
 | `java.minVersion` | 17（新專案建議 21 以上） | `maven.compiler.release` / Gradle toolchain |
-| `build.tool` | Maven 或 Gradle，必須提交 wrapper | CLI 一律透過 wrapper 呼叫 |
+| `build.tool` | Maven 或 Gradle，必須提交 wrapper | CLI 一律透過 wrapper 呼叫，只執行該建置工具的 wrapper（`mvnw` 或 `gradlew`，元件目錄或上層），不會改用另一種。建置工具的判斷（設定、程式碼、測試、依賴各層共用）：宣告的 `build.tool` 優先；沒有宣告時，只有 `pom.xml` 是 maven，只有 Gradle 建置檔（`build.gradle(.kts)`、`settings.gradle(.kts)`）是 gradle；兩者都有時依提交的 wrapper，只有 `gradlew` 是 gradle，其餘（只有 `mvnw`、兩者都有或都沒有）是 maven |
 | `format.tool` | Spotless 搭配 palantir-java-format（4 空白、120 欄，風格） | `spotless:check` / `spotless:apply` |
 | `lint.tool` / `lint.rules` | Checkstyle（以 `google_checks.xml` 為基礎，移除與 palantir 衝突的格式類規則）+ PMD quickstart | `checkstyle.xml`、PMD ruleset（由 CLI 產生）。內建設定**不含**複雜度與 import 規則，產生時必須自行加入：Checkstyle 的 `IllegalImport`、`CyclomaticComplexity`（max 10），以及 PMD 的 `CognitiveComplexity`（reportLevel 15）。PMD quickstart 中的複雜度規則預設是註解掉的。 |
 | `complexity.cyclomatic` / `cognitive` | 10 / 15 | Checkstyle / PMD |
@@ -488,7 +495,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 | 比對項目 | 不一致時 |
 |---|---|
-| 專案鎖定的工具版本是否落在預設標準的範圍內 | 錯誤 |
+| 專案鎖定的工具版本是否落在預設標準的範圍內。Python 的型別檢查器只檢查元件宣告的 `typecheck.tool` 那一個（#113，所有標準版本）：宣告 basedpyright 的專案即使 lockfile 中有 mypy，也不檢查 mypy 的範圍 | 錯誤 |
 | VS Code 是否使用專案的工具（Ruff 與 mypy 的 `fromEnvironment`、直譯器、`js/ts.tsdk.path`；舊的 `typescript.tsdk` 也接受） | 錯誤，可用 `fix` 修正 |
 | Checkstyle 擴充套件的版本與設定檔路徑，是否和建置設定相同 | 錯誤，可用 `fix` 修正 |
 | `.claude/` 與 `.vscode/` 中由 CLI 產生或管理的內容，是否和目前的標準相符 | 錯誤，可用 `fix` 修正 |
@@ -514,7 +521,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 | 類別 | 範例 | 做法 |
 |---|---|---|
 | CLI 全權產生 | `checkstyle.xml`、PMD ruleset、`.claude/rules/*`、`/standards-doctor` skill、git hook | 整份重新產生，檔頭標示「由 CLI 產生」。例外：檔案已存在、非空白、且沒有「由 CLI 產生」檔頭時，表示不是 devguard 產生的，一律不覆寫（`--yes` 也一樣），只印出要加入的內容：Checkstyle 設定與 PMD ruleset 印出缺少或要換掉的 module / rule，其餘印出完整的產生內容；`check` 也只提示手動修正。git hook 由 `install` / `fix` 以 hook 自己的標記判斷（§7.4） |
-| 結構化的共用檔 | `pyproject.toml` 的 `[tool.*]`、golangci 設定檔（`.golangci.json` / `.toml` / `.yaml` / `.yml`）、`tsconfig.json`、`.prettierrc`、`.npmrc`（只有帳密引用，不寫 `registry=`）、`.vscode/*`、`.claude/settings.json` | 只修改 CLI 管理的 key，並保留註解與順序（YAML 用 `yaml`，JSONC 用 `jsonc-parser`，TOML 用 `@decimalturn/toml-patch`；`@shopify/toml-patch` 需要在執行時載入 wasm，可能無法打包進 Bun exe）。TOML 的修改結果無法解析時不寫入該檔，改為印出要套用的修改 |
+| 結構化的共用檔 | `pyproject.toml` 的 `[tool.*]`、golangci 設定檔（`.golangci.json` / `.toml` / `.yaml` / `.yml`）、`tsconfig.json`、`.prettierrc`、`.npmrc`（只有帳密引用，不寫 `registry=`）、`.vscode/*`、`.claude/settings.json` | 只修改 CLI 管理的 key，並保留註解與順序（YAML 用 `yaml`，JSONC 用 `jsonc-parser`，TOML 用 `@decimalturn/toml-patch`；`@shopify/toml-patch` 需要在執行時載入 wasm，可能無法打包進 Bun exe）。YAML（golangci 設定檔，以及 `install` 寫入的 `.pre-commit-config.yaml`、lefthook 設定）中修改沒有碰到的行逐字保留：flow collection 的寫法（`[a]` 或 `[ a ]`）、行尾註解前的對齊空白、引號都不變；新增或修改的 flow collection 不加內側空白（#87）。TOML 的修改結果無法解析時不寫入該檔，改為印出要套用的修改 |
 | 建置檔與程式碼形式的設定檔 | `pom.xml`、`build.gradle`、`settings.gradle`、`vitest.config.ts`、`eslint.config.js` | 不自動修改，只印出要套用的片段或 diff |
 
 ### 9.3 互動方式

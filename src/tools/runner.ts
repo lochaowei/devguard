@@ -1,6 +1,7 @@
 import { pathToolHint } from "../distribution.ts";
 import { existsSync } from "node:fs";
 import { posix, win32 } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import type { Language } from "../standard/types.ts";
 import { nodeExec, type Command, type EnvVars, type Exec } from "../process/exec.ts";
 import { goEnv } from "./go-env.ts";
@@ -14,7 +15,7 @@ export interface ToolRequest {
   /**
    * Tool name, e.g. "ruff", "eslint", "golangci-lint". For Go, a `tool` path from go.mod or its last segment,
    * or "go" itself (e.g. `go mod tidy -diff`).
-   * Ignored for Java, which always runs the project's build wrapper (pass the plugin goal in `args`).
+   * For Java, the build wrapper to run, "mvnw" or "gradlew" (pass the plugin goal or task in `args`).
    */
   tool: string;
   /** Component directory, normalized ("" for the repo root, otherwise ending in "/"). The tool runs there. */
@@ -59,6 +60,23 @@ export interface ToolResult {
   code: number;
   stdout: string;
   stderr: string;
+}
+
+/**
+ * The lines of a tool's output fit for a finding message (#128): colour and other terminal control sequences
+ * removed (Vitest colours even when not writing to a terminal), and lines left blank dropped.
+ */
+export function toolOutputLines(text: string): string[] {
+  return stripVTControlCharacters(text)
+    .trim()
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== "");
+}
+
+/** The lines of what a failed tool said: its stderr, or its stdout when stderr has nothing to show. */
+export function toolErrorLines(result: ToolResult): string[] {
+  const stderr = toolOutputLines(result.stderr);
+  return stderr.length > 0 ? stderr : toolOutputLines(result.stdout);
 }
 
 /** A command of the component's package manager (uv, npm, go), e.g. `devguard standard upgrade --apply`. */
@@ -287,15 +305,24 @@ function go(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
   return { ok: true, command: { file: "go", args: ["tool", req.tool, ...args], cwd, env: offline } };
 }
 
+/** The Java build wrappers by `ToolRequest.tool`: the script per platform, and how to add a missing one. */
+const JAVA_WRAPPERS: Readonly<Record<string, { label: string; windows: string; posix: string; install: string }>> = {
+  mvnw: { label: "Maven", windows: "mvnw.cmd", posix: "mvnw", install: "mvn -N wrapper:wrapper" },
+  gradlew: { label: "Gradle", windows: "gradlew.bat", posix: "gradlew", install: "gradle wrapper" },
+};
+
+/** Only the wrapper asked for: Maven arguments must never reach gradlew, nor Gradle tasks mvnw (#96). */
 function java(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
   const cwd = dirs[0] ?? "";
-  const wrappers = env.windows ? ["mvnw.cmd", "gradlew.bat"] : ["mvnw", "gradlew"];
-  const wrapper = dirs.flatMap((d) => wrappers.map((w) => env.path.join(d, w))).find((w) => env.exists(w));
+  const kind = JAVA_WRAPPERS[req.tool];
+  if (!kind) throw new Error(`Java 工具必須是 mvnw 或 gradlew：${req.tool}`);
+  const name = env.windows ? kind.windows : kind.posix;
+  const wrapper = dirs.map((d) => env.path.join(d, name)).find((w) => env.exists(w));
   if (!wrapper) {
     return {
       ok: false,
-      message: `找不到 ${req.tool}：沒有 Maven 或 Gradle wrapper（mvnw / gradlew）`,
-      install: inDir(req.dir, "mvn -N wrapper:wrapper"),
+      message: `找不到 ${req.tool}：沒有 ${kind.label} wrapper（${kind.posix} / ${kind.windows}）`,
+      install: inDir(req.dir, kind.install),
     };
   }
   return { ok: true, command: { file: wrapper, args: [...(req.args ?? [])], cwd } };

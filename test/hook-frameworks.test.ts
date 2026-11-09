@@ -138,6 +138,21 @@ describe("install into an existing hook framework (SPEC §7.4)", () => {
     });
   });
 
+  it("pre-commit: leaves other hooks' quotes and flow sequences as written (#87)", async () => {
+    const hooks = [
+      "      - id: ruff",
+      '        args: ["--fix"]',
+      "      - id: ruff-format",
+      "        args: [--check]",
+      "        types: [python]",
+      '        additional_dependencies: ["pyright@1.1.413"]',
+    ];
+    const config = `${PRE_COMMIT_CONFIG.replace("      - id: ruff\n", "")}${hooks.join("\n")}\n`;
+    const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": config });
+    expect(await runInstall({ cwd: dir, today: TODAY, io: io() })).toBe(0);
+    expect(read(dir, ".pre-commit-config.yaml")).toContain(hooks.join("\n"));
+  });
+
   it("pre-commit: running install again injects nothing more", async () => {
     const dir = repo({ ".devguard.yaml": DECL, ".pre-commit-config.yaml": PRE_COMMIT_CONFIG });
     await runInstall({ cwd: dir, today: TODAY, io: io() });

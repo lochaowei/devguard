@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { editConfigText, parseConfigText } from "../src/fix/edit.ts";
 
@@ -179,6 +181,67 @@ describe("editConfigText: JSONC", () => {
     expect(edit()).toContain('"recommendations": [\n');
   });
 
+  describe("appending after a last property with a trailing comment (#121)", () => {
+    const add = (text: string) =>
+      editConfigText("tsconfig.json", text, [
+        { op: "set", path: ["compilerOptions", "noImplicitOverride"], value: true },
+        { op: "set", path: ["compilerOptions", "noFallthroughCasesInSwitch"], value: true },
+      ]);
+
+    it("keeps the last line of a tsc --init tsconfig (elysia), comment and alignment, and adds below it", () => {
+      const text = readFileSync(join(import.meta.dirname, "fixtures/typescript/elysia-tsconfig.json"), "utf8");
+      const out = add(text);
+      expect(out).toContain(
+        '    "skipLibCheck": true,                                 /* Skip type checking all .d.ts files. */\n' +
+          '    "noImplicitOverride": true,\n    "noFallthroughCasesInSwitch": true,\n  },\n',
+      );
+      expect(out.replace(/ {4}"no(ImplicitOverride|FallthroughCasesInSwitch)": true,\n/g, "")).toBe(text);
+      expect(parseConfigText("tsconfig.json", out)).toMatchObject({
+        compilerOptions: { skipLibCheck: true, noImplicitOverride: true, noFallthroughCasesInSwitch: true },
+      });
+    });
+
+    it("keeps a // comment on the last line", () => {
+      const out = add('{\n  "compilerOptions": {\n    "strict": true, // the team default\n  }\n}\n');
+      expect(out).toBe(
+        '{\n  "compilerOptions": {\n    "strict": true, // the team default\n' +
+          '    "noImplicitOverride": true,\n    "noFallthroughCasesInSwitch": true,\n  }\n}\n',
+      );
+    });
+
+    it("puts the missing comma after the value and before the comment", () => {
+      const out = add('{\n  "compilerOptions": {\n    "strict": true /* on */ // really\n  }\n}\n');
+      expect(out).toBe(
+        '{\n  "compilerOptions": {\n    "strict": true, /* on */ // really\n' +
+          '    "noImplicitOverride": true,\n    "noFallthroughCasesInSwitch": true\n  }\n}\n',
+      );
+    });
+
+    it("adds right after the last property, before comment lines that follow it", () => {
+      const out = add('{\n  "compilerOptions": {\n    "strict": true // on\n    // "noEmit": true\n  }\n}\n');
+      expect(out).toBe(
+        '{\n  "compilerOptions": {\n    "strict": true, // on\n    "noImplicitOverride": true,\n' +
+          '    "noFallthroughCasesInSwitch": true\n    // "noEmit": true\n  }\n}\n',
+      );
+    });
+
+    it("does the same in a CRLF file", () => {
+      const out = add('{\r\n  "compilerOptions": {\r\n    "strict": true, // on\r\n  }\r\n}\r\n');
+      expect(out).toBe(
+        '{\r\n  "compilerOptions": {\r\n    "strict": true, // on\r\n    "noImplicitOverride": true,\r\n' +
+          '    "noFallthroughCasesInSwitch": true,\r\n  }\r\n}\r\n',
+      );
+    });
+
+    it("writes a last property without a comment as before", () => {
+      const out = add('{\n  "compilerOptions": {\n    "strict": true\n  }\n}\n');
+      expect(out).toBe(
+        '{\n  "compilerOptions": {\n    "strict": true,\n    "noImplicitOverride": true,\n' +
+          '    "noFallthroughCasesInSwitch": true\n  }\n}\n',
+      );
+    });
+  });
+
   it("leaves arrays already in the file as they are", () => {
     const text = '{\n  "a": [\n    1\n  ]\n}\n';
     expect(editConfigText("x.json", text, [{ op: "set", path: ["b"], value: true }])).toContain('"a": [\n    1\n  ]');
@@ -195,9 +258,107 @@ describe("editConfigText: YAML", () => {
     ]);
     expect(out).toContain("# golangci config");
     expect(out).toContain("# security first");
-    expect(out).toContain("enable: [ gosec, cyclop ]");
+    expect(out).toContain("enable: [gosec, cyclop] # security first");
     expect(out).toContain("disable: []");
     expect(out).toMatch(/cyclop:\n\s+max-complexity: 10/);
+  });
+
+  describe("keeps the lines an edit does not touch byte for byte (#87)", () => {
+    const GOLANGCI = [
+      'version: "2"',
+      "linters:",
+      "  disable:",
+      "    - lll         # too noisy",
+      "    - wsl         # style",
+      "  exclusions:",
+      "    rules:",
+      "      - linters: [revive]",
+      "        path: _test\\.go",
+      "",
+    ].join("\n");
+    const addGosec = [{ op: "add" as const, path: ["linters", "enable"], value: "gosec" }];
+    /** The output's lines with the original's removed in order; fails if an original line is missing or changed. */
+    const added = (original: string, out: string) => {
+      const lines = out.split("\n");
+      const extra: string[] = [];
+      let i = 0;
+      for (const line of original.split("\n")) {
+        while (i < lines.length && lines[i] !== line) extra.push(lines[i++] ?? "");
+        expect(i, `kept: ${line}`).toBeLessThan(lines.length);
+        i++;
+      }
+      return [...extra, ...lines.slice(i)];
+    };
+
+    it("keeps comment alignment and unpadded flow sequences, adding only the new lines", () => {
+      const out = editConfigText(".golangci.yml", GOLANGCI, addGosec);
+      expect(added(GOLANGCI, out)).toEqual(["  enable:", "    - gosec"]);
+      expect(parseConfigText(".golangci.yml", out)).toEqual({
+        version: "2",
+        linters: {
+          disable: ["lll", "wsl"],
+          exclusions: { rules: [{ linters: ["revive"], path: "_test\\.go" }] },
+          enable: ["gosec"],
+        },
+      });
+    });
+
+    it("keeps a padded flow sequence padded", () => {
+      const padded = GOLANGCI.replace("[revive]", "[ revive ]");
+      expect(added(padded, editConfigText(".golangci.yml", padded, addGosec))).toEqual(["  enable:", "    - gosec"]);
+    });
+
+    it("keeps quotes and flow sequences in .pre-commit-config.yaml hooks it does not touch", () => {
+      const config = [
+        "repos:",
+        "  - repo: https://github.com/astral-sh/ruff-pre-commit",
+        "    rev: v0.6.0",
+        "    hooks:",
+        "      - id: ruff",
+        '        args: ["--fix"]',
+        "      - id: ruff-format",
+        "        args: [--check]",
+        "        types: [python]",
+        '        additional_dependencies: ["pyright@1.1.413"]',
+        "",
+      ].join("\n");
+      const local = { repo: "local", hooks: [{ id: "devguard", entry: "devguard hook git-pre-commit" }] };
+      const out = editConfigText(".pre-commit-config.yaml", config, [{ op: "add", path: ["repos"], value: local }]);
+      expect(added(config, out).length).toBeGreaterThan(0);
+      const padded = config.replace("[--check]", "[ --check, --diff ]");
+      const again = editConfigText(".pre-commit-config.yaml", padded, [{ op: "add", path: ["repos"], value: local }]);
+      expect(again).toContain("        args: [ --check, --diff ]\n");
+    });
+
+    it("keeps lefthook.yml lines the same way", () => {
+      const lefthook =
+        'pre-commit:\n  parallel: true   # speed\n  jobs:\n    - run: ruff check {staged_files}\n      glob: ["*.py"]\n';
+      const out = editConfigText("lefthook.yml", lefthook, [
+        { op: "add", path: ["pre-commit", "jobs"], value: { name: "devguard", run: "devguard hook git-pre-commit" } },
+      ]);
+      expect(added(lefthook, out)).toEqual(["    - name: devguard", "      run: devguard hook git-pre-commit"]);
+    });
+
+    it("writes LF for a CRLF original, keeping its lines", () => {
+      const crlf = GOLANGCI.replace(/\n/g, "\r\n");
+      const out = editConfigText(".golangci.yml", crlf, addGosec);
+      expect(added(crlf, out.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n")).length).toBe(2);
+    });
+  });
+
+  it("does not put back a line whose edit changed only whitespace in a value", () => {
+    const text = "name: a  b # two spaces\nlevel: 1     # aligned\n";
+    const out = editConfigText("x.yml", text, [{ op: "set", path: ["name"], value: "a b" }]);
+    expect(parseConfigText("x.yml", out)).toEqual({ name: "a b", level: 1 });
+    expect(out).toContain("level: 1     # aligned\n");
+  });
+
+  it("does not put back a line where it would no longer parse", () => {
+    const out = editConfigText("x.yml", "a:\n- x\nb: 1\n", [
+      { op: "delete", path: ["a"] },
+      { op: "set", path: ["b"], value: { c: ["x"] } },
+    ]);
+    expect(parseConfigText("x.yml", out)).toEqual({ b: { c: ["x"] } });
   });
 
   it("treats a .prettierrc that is not JSON as YAML", () => {

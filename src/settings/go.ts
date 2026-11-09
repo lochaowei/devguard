@@ -324,13 +324,16 @@ function checkGolangci(r: GoReport, file: string, text: string): void {
     return;
   }
   const config = parsed.config;
+  // A v1 config means other things by the same keys (`enable-all`, `linters-settings`), and v2 repairs written into
+  // it give a mix golangci-lint cannot load (#86): report the version alone, like a syntax error.
   if (String(config.get("version")) !== "2") {
     r.add(
       "error",
       "settings/golangci-version",
-      `${config.name} 必須是 golangci-lint v2 格式（version: "2"）`,
-      config.at(["version"], "golangci-lint migrate"),
+      `${config.name} 必須是 golangci-lint v2 格式（version: "2"）；轉換之前不檢查其他設定`,
+      config.at(["version"], "golangci-lint migrate，再重新執行 devguard check"),
     );
+    return;
   }
   checkLinters(r, config);
   checkThresholds(r, config);

@@ -6,7 +6,7 @@ import {
   type CodeChecker,
   type CodeTarget,
 } from "../code/types.ts";
-import type { ResolvedComponent } from "../declaration/resolve.ts";
+import { overriddenKeys, type ResolvedComponent } from "../declaration/resolve.ts";
 import type { Finding } from "../report/finding.ts";
 import { findOwner } from "../declaration/lookup.ts";
 import { assignFiles, type OwnedFile } from "../repo/files.ts";
@@ -83,6 +83,7 @@ function toTarget(group: Group, scope: CheckScope, standard: Standard): CodeTarg
     dir: group.dir,
     language: group.language,
     effective: effectiveValues(group, standard),
+    ...(group.owner.kind === "component" ? { overrides: overriddenKeys(group.owner.component.effective) } : {}),
     ...(listFiles ? { files: relative([...group.files, ...(group.nonSource ?? [])]) } : {}),
     categories: new Set(categories),
   };

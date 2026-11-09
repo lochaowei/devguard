@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { valueInForce, type ResolvedComponent } from "../declaration/resolve.ts";
+import { overriddenKeys, valueInForce, type ResolvedComponent } from "../declaration/resolve.ts";
 import type { Finding } from "../report/finding.ts";
 import { assignFiles } from "../repo/files.ts";
 import type { Standard } from "../standard/types.ts";
@@ -23,6 +23,7 @@ function toTarget(standard: Standard, component: ResolvedComponent): TestTarget 
     dir: component.dir,
     language: component.language,
     effective: Object.fromEntries(Object.entries(component.effective).map(([k, item]) => [k, item.value])),
+    overrides: overriddenKeys(component.effective),
     ...thresholdInForce(standard, component),
   };
 }

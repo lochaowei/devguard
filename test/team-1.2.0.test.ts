@@ -32,7 +32,7 @@ describe("doctor and draft move past team@1.2.0 to the newest team (#68, #64)", 
     const dir = repo({ ".devguard.yaml": "standard: team@1.1.0\ncomponents: []\n" });
     const { findings } = await runDoctor({ cwd: dir, today: TODAY, checks: [createStandardUpgradeCheck()] });
     expect(findings).toContainEqual(
-      expect.objectContaining({ rule: "standard/upgrade-available", fix: "devguard standard upgrade team@1.3.0" }),
+      expect.objectContaining({ rule: "standard/upgrade-available", fix: "devguard standard upgrade team@1.4.0" }),
     );
   });
 
@@ -42,7 +42,7 @@ describe("doctor and draft move past team@1.2.0 to the newest team (#68, #64)", 
       "app.py": "",
     };
     const { text } = await draftDeclaration({ cwd: repo(files), today: TODAY, files: Object.keys(files) });
-    expect(text).toContain("standard: team@1.3.0");
+    expect(text).toContain("standard: team@1.4.0");
     expect(text).toContain("typecheck.tool: basedpyright");
   });
 

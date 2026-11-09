@@ -23,7 +23,7 @@ export const javaSettingsLayer: CheckLayer = {
     for (const component of components) {
       const t: JavaTarget = { component, defs, files, read };
       findings.push(
-        ...checkWrapper(t),
+        ...(await checkWrapper(t)),
         ...(await checkJavaVersion(t)),
         ...(await checkCheckstyle(t)),
         ...(await checkPmd(t)),

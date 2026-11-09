@@ -41,6 +41,7 @@ ignore:                         # 選填：排除的目錄、檔案或 glob
    - 依副檔名推定語言，直接套用該語言的**預設標準**（不含任何元件覆寫）。
    - `check` 會發出 `declaration/uncovered-files` **提示（hint）**，建議在 `.devguard.yaml` 的 `components` 中補上對應元件。
    - 範例、第三方嵌入的原始碼、自動產生的檔案等不該套用標準的檔案，改寫進 `ignore`（見下節）。
+   - 從 `components` 刪掉一個元件**不等於排除它的檔案**：這些檔案變成未涵蓋檔案，仍依預設標準檢查，例如仍需要 ruff，找不到時 `check` 以 exit 2 中止。要讓 devguard 完全不看這些檔案，請寫進 `ignore`。
 
 ---
 
@@ -120,6 +121,7 @@ devguard draft [--cwd <dir>] [--ignore <路徑或 glob>]…
    - **TypeScript**：`package.json`、`tsconfig.json`
    - **Java**：`pom.xml`、`build.gradle`、`build.gradle.kts`、`settings.gradle`、`settings.gradle.kts`（Java 多模組建置會合併歸屬於最外層的建置檔目錄）
    - 符合 `--ignore` 的檔案不參與偵測，清單原樣寫進草稿的 `ignore`。
+   - 不在 `go.work` 的 `use` 清單中的 Go 模組，以及往上找不到標記檔的零星程式檔（repo 有其他有標記檔的元件時），不建立元件，改寫進草稿的 `ignore` 並附註解；詳見 [`draft`](Command-draft.md)。
 2. **推導覆寫（`overrides`）**：對每個偵測到的元件執行設定檢查層，讀取既有工具設定檔中的實際值（`observed`）：
    - 與預設標準相同的值：省略不寫。
    - 比預設嚴格、允許的替代工具、風格項目：直接寫入值。
