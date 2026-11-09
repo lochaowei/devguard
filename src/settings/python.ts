@@ -155,7 +155,10 @@ const RUFF: KeyPath = ["tool", "ruff"];
 /** Ruff's selected rule groups, where `fix` adds to them, and the groups the declaration asks for. */
 interface RuffRules {
   select: string[];
-  addAll(values: string[]): Repair[];
+  /** Whether a select array is written in the file, and where. */
+  hasSelect: boolean;
+  selectPath: KeyPath;
+  addAll(values: string[], path?: KeyPath): Repair[];
   groups: string[];
 }
 
@@ -168,10 +171,25 @@ function checkExtendSelect(r: Report, ruff: Table, lint: Table, prefix: KeyPath,
   if (places.length === 0) return false;
   const extended = places.flatMap((p) => p.table["extend-select"]).filter((v) => typeof v === "string");
   const merged = [...rules.select, ...extended];
-  const repairs: Repair[] = [
-    ...places.map((p): Repair => ({ op: "delete", file: r.file, path: p.path })),
-    ...rules.addAll([...extended, ...rules.groups.filter((g) => !merged.some((s) => covers(s, g)))]),
-  ];
+  const missing = rules.groups.filter((g) => !merged.some((s) => covers(s, g)));
+  const [only] = places;
+  // Written in place so the array keeps its layout and comments (#111): renamed to select when there is none yet,
+  // else its items move into the existing select.
+  let repairs: Repair[];
+  if (rules.hasSelect) {
+    repairs = [
+      ...places.map((p): Repair => ({ op: "move", file: r.file, path: p.path, into: rules.selectPath })),
+      ...rules.addAll(missing),
+    ];
+  } else if (only && places.length === 1) {
+    const to = [...only.path.slice(0, -1), "select"];
+    repairs = [{ op: "rename", file: r.file, path: only.path, to: "select" }, ...rules.addAll(missing, to)];
+  } else {
+    repairs = [
+      ...places.map((p): Repair => ({ op: "delete", file: r.file, path: p.path })),
+      ...rules.addAll([...extended, ...missing]),
+    ];
+  }
   r.fixable(
     "ruff-extend-select",
     "Ruff 使用了 extend-select：請改用 lint.select 寫出完整規則組（Ruff 的預設規則會隨版本變動）",
@@ -187,9 +205,10 @@ function checkRuffRules(r: Report, ruff: Table, lint: Table, prefix: KeyPath): v
   const select = isStringArray(raw) ? raw : [];
   const declared = r.want("lint.rules");
   const groups = isStringArray(declared) ? declared : [];
-  const addAll = (values: string[]): Repair[] =>
-    values.map((value) => ({ op: "add", file: r.file, path: selectPath, value }));
-  const extended = checkExtendSelect(r, ruff, lint, prefix, { select, addAll, groups });
+  const addAll = (values: string[], path: KeyPath = selectPath): Repair[] =>
+    values.map((value) => ({ op: "add", file: r.file, path, value }));
+  const hasSelect = isStringArray(raw);
+  const extended = checkExtendSelect(r, ruff, lint, prefix, { select, hasSelect, selectPath, addAll, groups });
   if (raw === undefined && extended) return;
   const missing = groups.filter((g) => !select.some((s) => covers(s, g)));
   if (missing.length > 0) {

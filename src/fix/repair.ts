@@ -15,6 +15,10 @@ export type KeyEdit =
   | { op: "add"; path: KeyPath; value: unknown; layout?: Layout }
   /** Removes `value` from the array at `path`. */
   | { op: "remove"; path: KeyPath; value: unknown }
+  /** TOML only: renames the last key of `path` to `to` where it is written, keeping its value, layout and comments. */
+  | { op: "rename"; path: KeyPath; to: string }
+  /** TOML only: appends the items of the array at `path`, with their comments, to the array at `into`, and deletes `path`. */
+  | { op: "move"; path: KeyPath; into: KeyPath }
   /** Line-based files (.gitattributes, .gitignore): makes sure the line is present. */
   | { op: "line"; value: string };
 
