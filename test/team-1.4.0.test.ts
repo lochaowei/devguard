@@ -70,6 +70,19 @@ describe("only the declared type checker's range is checked, in every standard (
     expect(await versionFindings(python("team@1.3.0"), lock)).toEqual([]);
   });
 
+  it("skips mypy's range on legacy@1.0.0 too when the component declares pyright", async () => {
+    const declaration = python("legacy@1.0.0", "      typecheck.tool: pyright\n");
+    expect(await versionFindings(declaration, uvLock({ mypy: "2.4.0" }))).toEqual([]);
+  });
+
+  it("standard upgrade proposes no mypy change for a component that declares basedpyright", async () => {
+    const declaration = python("team@1.2.0", "      typecheck.tool: basedpyright\n");
+    const dir = repo({ ".devguard.yaml": declaration, "uv.lock": uvLock({ mypy: "2.1.0" }) });
+    const { out } = await upgrade(dir, { target: "team@1.3.0" });
+    expect(out).toContain("team@1.2.0 → team@1.3.0");
+    expect(out).not.toContain("mypy 2.1.0");
+  });
+
   it("still checks the declared checker's range", async () => {
     const declaration = python("team@1.3.0", "      typecheck.tool: basedpyright\n");
     expect(await versionFindings(declaration, uvLock({ basedpyright: "1.0.0" }))).toEqual([

@@ -9,7 +9,7 @@ import { preCommitRevHints } from "../versions/pre-commit-revs.ts";
 import { inRange } from "../versions/range.ts";
 import type { CheckLayer } from "./types.ts";
 import { repoReaderSync } from "../shared/fs.ts";
-import { TYPE_CHECKERS } from "../settings/type-checkers.ts";
+import { rangeApplies } from "../settings/type-checkers.ts";
 
 /** The version range a component is held to (`valueInForce`), as text. */
 export function rangeInForce(item: ItemDef, effective: EffectiveItem | undefined): string {
@@ -22,18 +22,10 @@ interface RangeItem {
   item: ItemDef;
 }
 
-const TYPE_CHECKER_ITEMS: ReadonlySet<string> = new Set(TYPE_CHECKERS.map((tool) => `tools.${tool}`));
-
-/**
- * The component's version-range items. Of the Python type checkers only the declared `typecheck.tool`'s range applies
- * (#113): a project on basedpyright may still lock a mypy the standard's range does not allow.
- */
+/** The component's version-range items, less the type checkers it does not declare (`rangeApplies`, #113). */
 function rangeItems(c: ResolvedComponent, defs: Readonly<Record<string, ItemDef>>): RangeItem[] {
-  const checker = valueInForce(defs["typecheck.tool"]?.value, c.effective["typecheck.tool"]);
-  const declared = typeof checker === "string" ? `tools.${checker}` : undefined;
   return Object.entries(defs)
-    .filter(([, item]) => item.kind === "versionRange")
-    .filter(([key]) => declared === undefined || !TYPE_CHECKER_ITEMS.has(key) || key === declared)
+    .filter(([key, item]) => item.kind === "versionRange" && rangeApplies(key, c, defs))
     .map(([key, item]) => ({ key, item }));
 }
 

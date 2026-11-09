@@ -74,8 +74,8 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 1. **前置環境與安裝專案工具**（Python `>= 3.11`，預設使用 `uv`，亦可於宣告改用 `poetry`）：
    ```bash
    # 初始化虛擬環境並鎖定標準要求的工具版本範圍（寫入 pyproject.toml 與 uv.lock）
-   uv add --dev "ruff>=0.17,<0.18" "mypy>=1.18,<2" "pytest>=8,<10" "pytest-cov>=6,<8"
-   # 若改用 pyright：uv add --dev "pyright>=1.1.400,<1.2"
+   uv add --dev "ruff>=0.17,<1" "mypy>=1.18,<3" "pytest>=8,<10" "pytest-cov>=6,<8"
+   # 若改用 pyright：uv add --dev "pyright>=1.1.400,<2"
    ```
 2. **建立 `.devguard.yaml`**（或執行 `devguard draft`）：
    ```yaml
