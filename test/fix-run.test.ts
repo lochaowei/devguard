@@ -100,6 +100,9 @@ default = true
       "go.mod": "module x\n\ngo 1.26\n",
       "sub/go.mod": "module x\n\ngo 1.26\n",
     });
+    const shared = (await check(dir)).filter((f) => f.file === ".golangci.yml");
+    expect(shared.length).toBeGreaterThan(0);
+    expect(new Set(shared.map((f) => JSON.stringify([f.rule, f.line, f.message]))).size).toBe(shared.length);
     await fixesEverything(dir);
     expect(read(dir, ".golangci.yml").match(/revive/g)).toHaveLength(1);
     expect(existsSync(join(dir, "sub/.golangci.yml"))).toBe(false);

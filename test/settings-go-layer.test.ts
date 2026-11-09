@@ -168,6 +168,19 @@ describe("goSettingsLayer", () => {
       expect(r.findings[0]?.message).toContain("gocritic");
     });
 
+    it("lists a finding only some users report under the shallowest of those, not the file's directory", async () => {
+      const gocritic = `{language: go, overrides: {lint.rules: [${LINTERS}, gocritic]}}`;
+      const cwd = project({
+        ".devguard.yaml": `standard: team@1.0.0\ncomponents:\n  - {path: ./, language: go}\n  - {path: b/c/, ${gocritic.slice(1)}\n  - {path: a/, ${gocritic.slice(1)}\n`,
+        ".golangci.yml": GOLANGCI,
+        "go.mod": GOMOD,
+        "a/go.mod": GOMOD,
+        "b/c/go.mod": GOMOD,
+      });
+      const r = await run(cwd);
+      expect(r.findings).toMatchObject([{ rule: "settings/golangci-linter-missing", component: "a/ (Go)" }]);
+    });
+
     it("still checks each component's own go.mod", async () => {
       const cwd = project({
         ".devguard.yaml": decl("./", "sub/"),
@@ -184,7 +197,8 @@ describe("goSettingsLayer", () => {
         { cwd: carapace(), today: TODAY, scope: { files: ["example-multi/main.go"], full: false } },
         [declarationLayer, goSettingsLayer],
       );
-      expect(rules(r.findings)).toEqual(["error:settings/golangci-linter-missing"]);
+      // Settings layers check every component whatever the scope, so the file's owner is always there to list it.
+      expect(r.findings).toMatchObject([{ rule: "settings/golangci-linter-missing", component: "./ (Go)" }]);
     });
   });
 
