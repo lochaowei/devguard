@@ -1,7 +1,11 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { FIX_LAYERS, runCheck, type CheckLayer, type CheckOptions } from "../check.ts";
 import type { Resolution } from "../declaration/resolve.ts";
 import { planFixHooks } from "../hooks/install.ts";
 import { GITATTRIBUTES, hasEolRule } from "../layers/gitattributes.ts";
+import { PYPROJECT } from "../layers/settings-python.ts";
+import { baseName } from "../repo/paths.ts";
 import type { Exec } from "../process/exec.ts";
 import { crlfWorkingTreeFiles, RECHECKOUT_HINT } from "../repo/eol.ts";
 import { renderText } from "../report/render.ts";
@@ -69,7 +73,23 @@ export async function runFix(options: FixOptions, layers: readonly CheckLayer[] 
     options.io.write(`\n${GITATTRIBUTES} 的換行規則只影響之後 checkout 的檔案，工作目錄裡已經是 CRLF 的檔案不會變。\n`);
     options.io.write(`${RECHECKOUT_HINT}\n`);
   }
+  if (applyOutcome.applied) for (const hint of requirementsImportHints(options.cwd, plan)) options.io.write(hint);
   return hasBlockedWrites(plan) ? 1 : code;
+}
+
+/**
+ * For each pyproject.toml the plan creates next to a requirements.txt: how to import its runtime dependencies (#137).
+ * The new file has only `[tool.*]`, so a uv.lock made from it would lock the dev tools alone. `fix` does not import.
+ */
+function requirementsImportHints(cwd: string, plan: ChangePlan): string[] {
+  return plan.writes.flatMap((w) => {
+    if (w.before !== "" || baseName(w.file) !== PYPROJECT) return [];
+    const dir = w.file.slice(0, -PYPROJECT.length);
+    if (!existsSync(join(cwd, dir, "requirements.txt"))) return [];
+    const command =
+      dir === "" ? "uv add -r requirements.txt" : `cd ${dir.replace(/\/$/, "")} && uv add -r requirements.txt`;
+    return [`\n${dir}requirements.txt 的執行期依賴還沒有匯入：執行 ${command}，把它們加進 ${w.file} 與 uv.lock。\n`];
+  });
 }
 
 /**

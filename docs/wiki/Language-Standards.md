@@ -82,7 +82,7 @@
 | `test.tool` | `"pytest"` | 搭配 `pytest-cov` |
 | `coverage.lines` | `80` | 行覆蓋率與分支覆蓋率**各自**須達 80% |
 | `deps.manager` | `"uv"` | 允許替代：`poetry` |
-| `deps.lockfile` | `true` | 必須提交 `uv.lock`、`poetry.lock` 或每一行皆含 `--hash=` 的 `requirements.txt` |
+| `deps.lockfile` | `true` | 必須提交 `uv.lock`、`poetry.lock` 或每一行皆含 `--hash=` 的 `requirements.txt`。元件目錄的 `requirements.txt` 不帶 hash 而有 lockfile 時，`requirements.txt` 列出的套件（略過註解、空行、`-r`／`-c`／`--index-url` 等選項行、`-e`、URL 與本機路徑；名稱依 PEP 503 正規化：小寫、`_` 與 `.` 換成 `-`）都必須在 lockfile 的 `[[package]]` 中，否則回報錯誤 `deps/requirements-unlocked`，列出缺少的套件（最多 5 個，其餘只計數），修正提示為在元件目錄執行 `uv add -r requirements.txt`（`poetry.lock` 時為 `poetry add <套件…>`）。只比對名稱，不比對版本範圍；只看元件目錄的 `requirements.txt`，不看 `docs/requirements.txt`、`requirements-dev.txt` 等其他檔案（#137） |
 | `deps.banned` | `["pycrypto", "nose"]` | 直接依賴禁用套件 |
 | `deps.bannedApis` | `[]` | 對應 Ruff `TID251` banned-api |
 

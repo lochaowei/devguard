@@ -48,7 +48,8 @@ async function fixesEverything(dir: string): Promise<Finding[]> {
   return after;
 }
 
-const decl = (language: string) => `standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: ${language}\n`;
+const decl = (language: string, path = "./") =>
+  `standard: team@1.0.0\ncomponents:\n  - path: ${path}\n    language: ${language}\n`;
 
 describe("devguard fix --yes: fixable findings disappear (SPEC §9)", () => {
   it("Python: edits pyproject.toml [tool.*] and keeps comments, blank lines and order", async () => {
@@ -80,6 +81,31 @@ default = true
   it("Python: creates pyproject.toml when it is missing", async () => {
     const dir = repo({ ".devguard.yaml": decl("python") });
     await fixesEverything(dir);
+  });
+
+  it("Python: says to import requirements.txt with uv add -r when it creates pyproject.toml, without running it (#137)", async () => {
+    const dir = repo({ ".devguard.yaml": decl("python", "ml/"), "ml/requirements.txt": "regex\ntiktoken\n" });
+    const out: string[] = [];
+    expect(await runFix({ cwd: dir, today: TODAY, io: { ...YES, write: (t) => out.push(t) } })).toBe(0);
+    expect(existsSync(join(dir, "ml/pyproject.toml"))).toBe(true);
+    expect(out.join("")).toContain(
+      "ml/requirements.txt 的執行期依賴還沒有匯入：執行 cd ml && uv add -r requirements.txt，把它們加進 ml/pyproject.toml 與 uv.lock。",
+    );
+    expect(read(dir, "ml/pyproject.toml")).not.toContain("regex");
+    expect(existsSync(join(dir, "ml/uv.lock"))).toBe(false);
+  });
+
+  it("Python: no import hint without requirements.txt, or when pyproject.toml already exists", async () => {
+    const cases: Record<string, string>[] = [
+      {},
+      { "requirements.txt": "regex\n", "pyproject.toml": '[project]\nname = "x"\n' },
+    ];
+    for (const files of cases) {
+      const dir = repo({ ".devguard.yaml": decl("python"), ...files });
+      const out: string[] = [];
+      expect(await runFix({ cwd: dir, today: TODAY, io: { ...YES, write: (t) => out.push(t) } })).toBe(0);
+      expect(out.join("")).not.toContain("uv add -r");
+    }
   });
 
   it("Go: edits .golangci.yml keeping its comments", async () => {
