@@ -53,7 +53,16 @@ describe("go checker: golangci-lint", () => {
         language: "go",
         tool: "golangci-lint",
         dir: "svc/",
-        args: ["run", "--output.json.path=stdout", "--show-stats=false", "--path-mode=abs", "./..."],
+        args: [
+          "run",
+          "--output.json.path=stdout",
+          "--show-stats=false",
+          "--path-mode=abs",
+          "--max-same-issues=0",
+          "--max-issues-per-linter=0",
+          "--allow-serial-runners",
+          "./...",
+        ],
       }),
     ]);
     expect(findings).toEqual([
@@ -84,7 +93,7 @@ describe("go checker: file arguments", () => {
     const { tools, calls } = fakeTools({ code: 1, stdout });
     const files = ["pkg/a.go", "main.go", "pkg/b.go"];
     const findings = await check(target({ categories: only("lint"), files }), tools);
-    expect(calls.map((c) => c.args?.slice(4))).toEqual([["./pkg", "."]]);
+    expect(calls.map((c) => c.args?.slice(7))).toEqual([["./pkg", "."]]);
     expect(findings.map((f) => f.file)).toEqual(["svc/pkg/a.go", "svc/main.go"]);
   });
 

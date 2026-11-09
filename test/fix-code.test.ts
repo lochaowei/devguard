@@ -291,7 +291,15 @@ describe("devguard fix --code (SPEC §9.1, §9.3)", () => {
         {
           tool: "golangci-lint",
           dir: "svc/",
-          args: ["run", "--fix", "--show-stats=false", "./..."],
+          args: [
+            "run",
+            "--fix",
+            "--show-stats=false",
+            "--max-same-issues=0",
+            "--max-issues-per-linter=0",
+            "--allow-serial-runners",
+            "./...",
+          ],
         },
       ]);
       expect(result.code).toBe(0);

@@ -82,6 +82,16 @@ async function formatStaged(target: CodeTarget, ctx: CodeCheckContext, file: str
 }
 
 /**
+ * Flags every `golangci-lint run` gets, whatever the project's config says (flags win over `issues.*` / `run.*`):
+ * - no cap on repeated issues (defaults: 3 identical, 50 per linter), so check sees and `--fix` applies all of them,
+ *   and a file asked for is not dropped because its package hit the cap first (#90);
+ * - wait for another golangci-lint holding the global lock instead of exiting with "parallel golangci-lint is
+ *   running" (#94). Only `run` takes the lock; `fmt` does not (golangci-lint v2.0.0 to v2.15.0, pkg/commands).
+ * All three flags exist from v2.0.0 on (pkg/commands/flagsets.go).
+ */
+const RUN_FLAGS = ["--max-same-issues=0", "--max-issues-per-linter=0", "--allow-serial-runners"];
+
+/**
  * golangci-lint v2 (linters and formatters such as gofumpt / goimports) from PATH
  * (SPEC §5.2, §6.2). One run covers lint, format and type errors; issues are sorted into categories afterwards.
  * Staged files (pre-commit) get their format checked through stdin instead.
@@ -94,7 +104,7 @@ export const goChecker: CodeChecker = {
     const packages = packageDirs(target.files);
     if (packages?.length === 0) return [];
     const request = { language: "go", tool: "golangci-lint", dir: target.dir } as const;
-    const args = ["run", "--output.json.path=stdout", "--show-stats=false", "--path-mode=abs"];
+    const args = ["run", "--output.json.path=stdout", "--show-stats=false", "--path-mode=abs", ...RUN_FLAGS];
     const results = await runBatched(ctx.tools, request, args, packages ?? ["./..."]);
     const findings = results.flatMap((r) => issueFindings(target, ctx, r));
     if (target.files === undefined) return findings;
@@ -114,7 +124,7 @@ export const goChecker: CodeChecker = {
   fixSteps(target) {
     const packages = packageDirs(target.files);
     if (packages?.length === 0) return Promise.resolve([]);
-    const args = ["run", "--fix", "--show-stats=false"];
+    const args = ["run", "--fix", "--show-stats=false", ...RUN_FLAGS];
     return Promise.resolve([{ tool: "golangci-lint", args, files: packages ?? ["./..."], okUpTo: 1 }]);
   },
 };
