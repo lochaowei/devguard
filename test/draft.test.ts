@@ -211,6 +211,47 @@ describe("draftDeclaration: files no component is made for (#89)", () => {
     expect(paths(d)).toEqual([["svc/", "go"]]);
     expect(d.ignore).toEqual(["tools/"]);
   });
+
+  /** remeda: an npm workspaces root holding only tool config files, each package with its own tsconfig (#125). */
+  const remeda = {
+    "package.json": '{ "workspaces": ["packages/*"] }',
+    "lint-staged.config.ts": "",
+    "prettier.config.js": "",
+    "eslint.config.mts": "",
+    "packages/remeda/package.json": "{}",
+    "packages/remeda/tsconfig.json": "{}",
+    "packages/remeda/src/index.ts": "",
+    "packages/remeda/vitest.config.ts": "",
+    "packages/docs/package.json": "{}",
+    "packages/docs/tsconfig.json": "{}",
+    "packages/docs/src/page.tsx": "",
+  };
+
+  it("makes no component of a directory holding only tool config files, and ignores those files (#125)", async () => {
+    const text = await draftText(remeda);
+    const d = parse(text) as Drafted;
+    expect(paths(d)).toEqual([
+      ["packages/docs/", "typescript"],
+      ["packages/remeda/", "typescript"],
+    ]);
+    expect(d.ignore).toEqual(["eslint.config.mts", "lint-staged.config.ts"]);
+    const comment = "# 只有工具設定檔，沒有 TypeScript 原始碼與 tsconfig.json，未建立元件";
+    expect(commentAbove(text, "lint-staged.config.ts")).toBe(comment);
+  });
+
+  it("still makes a component of a config-only directory with a tsconfig.json or its own source (#125)", async () => {
+    const withTsconfig = parse(await draftText({ ...remeda, "tsconfig.json": "{}" })) as Drafted;
+    expect(paths(withTsconfig)[0]).toEqual(["./", "typescript"]);
+    expect(withTsconfig.ignore).toBeUndefined();
+    const withSource = parse(await draftText({ ...remeda, "src/index.ts": "" })) as Drafted;
+    expect(paths(withSource)[0]).toEqual(["./", "typescript"]);
+    expect(withSource.ignore).toBeUndefined();
+  });
+
+  it("still makes a root component of a lone config-only project (#125)", async () => {
+    const d = parse(await draftText({ "package.json": "{}", "eslint.config.ts": "" })) as Drafted;
+    expect(paths(d)).toEqual([["./", "typescript"]]);
+  });
 });
 
 const TS_OPTIONS = ["strict", "noUncheckedIndexedAccess", "noImplicitOverride", "noFallthroughCasesInSwitch"];

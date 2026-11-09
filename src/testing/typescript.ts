@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import type { Finding } from "../report/finding.ts";
 import {
   isRecord,
@@ -45,14 +45,23 @@ const text = (v: unknown): string => (typeof v === "string" ? v : "");
 
 const records = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.filter(isRecord) : []);
 
-/** Whether a Jest-style JSON report has failures, and the failing tests' names; undefined when it is not one. */
-function failures(report: unknown): { failed: boolean; names: string[] } | undefined {
+/** A test file's absolute path as repo-relative with forward slashes, as other findings name files (#125). */
+function repoPath(cwd: string, file: string): string {
+  const rel = relative(cwd, file);
+  return rel === "" || rel.startsWith("..") || isAbsolute(rel) ? file : rel.replace(/\\/g, "/");
+}
+
+/**
+ * Whether a Jest-style JSON report has failures, and the failing tests' names (a test file by its path relative to
+ * the repo root `cwd`); undefined when it is not one.
+ */
+function failures(report: unknown, cwd: string): { failed: boolean; names: string[] } | undefined {
   if (!isRecord(report) || typeof report.numFailedTests !== "number") return undefined;
   const names = records(report.testResults).flatMap((file) => {
     const failed = records(file.assertionResults).filter((a) => a.status === "failed");
     const named = failed.map((a) => text(a.fullName) || text(a.title));
     // A test file that fails to load has no failing assertions of its own.
-    return named.length === 0 && file.status === "failed" ? [text(file.name)] : named;
+    return named.length === 0 && file.status === "failed" ? [repoPath(cwd, text(file.name))] : named;
   });
   const suites = typeof report.numFailedTestSuites === "number" ? report.numFailedTestSuites : 0;
   return { failed: report.numFailedTests > 0 || suites > 0, names: names.filter((n) => n !== "") };
@@ -81,7 +90,8 @@ export const typescriptTests: TestChecker = {
     const args = invocation(tool, coverageDir, reportFile);
     const result = await ctx.tools.run({ language: "typescript", tool, dir: target.dir, args });
     // Older versions without an output file print the report to stdout.
-    const report = failures(parseJson((await readReport(reportFile)) ?? "") ?? jsonFromOutput(result.stdout));
+    const json = parseJson((await readReport(reportFile)) ?? "") ?? jsonFromOutput(result.stdout);
+    const report = failures(json, ctx.cwd);
     if (report === undefined) return [testToolFailed(target, tool, result)];
     const findings: Finding[] = [];
     const command = tool === "jest" ? "npx jest" : "npx vitest run";

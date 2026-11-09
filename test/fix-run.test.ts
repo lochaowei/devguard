@@ -258,4 +258,20 @@ default = true
     await fixesEverything(biomeDir);
     expect(read(biomeDir, "biome.json")).toContain('"lineWidth": 120');
   });
+
+  it("TypeScript: a created tsconfig.json excludes the component's sub-components and node_modules (#125)", async () => {
+    const component = (path: string) => `  - path: ${path}\n    language: typescript\n`;
+    const dir = repo({
+      ".devguard.yaml": decl("typescript") + component("packages/remeda/") + component("packages/docs/"),
+      "packages/remeda/tsconfig.json": "{}",
+      "packages/docs/tsconfig.json": "{}",
+    });
+    expect(await runFix({ cwd: dir, today: TODAY, io: YES })).toBe(0);
+    expect(JSON.parse(read(dir, "tsconfig.json"))).toMatchObject({
+      exclude: ["packages/docs", "packages/remeda", "node_modules"],
+    });
+    const alone = repo({ ".devguard.yaml": decl("typescript") });
+    expect(await runFix({ cwd: alone, today: TODAY, io: YES })).toBe(0);
+    expect(read(alone, "tsconfig.json")).not.toContain("exclude");
+  });
 });

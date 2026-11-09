@@ -99,11 +99,38 @@ function strayEntries(stray: ReadonlyMap<Language, readonly string[]>): DraftIgn
   return out.sort((a, b) => byCodeUnit(a.entry, b.entry));
 }
 
+/** Tool config files such as `eslint.config.ts`, `lint-staged.config.mts` or `.prettierrc.ts`: not the project's own source. */
+const TOOL_CONFIG = /^(?:[\w.-]+\.config|\.[\w-]+rc)\.[cm]?ts$/;
+
+const CONFIG_ONLY = "只有工具設定檔，沒有 TypeScript 原始碼與 tsconfig.json，未建立元件";
+
+/**
+ * Drops from `found` each TypeScript component whose files are all tool config files and whose directory has no
+ * tsconfig.json, such as an npm workspaces root (#125), when the repo has other components; returns its files as
+ * `ignore:` entries.
+ */
+function configOnlyEntries(
+  found: Map<string, DraftComponent>,
+  owned: ReadonlyMap<string, readonly string[]>,
+  present: ReadonlySet<string>,
+): DraftIgnore[] {
+  const out: DraftIgnore[] = [];
+  for (const [key, { dir, language }] of found) {
+    const files = owned.get(key) ?? [];
+    if (language !== "typescript" || present.has(`${dir}tsconfig.json`) || found.size === 1) continue;
+    if (!files.every((f) => TOOL_CONFIG.test(baseName(f)))) continue;
+    found.delete(key);
+    out.push(...files.map((entry) => ({ entry, comment: CONFIG_ONLY })));
+  }
+  return out.sort((a, b) => byCodeUnit(a.entry, b.entry));
+}
+
 /**
  * Components inferred from the repo's files (SPEC §4.1, §4.3): each source file belongs to the nearest directory
  * holding a build or tool file of its language. Java modules nested in a Java build are one component. A go.mod
  * that the go.work above it does not use is not a component, and source files with no marker file above them make
- * no component when the repo has marked ones: both are returned as `ignore:` entries. A repo with no marker file
+ * no component when the repo has marked ones, nor do a TypeScript directory's tool config files alone
+ * (`configOnlyEntries`): all are returned as `ignore:` entries. A repo with no marker file
  * at all gets a root component per language.
  */
 export function inferComponents(files: readonly string[], workspaces: GoWorkspaces = new Map()): ComponentPlan {
@@ -112,6 +139,7 @@ export function inferComponents(files: readonly string[], workspaces: GoWorkspac
   const paths = withoutIgnored(outside, all);
   const present = new Set(paths);
   const found = new Map<string, DraftComponent>();
+  const owned = new Map<string, string[]>();
   const stray = new Map<Language, string[]>();
   for (const file of paths) {
     const language = languageOf(file);
@@ -120,9 +148,13 @@ export function inferComponents(files: readonly string[], workspaces: GoWorkspac
     // A multi-module Java build is built from its outermost build file.
     const dir = language === "java" ? marked.at(-1) : marked[0];
     if (dir === undefined) stray.set(language, [...(stray.get(language) ?? []), file]);
-    else found.set(`${dir}|${language}`, { dir, language });
+    else {
+      found.set(`${dir}|${language}`, { dir, language });
+      owned.set(`${dir}|${language}`, [...(owned.get(`${dir}|${language}`) ?? []), file]);
+    }
   }
   const ignore = outside.sort(byCodeUnit).map((dir) => ({ entry: dir, comment: "不在 go.work 的 use 清單中" }));
+  ignore.push(...configOnlyEntries(found, owned, present));
   if (found.size > 0) ignore.push(...strayEntries(stray));
   else for (const language of stray.keys()) found.set(`|${language}`, { dir: "", language });
   return {
