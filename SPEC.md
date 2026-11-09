@@ -298,7 +298,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | `test.tool` | pytest + pytest-cov | — |
 | `coverage.lines` | 行覆蓋率與分支覆蓋率**各自**都要達到 80%（`branch = true`），與 TS、Java 一致 | CLI 執行 `coverage json`，從 `totals` 分別計算行與分支的覆蓋率並自行判定。不使用 `fail_under`，因為它在 branch 模式下檢查的是行加分支的合併總數。 |
 | `deps.manager` | `uv`；允許替代工具 `poetry` | 決定 `deps.lockfile` 要求哪個 lockfile。執行工具（§5.2）與 `standard upgrade`（§5.5）不讀這個項目，只看最近的 Python lockfile：`poetry.lock` 時用 Poetry，否則用 uv |
-| `deps.lockfile` | `uv.lock`（或 `poetry.lock`）必須提交；只有不帶 hash 的 `requirements.txt` 不算 lockfile | CLI 檢查 |
+| `deps.lockfile` | `uv.lock`（或 `poetry.lock`）必須提交；只有不帶 hash 的 `requirements.txt` 不算 lockfile。元件目錄的 `requirements.txt` 不帶 hash 而有 lockfile 時，`requirements.txt` 列出的套件（略過註解、空行、`-r`／`-c`／`--index-url` 等選項行、`-e`、URL 與本機路徑；名稱依 PEP 503 正規化：小寫、`_` 與 `.` 換成 `-`）都必須在 lockfile 的 `[[package]]` 中，否則回報錯誤 `deps/requirements-unlocked`，列出缺少的套件（最多 5 個，其餘只計數），修正提示為在元件目錄執行 `uv add -r requirements.txt`（`poetry.lock` 時為 `poetry add <套件…>`）。只比對名稱，不比對版本範圍；只看元件目錄的 `requirements.txt`，不看 `docs/requirements.txt`、`requirements-dev.txt` 等其他檔案（#137） | CLI 檢查 |
 
 來源：[預設標準：Python](.scratch/coding-standards-guard/issues/08-default-standard-python.md)
 
@@ -521,6 +521,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 - `devguard fix`：修正**設定**，包括工具設定檔、`.claude/`、`.vscode/`、git hook（重新產生被修改過的 devguard hook；尚未安裝的 hook 由 `install` 安裝），以及 `.gitattributes`、`.gitignore`、`lombok.config` 中屬於標準的規則。
 - `devguard fix --code [files]`：修正**程式碼**，包括 `ruff format`、`gofumpt`、`prettier --write`、`spotless:apply`，以及 `ruff check --fix`、`eslint --fix`、`golangci-lint run --fix`。
+- `fix` 建立元件的 `pyproject.toml`、而元件目錄有 `requirements.txt` 時，套用後多印一行，提示在元件目錄執行 `uv add -r requirements.txt`，把執行期依賴匯入 `pyproject.toml` 與 `uv.lock`；`fix` 不會自己執行（#137）。
 - **使用者層級的設定一律不修改**，只印出修改說明，例如 `~/.m2/settings.xml`、使用者的 `.npmrc`、`go env`、環境變數。
 
 ### 9.2 依檔案類別決定修改方式

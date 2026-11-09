@@ -48,7 +48,7 @@ devguard check [檔案…] [--staged] [--only lint|format|typecheck] [--full]
 | 3 | `settings-python` | `config` | `pyproject.toml` 的 Ruff、mypy / pyright / basedpyright 設定 |
 | 4 | `settings-go` | `config` | `go.mod` 的 Go 版本與 golangci-lint 採用的設定檔（`.golangci.json` / `.toml` / `.yaml` / `.yml`，查找順序見 [Language-Standards](Language-Standards.md)）。多個元件共用同一份設定檔時，相同的 finding 只列一次，列在回報它的元件中目錄就是設定檔所在目錄的那個下，沒有時列在其中最上層的那個下（#92） |
 | 5 | `settings-java` | `config` | Maven / Gradle 建置檔、Wrapper、`checkstyle.xml`、PMD ruleset、`lombok.config` |
-| 6 | `deps` | `config` | lockfile 是否已提交、直接依賴是否違反 `deps.banned` |
+| 6 | `deps` | `config` | lockfile 是否已提交（Python：不帶 hash 的 `requirements.txt` 列出的套件是否都在 lockfile 中，`deps/requirements-unlocked`）、直接依賴是否違反 `deps.banned` |
 | 7 | `settings-typescript` | `config` | `package.json`、`tsconfig.json`、ESLint flat config、Prettier、Biome、Vitest / Jest 覆蓋率門檻 |
 | 8 | `tool-versions` | `consistency` | lockfile / 建置檔鎖定的工具版本（與 PATH 上的 `golangci-lint`）是否在標準的 `tools.*` 範圍內。Python 的型別檢查器只檢查元件宣告的 `typecheck.tool` 那一個 |
 | 9 | `gitattributes` | `config` | repo 根目錄 `.gitattributes` 有 `* text=auto eol=lf` |

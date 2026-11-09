@@ -132,6 +132,104 @@ describe("deps layer: Python requirements.txt with hashes", () => {
   });
 });
 
+/** uv.lock / poetry.lock with one `[[package]]` table per name. */
+const lockOf = (...names: string[]) =>
+  'version = 1\nrequires-python = ">=3.11"\n' +
+  names.map((n) => `\n[[package]]\nname = "${n}"\nversion = "1.0.0"\n`).join("");
+
+describe("deps layer: Python requirements.txt not in the lockfile (#137)", () => {
+  it("reports the runtime packages a uv.lock of dev tools does not lock (minbpe)", async () => {
+    const { findings } = await check({
+      declaration: decl("python"),
+      files: {
+        "requirements.txt": "regex\ntiktoken\n",
+        "pyproject.toml": "",
+        "uv.lock": lockOf("minbpe", "mypy", "pytest", "ruff"),
+      },
+    });
+    expect(summary(findings)).toEqual(["error:deps/requirements-unlocked:./ (Python):requirements.txt"]);
+    expect(findings[0]?.message).toBe("requirements.txt 的套件沒有鎖定在 uv.lock：regex、tiktoken");
+    expect(findings[0]?.fix).toBe("uv add -r requirements.txt");
+  });
+
+  it("runs uv add -r in the component directory, against a workspace uv.lock above it", async () => {
+    const { findings } = await check({
+      declaration: decl("python", "packages/a/"),
+      files: { "packages/a/requirements.txt": "regex\n", "uv.lock": lockOf("ruff") },
+    });
+    expect(findings[0]?.message).toBe("packages/a/requirements.txt 的套件沒有鎖定在 uv.lock：regex");
+    expect(findings[0]?.fix).toBe("cd packages/a && uv add -r requirements.txt");
+  });
+
+  it("passes when every package is locked, comparing PEP 503 names", async () => {
+    const { findings } = await check({
+      declaration: decl("python"),
+      files: {
+        "requirements.txt": "Regex>=2024.1\ntyping_extensions ; python_version < '3.12'\nzope.interface[test]==7.0\n",
+        "uv.lock": lockOf("regex", "typing-extensions", "zope-interface"),
+      },
+    });
+    expect(findings).toEqual([]);
+  });
+
+  it("ignores comments, options, editables, URLs and paths", async () => {
+    const requirements = [
+      "# runtime",
+      "-r other.txt",
+      "-c constraints.txt",
+      "--index-url https://pypi.example.internal/simple",
+      "-e .",
+      "-e git+https://github.com/x/y.git#egg=y",
+      "git+https://github.com/x/z.git",
+      "https://example.com/pkg-1.0.tar.gz",
+      "./libs/local",
+      "libs\\win",
+      "dist/w-1.0-py3-none-any.whl",
+      "regex  # pinned below",
+      "",
+    ].join("\n");
+    const { findings } = await check({
+      declaration: decl("python"),
+      files: { "requirements.txt": requirements, "uv.lock": lockOf("regex") },
+    });
+    expect(findings).toEqual([]);
+  });
+
+  it("names five packages, then counts the rest", async () => {
+    const { findings } = await check({
+      declaration: decl("python"),
+      files: { "requirements.txt": "a\nb\nc\nd\ne\nf\ng\n", "uv.lock": lockOf("ruff") },
+    });
+    expect(findings[0]?.message).toBe("requirements.txt 的套件沒有鎖定在 uv.lock：a、b、c、d、e 與另外 2 個");
+  });
+
+  it("fixes with poetry add for a poetry.lock", async () => {
+    const { findings } = await check({
+      declaration: decl("python", "svc/", "      deps.manager: poetry\n"),
+      files: { "svc/requirements.txt": "regex\ntiktoken\nruff\n", "svc/poetry.lock": lockOf("ruff") },
+    });
+    expect(summary(findings)).toEqual(["error:deps/requirements-unlocked:svc/ (Python):svc/requirements.txt"]);
+    expect(findings[0]?.fix).toBe("cd svc && poetry add regex tiktoken");
+  });
+
+  it("does not read docs/requirements.txt or other nested files", async () => {
+    const { findings } = await check({
+      declaration: decl("python"),
+      files: { "docs/requirements.txt": "sphinx\n", "uv.lock": lockOf("ruff") },
+    });
+    expect(findings).toEqual([]);
+  });
+
+  it("leaves an untracked lockfile to deps/lockfile-untracked", async () => {
+    const { findings } = await check({
+      declaration: decl("python"),
+      files: { "requirements.txt": "regex\n", "uv.lock": lockOf("ruff") },
+      tracked: [".devguard.yaml", "requirements.txt"],
+    });
+    expect(summary(findings)).toEqual(["error:deps/lockfile-untracked:./ (Python):uv.lock"]);
+  });
+});
+
 describe("deps layer: TypeScript lockfile", () => {
   it("requires package-lock.json for npm", async () => {
     const { findings } = await check({ declaration: decl("typescript", "web/"), files: { "web/package.json": "{}" } });
