@@ -16,6 +16,10 @@ import type { TestChecker, TestContext, TestTarget } from "./types.ts";
 /** pytest exit codes: 0 all passed, 1 some failed, 5 no tests collected; anything else is a usage or internal error. */
 const PYTEST_RAN = new Set([0, 1, 5]);
 
+/** pytest's usage-error exit code; with `unrecognized arguments: --cov` in its output, pytest-cov is not installed (#109). */
+const PYTEST_USAGE_ERROR = 4;
+const NO_PYTEST_COV = /unrecognized arguments:.*--cov/;
+
 /** Test ids from pytest's short summary (`FAILED tests/test_a.py::test_x - ...`, `ERROR ...`). */
 function failedTests(stdout: string): string[] {
   return [...stdout.matchAll(/^(?:FAILED|ERROR) (\S+)/gm)].map((m) => m[1] ?? "");
@@ -43,7 +47,14 @@ export const pythonTests: TestChecker = {
   async check(target: TestTarget, ctx: TestContext): Promise<Finding[]> {
     const run = (tool: string, args: string[]) => ctx.tools.run({ ...pythonToolRequest(target, tool), args });
     const pytest = await run("pytest", ["--cov", "--cov-branch", "--cov-report=", "--cov-fail-under=0"]);
-    if (!PYTEST_RAN.has(pytest.code)) return [testToolFailed(target, "pytest", pytest)];
+    if (!PYTEST_RAN.has(pytest.code)) {
+      if (pytest.code === PYTEST_USAGE_ERROR && NO_PYTEST_COV.test(`${pytest.stderr}\n${pytest.stdout}`)) {
+        // pytest-cov is a plugin with no executable, so the runner never finds it and throws ToolMissingError with
+        // the same hint as any missing tool: `uv add --dev "pytest-cov>=6,<8"`, or Poetry's form.
+        await run("pytest-cov", []);
+      }
+      return [testToolFailed(target, "pytest", pytest)];
+    }
     const findings: Finding[] = [];
     if (pytest.code === 1) {
       const failed = failedTests(pytest.stdout);

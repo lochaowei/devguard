@@ -210,6 +210,13 @@ describe("tool runner: a Python tool missing from the dev dependencies (#68)", (
     expect(m.install).toBe('cd api && uv add --dev "basedpyright>=1.40,<2"');
   });
 
+  it("treats pytest-cov, a plugin with no executable, as missing and asks to add it (#109)", async () => {
+    const { runner } = fakeRunner({ [PYPROJECT]: '[project]\nname = "api"\n' });
+    const m = await missing(runner.run(req({ language: "python", tool: "pytest-cov", dir: "api/", range: ">=6,<8" })));
+    expect(m.message).toContain("找不到 pytest-cov");
+    expect(m.install).toBe('cd api && uv add --dev "pytest-cov>=6,<8"');
+  });
+
   it("asks to add it with poetry add --group dev, in-project so devguard finds it, in a Poetry project", async () => {
     const { runner } = fakeRunner({ [PYPROJECT]: '[project]\nname = "api"\n', "C:\\repo\\api\\poetry.lock": "" });
     const m = await missing(runner.run(req(based)));

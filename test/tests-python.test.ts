@@ -1,6 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { ToolRequest, ToolResult } from "../src/tools/runner.ts";
+import { ToolMissingError } from "../src/tools/runner.ts";
 import { rules } from "./helpers.ts";
 import { checkTests, declare, fakeTools, ok, project } from "./tests-helpers.ts";
 
@@ -95,13 +96,30 @@ describe("Python tests", () => {
     expect(r.findings[0]?.message).toContain("Required test coverage");
   });
 
-  it("reports a pytest usage error (e.g. pytest-cov not installed) as a tool failure without judging coverage", async () => {
-    const pytest = ok("", 4, "pytest: error: unrecognized arguments: --cov --cov-branch");
+  it("reports pytest-cov as a missing tool when pytest does not know --cov (#109)", async () => {
+    const pytest = ok("", 4, "pytest: error: unrecognized arguments: --cov --cov-branch --cov-report=");
+    const { tools, calls } = fakeTools((req: ToolRequest) => {
+      if (req.tool === "pytest") return pytest;
+      throw new ToolMissingError("找不到 pytest-cov", `uv add --dev "pytest-cov${req.range ?? ""}"`);
+    });
+    await expect(check(tools)).rejects.toMatchObject({
+      message: "找不到 pytest-cov",
+      install: 'uv add --dev "pytest-cov>=6,<8"',
+    });
+    expect(calls.map((c) => c.tool)).toEqual(["pytest", "pytest-cov"]);
+  });
+
+  it("keeps other pytest exit 4 as a tool failure (#109)", async () => {
+    const pytest = ok("", 4, "ERROR: file or directory not found: tests/nope");
     const { tools, calls } = python(undefined, pytest);
-    const r = await check(tools);
-    expect(rules(r.findings)).toEqual(["error:test/tool-failed"]);
-    expect(r.findings[0]?.message).toContain("unrecognized arguments");
+    expect(rules((await check(tools)).findings)).toEqual(["error:test/tool-failed"]);
     expect(calls.map((c) => c.tool)).toEqual(["pytest"]);
+  });
+
+  it("words the tool-failed hint with single spaces for a root component (#109)", async () => {
+    const pytest = ok("", 4, "boom");
+    const r = await checkTests(project(declare(".", "python")), python(undefined, pytest).tools, ["app.py"]);
+    expect(r.findings[0]?.fix).toBe("在 repo 根目錄 直接執行 pytest 查看完整訊息");
   });
 
   it("reports a missing coverage report when coverage has no data", async () => {
