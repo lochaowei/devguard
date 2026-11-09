@@ -25,6 +25,9 @@ export function pathToolHint(tool: string, range?: string): string {
   return `把${range === undefined ? "預設標準指定版本" : `版本在 ${range} 內`}的 ${tool} binary 放進 PATH`;
 }
 
+/** Where golangci-lint binaries are published, named in the hint shown when it is missing from PATH (#91). */
+export const GOLANGCI_LINT_RELEASES_URL = "https://github.com/golangci/golangci-lint/releases";
+
 /**
  * How to get or update the CLI on any platform. Used where the text lands in a file shared across machines (a git
  * hook line injected into husky or lefthook), so it must not depend on the machine that wrote it.

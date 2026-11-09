@@ -144,7 +144,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 
 - **工具執行器**：PATH 上的 `golangci-lint`（例外：指定版本的 binary 由開發者放到 PATH，CLI 核對版本）與 `go tool <name>`（鎖定於 `go.mod` 的 `tool` directive）；執行時一律帶入 `GOTOOLCHAIN=local`；`go tool` 與 `go mod` 等檢查用的指令另外帶入 `GOPROXY=off`，檢查時不下載任何模組。其餘指令（golangci-lint、套件管理指令）的模組來源是開發者自己的 Go 設定（`go env GOPROXY`）。
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
-  - `tools.golangci-lint`（PATH）：`>=2.12,<3`
+  - `tools.golangci-lint`（PATH）：`>=2.12,<3`。PATH 上找不到時，`check`（exit 2）與 `doctor`（`environment/tool-missing`）的提示會寫出元件生效的範圍（含 override）與下載頁 https://github.com/golangci/golangci-lint/releases（#91）
   - `tools.gofumpt`（`mvdan.cc/gofumpt`）：`>=0.9,<1`
   - `tools.goimports`（`golang.org/x/tools/cmd/goimports`）：`>=0.38,<1`
   - `tools.govulncheck`（`golang.org/x/vuln/cmd/govulncheck`）：`>=1.1,<2`（`team@1.3.0` 移除）

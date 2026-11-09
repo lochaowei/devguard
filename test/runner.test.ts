@@ -2,7 +2,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Command, Exec } from "../src/process/exec.ts";
-import { createToolRunner, ToolMissingError, type ToolRequest, type ToolRunnerDeps } from "../src/tools/runner.ts";
+import {
+  createToolRunner,
+  golangciRequest,
+  ToolMissingError,
+  type ToolRequest,
+  type ToolRunnerDeps,
+} from "../src/tools/runner.ts";
 
 const ROOT = "C:\\repo";
 
@@ -394,9 +400,28 @@ describe("tool runner: Go", () => {
     ]);
   });
 
-  it("asks to put golangci-lint on PATH when it is missing", async () => {
+  it("asks to put golangci-lint on PATH, in the standard's range and with the releases page (#91)", async () => {
     const { runner } = fakeRunner({}, { pathEnv: undefined });
-    expect((await missing(runner.run(req({ language: "go", tool: "golangci-lint" })))).install).toBe(
+    const request = req({ language: "go", tool: "golangci-lint", range: ">=2.12,<3" });
+    expect((await missing(runner.run(request))).install).toBe(
+      "把版本在 >=2.12,<3 內的 golangci-lint binary 放進 PATH\n下載：https://github.com/golangci/golangci-lint/releases",
+    );
+  });
+
+  it("names the overridden range, which golangciRequest takes from the component's effective settings (#91)", () => {
+    const component = { dir: "svc/", effective: { "tools.golangci-lint": ">=2.14,<3" } };
+    expect(golangciRequest(component)).toEqual({
+      language: "go",
+      tool: "golangci-lint",
+      dir: "svc/",
+      range: ">=2.14,<3",
+    });
+    expect(golangciRequest({ dir: "", effective: {} })).toEqual({ language: "go", tool: "golangci-lint", dir: "" });
+  });
+
+  it("falls back to the default wording when no range is known", async () => {
+    const { runner } = fakeRunner({}, { pathEnv: undefined });
+    expect((await missing(runner.run(req({ language: "go", tool: "golangci-lint" })))).install).toContain(
       "把預設標準指定版本的 golangci-lint binary 放進 PATH",
     );
   });

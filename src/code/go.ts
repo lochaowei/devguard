@@ -1,6 +1,6 @@
 import { posix } from "node:path";
 import type { Finding } from "../report/finding.ts";
-import type { ToolResult } from "../tools/runner.ts";
+import { golangciRequest, type ToolResult } from "../tools/runner.ts";
 import { codeFinding, firstDifferentLine, runBatched, splitStaged, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeCategory, CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
 
@@ -73,7 +73,7 @@ function packageDirs(files: readonly string[] | undefined): string[] | undefined
  * goimports) and prints the result; any difference is a format finding (SPEC §7.4).
  */
 async function formatStaged(target: CodeTarget, ctx: CodeCheckContext, file: string, text: string): Promise<Finding[]> {
-  const request = { language: "go", tool: "golangci-lint", dir: target.dir } as const;
+  const request = golangciRequest(target);
   const result = await ctx.tools.run({ ...request, args: ["fmt", "--stdin"], stdin: text });
   if (result.code !== 0) return [toolFailed(target, "golangci-lint fmt", result)];
   if (result.stdout === text) return [];
@@ -103,7 +103,7 @@ export const goChecker: CodeChecker = {
   async check(target, ctx) {
     const packages = packageDirs(target.files);
     if (packages?.length === 0) return [];
-    const request = { language: "go", tool: "golangci-lint", dir: target.dir } as const;
+    const request = golangciRequest(target);
     const args = ["run", "--output.json.path=stdout", "--show-stats=false", "--path-mode=abs", ...RUN_FLAGS];
     const results = await runBatched(ctx.tools, request, args, packages ?? ["./..."]);
     const findings = results.flatMap((r) => issueFindings(target, ctx, r));

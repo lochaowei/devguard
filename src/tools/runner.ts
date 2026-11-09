@@ -1,4 +1,4 @@
-import { pathToolHint } from "../distribution.ts";
+import { GOLANGCI_LINT_RELEASES_URL, pathToolHint } from "../distribution.ts";
 import { existsSync } from "node:fs";
 import { posix, win32 } from "node:path";
 import { stripVTControlCharacters } from "node:util";
@@ -24,8 +24,9 @@ export interface ToolRequest {
   /** Fed to the tool's stdin, e.g. the staged version of a file (SPEC §7.4). */
   stdin?: string;
   /**
-   * Python only: the standard's version range of the tool (`tools.<tool>`). When the tool is missing and no
-   * pyproject.toml lists it, the install hint adds it to the dev dependencies in this range (#68).
+   * The standard's version range of the tool (`tools.<tool>`). Python: when the tool is missing and no
+   * pyproject.toml lists it, the install hint adds it to the dev dependencies in this range (#68). Go: the
+   * golangci-lint hint names the range to put on PATH (#91).
    */
   range?: string;
   /**
@@ -54,6 +55,15 @@ export function typescriptToolRequest(
 ): Omit<ToolRequest, "args"> {
   const manager = component.effective["deps.manager"];
   return { language: "typescript", tool, dir: component.dir, ...(typeof manager === "string" ? { manager } : {}) };
+}
+
+/** A run of golangci-lint in a component's directory, with the standard's range of it for the install hint (#91). */
+export function golangciRequest(component: {
+  dir: string;
+  effective: Readonly<Record<string, unknown>>;
+}): Omit<ToolRequest, "args"> {
+  const range = component.effective["tools.golangci-lint"];
+  return { language: "go", tool: "golangci-lint", dir: component.dir, ...(typeof range === "string" ? { range } : {}) };
 }
 
 export interface ToolResult {
@@ -293,7 +303,10 @@ function go(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
   if (req.tool === "golangci-lint") {
     // Exception in SPEC §5.2: not a go.mod tool, but a binary the developer puts on PATH.
     const exe = onPath(req.tool, env);
-    if (!exe) return { ok: false, message: "找不到 golangci-lint", install: pathToolHint("golangci-lint") };
+    if (!exe) {
+      const install = `${pathToolHint(req.tool, req.range)}\n下載：${GOLANGCI_LINT_RELEASES_URL}`;
+      return { ok: false, message: "找不到 golangci-lint", install };
+    }
     return { ok: true, command: { file: exe, args: [...args], cwd, env: goEnv() } };
   }
   const goMod = env.readText(env.path.join(cwd, "go.mod"));

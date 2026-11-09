@@ -22,7 +22,7 @@ function target(over: Partial<CodeTarget> = {}): CodeTarget {
     component: "svc/ (Go)",
     dir: "svc/",
     language: "go",
-    effective: { "lint.tool": "golangci-lint" },
+    effective: { "lint.tool": "golangci-lint", "tools.golangci-lint": ">=2.12,<3" },
     categories: new Set<CodeCategory>(["lint", "format", "typecheck"]),
     ...over,
   };
@@ -53,6 +53,7 @@ describe("go checker: golangci-lint", () => {
         language: "go",
         tool: "golangci-lint",
         dir: "svc/",
+        range: ">=2.12,<3",
         args: [
           "run",
           "--output.json.path=stdout",
