@@ -1,5 +1,6 @@
 import type { Finding, Level } from "../report/finding.ts";
 import { descendants, parseXmlText, type XmlEl } from "../xml/parse.ts";
+import { targetBuildTool, type BuildTool } from "../settings/java/build.ts";
 import { mavenReportDirs } from "../settings/java/modules.ts";
 import { codeFinding, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
@@ -81,11 +82,9 @@ async function readReport(
   return parse(target, ctx, parsed.root);
 }
 
-type Build = "maven" | "gradle";
-
-/** Maven when the component has a pom.xml, otherwise Gradle; the tool runner then picks the matching wrapper. */
-async function buildOf(target: CodeTarget, ctx: CodeCheckContext): Promise<Build> {
-  return (await ctx.readText(`${target.dir}pom.xml`)) === undefined ? "gradle" : "maven";
+/** The component's build tool (`javaBuildTool`); the tool runner then runs the matching wrapper. */
+function buildOf(target: CodeTarget, ctx: CodeCheckContext): Promise<BuildTool> {
+  return targetBuildTool(target, ctx.readText);
 }
 
 const GRADLE_REPORTS: readonly [string, string, ReportParser][] = [
@@ -121,7 +120,7 @@ async function gradleLint(target: CodeTarget, ctx: CodeCheckContext): Promise<Fi
   return findings;
 }
 
-async function lint(target: CodeTarget, ctx: CodeCheckContext, build: Build): Promise<Finding[]> {
+async function lint(target: CodeTarget, ctx: CodeCheckContext, build: BuildTool): Promise<Finding[]> {
   if (build === "gradle") return gradleLint(target, ctx);
   const result = await ctx.tools.run({
     language: "java",
@@ -189,7 +188,7 @@ function firstChangedLine(diff: readonly string[]): number {
   return 1;
 }
 
-async function format(target: CodeTarget, ctx: CodeCheckContext, build: Build): Promise<Finding[]> {
+async function format(target: CodeTarget, ctx: CodeCheckContext, build: BuildTool): Promise<Finding[]> {
   const maven = build === "maven";
   const result = await ctx.tools.run({
     language: "java",

@@ -36,6 +36,48 @@ describe("checkGoSettings", () => {
     expect(rules(check(GOOD.replace('version: "2"\n', "")))).toEqual(["error:settings/golangci-version"]);
   });
 
+  describe("a golangci-lint v1 config (#86)", () => {
+    const V1 = [
+      "linters:",
+      "  enable-all: true",
+      "  disable:",
+      "    - lll",
+      "linters-settings:",
+      "  cyclop:",
+      "    max-complexity: 30",
+      "",
+    ].join("\n");
+
+    it("reports only the version, with no repairs, and says to migrate then check again", () => {
+      for (const text of [V1, `version: "1"\n${V1}`]) {
+        const findings = check(text);
+        expect(rules(findings)).toEqual(["error:settings/golangci-version"]);
+        expect(findings[0]?.repairs).toBeUndefined();
+        expect(findings[0]?.fix).toMatch(/golangci-lint migrate.*devguard check/);
+      }
+    });
+
+    it("stops the same way in a .golangci.toml or .golangci.json", () => {
+      const toml = "[linters]\nenable-all = true\n\n[linters-settings.cyclop]\nmax-complexity = 30\n";
+      const json = '{ "linters": { "enable-all": true }, "linters-settings": { "cyclop": { "max-complexity": 30 } } }';
+      for (const [golangci, golangciFile] of [
+        [toml, "backend/.golangci.toml"],
+        [json, "backend/.golangci.json"],
+      ] as const) {
+        const findings = checkGoSettings(component(), { golangci, golangciFile, gomod: GOMOD });
+        expect(rules(findings)).toEqual(["error:settings/golangci-version"]);
+        expect(findings[0]?.repairs).toBeUndefined();
+      }
+    });
+
+    it("still checks go.mod", () => {
+      expect(rules(check(V1, "module x\n\ngo 1.20\n"))).toEqual([
+        "error:settings/golangci-version",
+        "error:settings/gomod-go-version",
+      ]);
+    });
+  });
+
   it("reports each required linter that is not enabled", () => {
     const findings = check(GOOD.replace("gosec, revive, ", ""));
     expect(rules(findings)).toEqual([

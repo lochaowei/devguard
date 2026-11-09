@@ -3,3 +3,4 @@ coverage/
 *.md
 i.json
 .claude/worktrees/
+test/fixtures/

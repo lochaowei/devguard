@@ -8,6 +8,7 @@ import { withoutIgnored } from "./declaration/ignore.ts";
 import { displayDir, normalizePath } from "./declaration/path.ts";
 import { resolveDeclaration, type Resolution } from "./declaration/resolve.ts";
 import { DECLARATION_FILE } from "./declaration/types.ts";
+import { inferBuildTool, type InferredBuildTool } from "./settings/java/build.ts";
 import { pythonSettingsLayer } from "./layers/settings-python.ts";
 import { goSettingsLayer } from "./layers/settings-go.ts";
 import { javaSettingsLayer } from "./layers/settings-java.ts";
@@ -162,6 +163,8 @@ interface FileProbe {
   typeCheckers: ReadonlySet<TypeChecker>;
   /** The pyrightconfig.json pyright would use for the component exists and does not turn type checking off. */
   pyrightConfigOn: boolean;
+  /** A Java component's build tool, as its build files and wrappers point to it (`inferBuildTool`). */
+  javaBuild?: InferredBuildTool;
 }
 
 /** What the draft knows of the repo's files: which exist, and each Python component's type checker settings. */
@@ -170,6 +173,7 @@ interface DraftFiles {
   typeCheckers: ReadonlyMap<string, ReadonlySet<TypeChecker>>;
   /** The pyrightconfig.json files that set `typeCheckingMode = "off"`. */
   pyrightOff: ReadonlySet<string>;
+  javaBuilds: ReadonlyMap<string, InferredBuildTool>;
 }
 
 const CHOICE_RULES: Readonly<Record<Language, (p: FileProbe) => [boolean, string, string][]>> = {
@@ -186,7 +190,7 @@ const CHOICE_RULES: Readonly<Record<Language, (p: FileProbe) => [boolean, string
     [p.nearest(["pnpm-lock.yaml"], ["package-lock.json", "npm-shrinkwrap.json"]), "deps.manager", "pnpm"],
     [p.nearest(["yarn.lock"], ["package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml"]), "deps.manager", "yarn"],
   ],
-  java: (p) => [[p.nearest(["build.gradle", "build.gradle.kts"], ["pom.xml"]), "build.tool", "gradle"]],
+  java: (p) => [[p.javaBuild?.tool === "gradle", "build.tool", "gradle"]],
 };
 
 function nearestChoice(
@@ -216,6 +220,7 @@ function inferToolChoices(c: DraftComponent, files: DraftFiles): Record<string, 
     nearest: (win, lose) => nearestChoice(c.dir, files.present, win, lose),
     typeCheckers: files.typeCheckers.get(c.dir) ?? new Set(),
     pyrightConfigOn: nearestPyrightConfigOn(c.dir, files),
+    javaBuild: files.javaBuilds.get(c.dir),
   };
   return Object.fromEntries(
     CHOICE_RULES[c.language](probe)
@@ -287,6 +292,31 @@ async function pythonTypeCheckers(
   return { typeCheckers, pyrightOff };
 }
 
+/** Per Java component directory, the build tool its files point to (`inferBuildTool`). */
+async function javaBuilds(
+  components: readonly DraftComponent[],
+  present: ReadonlySet<string>,
+): Promise<Map<string, InferredBuildTool>> {
+  const found = new Map<string, InferredBuildTool>();
+  for (const c of components.filter((c) => c.language === "java")) {
+    found.set(c.dir, await inferBuildTool(c.dir, (p) => present.has(p)));
+  }
+  return found;
+}
+
+const AMBIGUOUS_BUILD = " 同時有 pom.xml 與 build.gradle，預設為 maven，請確認 build.tool";
+
+/** Writes a note above each component whose build tool the files leave open (#96). */
+function withBuildNotes(doc: Document, ambiguous: ReadonlySet<number>): Document {
+  const seq = doc.get("components");
+  if (!isSeq(seq)) return doc;
+  for (const i of ambiguous) {
+    const item = seq.items[i];
+    if (isNode(item)) item.commentBefore = AMBIGUOUS_BUILD;
+  }
+  return doc;
+}
+
 /** A draft `.devguard.yaml` for a project that has none, from the components and tool settings found (SPEC §4.3). */
 export async function draftDeclaration(options: DraftOptions): Promise<Draft> {
   const { cwd, today } = options;
@@ -301,7 +331,11 @@ export async function draftDeclaration(options: DraftOptions): Promise<Draft> {
     given,
   );
   const present = new Set(listed.map(normalizePath));
-  const files = { present, ...(await pythonTypeCheckers(cwd, components, present)) };
+  const files: DraftFiles = {
+    present,
+    ...(await pythonTypeCheckers(cwd, components, present)),
+    javaBuilds: await javaBuilds(components, present),
+  };
   const resolution = defaultResolution(components, standard, today, files);
   const seed: CheckLayer = { id: "draft", run: () => Promise.resolve({ findings: [], resolution }) };
   const { findings } = await runCheck({ cwd, today, listFiles: () => Promise.resolve([...listed]) }, [
@@ -327,7 +361,9 @@ export async function draftDeclaration(options: DraftOptions): Promise<Draft> {
     }),
     ...(ignore.length + plan.ignore.length > 0 ? { ignore: [...ignore, ...plan.ignore.map((i) => i.entry)] } : {}),
   };
-  return { text: HEADER + withIgnoreComments(new Document(doc), ignore.length, plan.ignore).toString(), components };
+  const ambiguous = resolution.components.flatMap((c, i) => (files.javaBuilds.get(c.dir)?.ambiguous ? [i] : []));
+  const yaml = withBuildNotes(withIgnoreComments(new Document(doc), ignore.length, plan.ignore), new Set(ambiguous));
+  return { text: HEADER + yaml.toString(), components };
 }
 
 /** Writes each ignore entry's comment above it; the entries the draft adds follow the `skip` given ones. */

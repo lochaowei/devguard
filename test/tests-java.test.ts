@@ -152,6 +152,25 @@ describe("Java tests", () => {
     expect(calls[0]?.args?.[0]).toBe("test");
   });
 
+  describe("with both pom.xml and build.gradle (#96)", () => {
+    // stleary/JSON-java: both build files, only the Gradle wrapper committed.
+    const BOTH = { ...MAVEN, ...GRADLE, "core/gradlew": "", "core/gradlew.bat": "" };
+    const wrapperOf = async (declaration: string) => {
+      const { dir, check } = setup(BOTH, declaration);
+      const { tools, calls } = javaTools(() => dir, GRADLE_REPORT, jacocoXml([0, 10], [0, 2]));
+      await check(tools);
+      return calls.map((c) => c.tool);
+    };
+
+    it("runs the Gradle wrapper when only it is committed", async () => {
+      expect(await wrapperOf(CORE)).toEqual(["gradlew"]);
+    });
+
+    it("runs the declared build tool", async () => {
+      expect(await wrapperOf(declare("core/", "java", "{build.tool: maven}"))).toEqual(["mvnw"]);
+    });
+  });
+
   it("reports a report it cannot read", async () => {
     const { dir, check } = setup(MAVEN);
     const r = await check(javaTools(() => dir, MAVEN_REPORT, "<report").tools);

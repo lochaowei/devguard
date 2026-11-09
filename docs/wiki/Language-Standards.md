@@ -95,6 +95,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 - 四種格式套用同樣的檢查與 rule id；finding 的 `file` 是採用的那一份，能取得行號時附上（TOML 目前沒有行號）。
 - `devguard fix` 沿用採用的那一份的格式修改它（TOML 就改 TOML、JSON 就改 JSON）。只有整條路徑上都沒有任何 golangci 設定檔時，才回報 `settings/golangci-missing` 並建立 `.golangci.yml`。
 - 語法錯誤依格式回報 `settings/golangci-yaml-syntax`、`settings/golangci-toml-syntax` 或 `settings/golangci-json-syntax`，不當成缺檔，也不自動修正。
+- 不是 v2 格式（沒有 `version`、`version: "1"` 或其他值）時，這份檔案**只**回報 `settings/golangci-version`，不檢查 linter、門檻、depguard、formatter，也沒有自動修正，所以 `fix` 不會改動 v1 設定檔（v1 的 `enable-all`、`linters-settings` 與 v2 的寫法不同，寫入 v2 的鍵只會得到一份 golangci-lint 無法載入的檔案）。先執行 `golangci-lint migrate`，再重新執行 `devguard check`。`go.mod` 照常檢查。
 - 同一層有不只一份時，回報 `hint` `settings/golangci-multiple`，說明 golangci-lint 採用哪一份、其他的會被忽略。
 
 ### 執行方式
@@ -212,7 +213,8 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 
 ### 執行方式
 
-- **工具執行器**：元件目錄或上層目錄的 `./mvnw`（`mvnw.cmd`）或 `./gradlew`（`gradlew.bat`）。
+- **建置工具**：宣告的 `build.tool` 優先；沒有宣告時，只有 `pom.xml` 是 Maven，只有 `build.gradle(.kts)`／`settings.gradle(.kts)` 是 Gradle；兩者都有時，只提交了 `gradlew` 是 Gradle，其餘是 Maven。設定、程式碼、測試與依賴檢查都用同一個判斷。
+- **工具執行器**：元件目錄或上層目錄中**該建置工具**的 wrapper，Maven 是 `./mvnw`（`mvnw.cmd`），Gradle 是 `./gradlew`（`gradlew.bat`）。找不到時回報缺少 wrapper（安裝提示 `mvn -N wrapper:wrapper` 或 `gradle wrapper`），不會改用另一種建置工具的 wrapper。
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
   - Maven plugins：`maven-checkstyle-plugin`（`>=3.6,<4`）、`maven-pmd-plugin`（`>=3.26,<4`）、`spotless-maven-plugin`（`>=2.44,<3`；`team@1.1.0`：`>=2.44,<4`）、`jacoco-maven-plugin`（`>=0.8.12,<0.9`）、`maven-enforcer-plugin`（`>=3.5,<4`）
   - Gradle plugin 與 `toolVersion`：`spotless-gradle-plugin` / `com.diffplug.spotless`（`>=7,<8`；`team@1.1.0`：`>=7,<9`）、`checkstyle`（`>=10.21,<11`；`team@1.1.0`：`>=10.21,<15`）、`pmd`（`>=7,<8`）、`jacoco`（`>=0.8.12,<0.9`）
