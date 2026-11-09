@@ -120,7 +120,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
   - `uv run --no-sync ruff check --fix --force-exclude`
   - `uv run --no-sync ruff format --force-exclude`
 - **測試與覆蓋率（`tests` 層，`--full`）**：
-  - 執行 `uv run --no-sync pytest --cov --cov-branch --cov-report=json:<tmp>`，由 CLI 解析 JSON 報告中的 `totals`，分別檢查行覆蓋率與分支覆蓋率是否達到門檻。
+  - 執行 `uv run --no-sync pytest --cov --cov-branch --cov-report=json:<tmp>`，由 CLI 解析 JSON 報告中的 `totals`，分別檢查行覆蓋率與分支覆蓋率是否達到門檻。執行時帶 `--cov-fail-under=0`，專案自己的 `fail_under`（coverage 設定或 `addopts`）不影響結果；pytest exit 1 但輸出中找不到任何失敗測試 id 時，回報 `test/tool-failed` 並附輸出尾段，而不是 `test/failed`。
 
 ---
 
