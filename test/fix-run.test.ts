@@ -93,6 +93,22 @@ default = true
     expect(out).toContain("max-complexity: 10");
   });
 
+  it("Go: creates one .golangci.yml in the go.work directory for the modules it uses (#88)", async () => {
+    const gomod = "module x\n\ngo 1.26\n";
+    const dir = repo({
+      ".devguard.yaml": `${decl("go")}  - path: cmd/testfixtures/\n    language: go\n  - path: dbtests/\n    language: go\n`,
+      "go.work": "go 1.26\n\nuse (\n\t.\n\t./cmd/testfixtures\n\t./dbtests\n)\n",
+      "go.mod": gomod,
+      "cmd/testfixtures/go.mod": gomod,
+      "dbtests/go.mod": gomod,
+    });
+    const after = await fixesEverything(dir);
+    expect(after.filter((f) => f.rule.startsWith("settings/golangci"))).toEqual([]);
+    expect(existsSync(join(dir, ".golangci.yml"))).toBe(true);
+    expect(existsSync(join(dir, "cmd/testfixtures/.golangci.yml"))).toBe(false);
+    expect(existsSync(join(dir, "dbtests/.golangci.yml"))).toBe(false);
+  });
+
   it("Go: edits a .golangci.yml several components share once (#92)", async () => {
     const dir = repo({
       ".devguard.yaml": `${decl("go")}  - path: sub/\n    language: go\n`,

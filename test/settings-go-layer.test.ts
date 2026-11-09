@@ -118,12 +118,72 @@ describe("goSettingsLayer", () => {
     }
   });
 
+  const GOMOD = "module x\n\ngo 1.26\n";
+  const decl = (...paths: string[]) =>
+    `standard: team@1.0.0\ncomponents:\n${paths.map((p) => `  - {path: ${p}, language: go}\n`).join("")}`;
+
+  describe("where a missing golangci config is created (#88)", () => {
+    const missingIn = async (files: Record<string, string>) =>
+      (await run(project(files))).findings
+        .filter((f) => f.rule === "settings/golangci-missing")
+        .map((f) => [f.component, f.file, new Set(f.repairs?.map((r) => r.file))]);
+
+    it("in the go.work directory for the modules it uses (testfixtures)", async () => {
+      const found = await missingIn({
+        ".devguard.yaml": decl("./", "cmd/testfixtures/", "dbtests/"),
+        "go.work": "go 1.26\n\nuse (\n\t.\n\t./cmd/testfixtures\n\t./dbtests\n)\n",
+        "go.mod": GOMOD,
+        "cmd/testfixtures/go.mod": GOMOD,
+        "dbtests/go.mod": GOMOD,
+      });
+      expect(found).toEqual([["./ (Go)", ".golangci.yml", new Set([".golangci.yml"])]]);
+    });
+
+    it("in a go.work directory that is not a component, under the shallowest module", async () => {
+      const found = await missingIn({
+        ".devguard.yaml": decl("svc/b/", "svc/a/"),
+        "svc/go.work": "go 1.26\n\nuse ./a\nuse ./b\n",
+        "svc/a/go.mod": GOMOD,
+        "svc/b/go.mod": GOMOD,
+      });
+      expect(found).toEqual([["svc/b/ (Go)", "svc/.golangci.yml", new Set(["svc/.golangci.yml"])]]);
+    });
+
+    it("in the topmost Go component above, without a go.work", async () => {
+      const found = await missingIn({
+        ".devguard.yaml": decl("./", "sub/", "sub/deep/"),
+        "go.mod": GOMOD,
+        "sub/go.mod": GOMOD,
+        "sub/deep/go.mod": GOMOD,
+      });
+      expect(found).toEqual([["./ (Go)", ".golangci.yml", new Set([".golangci.yml"])]]);
+    });
+
+    it("in each component's own directory when neither holds the other", async () => {
+      const found = await missingIn({ ".devguard.yaml": decl("a/", "b/"), "a/go.mod": GOMOD, "b/go.mod": GOMOD });
+      expect(found).toEqual([
+        ["a/ (Go)", "a/.golangci.yml", new Set(["a/.golangci.yml"])],
+        ["b/ (Go)", "b/.golangci.yml", new Set(["b/.golangci.yml"])],
+      ]);
+    });
+
+    it("in the component's own directory for a module the go.work does not use", async () => {
+      const found = await missingIn({
+        ".devguard.yaml": decl("a/", "b/"),
+        "go.work": "go 1.26\n\nuse ./a\n",
+        "a/go.mod": GOMOD,
+        "b/go.mod": GOMOD,
+      });
+      expect(found).toEqual([
+        ["a/ (Go)", ".golangci.yml", new Set([".golangci.yml"])],
+        ["b/ (Go)", "b/.golangci.yml", new Set(["b/.golangci.yml"])],
+      ]);
+    });
+  });
+
   describe("a golangci config several Go components share (#92)", () => {
-    const GOMOD = "module x\n\ngo 1.26\n";
     const LINTERS =
       "errcheck, govet, ineffassign, staticcheck, unused, gosec, revive, errorlint, bodyclose, misspell, cyclop, gocognit, gomodguard_v2, depguard";
-    const decl = (...paths: string[]) =>
-      `standard: team@1.0.0\ncomponents:\n${paths.map((p) => `  - {path: ${p}, language: go}\n`).join("")}`;
     // carapace: a root config without revive, used by the root component and two below it.
     const carapace = () =>
       project({
