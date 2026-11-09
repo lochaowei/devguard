@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -216,5 +216,28 @@ describe.runIf(biomeInstalled)("TypeScript code checks with the real Biome (#120
     const staged = { "clean.ts": "export const clean = 1;\n", "gone.ts": "export   const gone = 1;\n" };
     expect(await checkStaged("lint", staged)).toEqual([]);
     expect(await checkStaged("format", staged)).toEqual(["biome/format gone.ts:1"]);
+  });
+});
+
+describe("tsc with a solution-style tsconfig.json (#124)", { timeout: 120_000 }, () => {
+  it("type-checks the referenced projects, which a plain tsc --noEmit would skip", async () => {
+    const root = mkdtempSync(join(tmpdir(), "devguard-ts-solution-"));
+    try {
+      symlinkSync(join(import.meta.dirname, "..", "node_modules"), join(root, "node_modules"), "junction");
+      mkdirSync(join(root, "app"));
+      const files: Record<string, string> = {
+        ".devguard.yaml": "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: typescript\n",
+        "tsconfig.json": '{ "files": [], "references": [{ "path": "./app" }] }\n',
+        "app/tsconfig.json": '{ "compilerOptions": { "strict": true, "noEmit": true, "types": [] } }\n',
+        "app/typed.ts": 'export const answer: number = "forty-two";\n',
+      };
+      for (const [name, text] of Object.entries(files)) writeFileSync(join(root, name), text);
+      const scope: CheckScope = { full: false, only: "typecheck" };
+      const listFiles = () => Promise.resolve(Object.keys(files));
+      const { findings } = await runCheck({ cwd: root, today: TODAY, listFiles, scope }, [declarationLayer, codeLayer]);
+      expect(brief(findings)).toEqual(["tsc/TS2322 app/typed.ts:1"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

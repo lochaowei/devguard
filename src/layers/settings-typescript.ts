@@ -4,11 +4,11 @@ import { checkBiome } from "../settings/typescript/biome.ts";
 import { checkCoverage } from "../settings/typescript/coverage.ts";
 import { checkEslint } from "../settings/typescript/eslint.ts";
 import { checkPrettier } from "../settings/typescript/prettier.ts";
-import { checkTsconfig } from "../settings/typescript/tsconfig.ts";
+import { checkTsconfig, type OwnerOf } from "../settings/typescript/tsconfig.ts";
 import type { CheckLayer } from "./types.ts";
 
-async function checkComponent(root: string, judge: SettingsJudge): Promise<void> {
-  await checkTsconfig(root, judge);
+async function checkComponent(root: string, judge: SettingsJudge, ownerOf: OwnerOf): Promise<void> {
+  await checkTsconfig(root, judge, ownerOf);
   const lintTool = judge.declared("lint.tool");
   if (lintTool === "eslint+prettier") {
     await checkEslint(root, judge);
@@ -27,10 +27,16 @@ export const typescriptSettingsLayer: CheckLayer = {
     const standard = resolution?.standard;
     if (!standard) return { findings: [] };
     const findings = [];
+    // Deepest first, so the first directory holding a file is the component it belongs to.
+    const dirs = resolution.components
+      .filter((c) => c.language === "typescript")
+      .map((c) => c.dir)
+      .sort((a, b) => b.length - a.length);
+    const ownerOf: OwnerOf = (file) => dirs.find((d) => file.startsWith(d));
     for (const component of resolution.components) {
       if (component.language !== "typescript") continue;
       const judge = new SettingsJudge(standard, component);
-      await checkComponent(join(cwd, component.dir), judge);
+      await checkComponent(join(cwd, component.dir), judge, ownerOf);
       findings.push(...judge.findings);
     }
     return { findings };

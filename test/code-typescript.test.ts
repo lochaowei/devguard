@@ -169,6 +169,40 @@ describe("typescript checker: tsc", () => {
     expect(findings).toEqual([expect.objectContaining({ rule: "code/tool-failed" })]);
   });
 
+  it("runs tsc once per tsconfig a solution-style tsconfig references, reporting a shared error once (#124)", async () => {
+    const solution = JSON.stringify({
+      files: [],
+      references: [{ path: "./tsconfig.app.json" }, { path: "./tools" }],
+    });
+    const shared = "src/shared.ts(1,1): error TS2322: Type 'string' is not assignable to type 'number'.";
+    const { tools, calls } = fakeTools({
+      tsc: (req) =>
+        req.args?.includes("tools/tsconfig.json")
+          ? { code: 2, stdout: `${shared}\ntools/a.ts(2,3): error TS2304: Cannot find name 'x'.\n` }
+          : { code: 2, stdout: `${shared}\n` },
+    });
+    const findings = await check(target({ categories: only("typecheck") }), tools, {
+      "web/tsconfig.json": solution,
+    });
+    expect(calls.map((c) => c.args)).toEqual([
+      ["--noEmit", "--pretty", "false", "-p", "tsconfig.app.json"],
+      ["--noEmit", "--pretty", "false", "-p", "tools/tsconfig.json"],
+    ]);
+    expect(findings.map((f) => `${f.rule} ${f.file ?? ""}`)).toEqual([
+      "tsc/TS2322 web/src/shared.ts",
+      "tsc/TS2304 web/tools/a.ts",
+    ]);
+  });
+
+  it("follows a referenced solution-style tsconfig to the projects it references (#124)", async () => {
+    const { tools, calls } = fakeTools({});
+    await check(target({ categories: only("typecheck") }), tools, {
+      "web/tsconfig.json": JSON.stringify({ files: [], references: [{ path: "./packages" }] }),
+      "web/packages/tsconfig.json": JSON.stringify({ files: [], references: [{ path: "../../lib/tsconfig.json" }] }),
+    });
+    expect(calls.map((c) => c.args)).toEqual([["--noEmit", "--pretty", "false", "-p", "../lib/tsconfig.json"]]);
+  });
+
   it("passes when tsc exits 0", async () => {
     const { tools } = fakeTools({});
     expect(await check(target({ categories: only("typecheck") }), tools)).toEqual([]);

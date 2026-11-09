@@ -331,6 +331,8 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | `deps.manager` | `npm`；允許替代工具 `pnpm`、`yarn` | — |
 | `deps.lockfile` | lockfile 必須提交；CI 使用 `npm ci` | CLI 檢查 |
 
+solution-style 的 `tsconfig.json`（`"files": []`、沒有 `include`、有 `references`）本身不檢查任何檔案：`typecheck.strict` 與 `typecheck.options` 改對每個被參照的 tsconfig 判斷（finding 與 `fix` 都指向被參照的檔案，solution 檔不修改；位在其他元件目錄內的參照交給該元件，巢狀的 solution 檔繼續往下追），型別檢查對每個參照執行 `tsc --noEmit -p <ref>` 並合併相同的錯誤。
+
 來源：[預設標準：TypeScript](.scratch/coding-standards-guard/issues/10-default-standard-typescript.md)
 
 ### 6.4 Java
