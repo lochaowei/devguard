@@ -37,6 +37,7 @@ ignore:                         # 選填：排除的目錄、檔案或 glob
 
 1. **元件定義**：一個元件由 `path`（相對於 repo 根目錄的目錄路徑）與 `language`（`python`、`go`、`typescript`、`java`）組成。同一目錄若有多種語言，可宣告為多個元件。
 2. **最長路徑前綴匹配**：repo 內的每個程式檔（`.py`、`.go`、`.ts`/`.tsx`/`.mts`/`.cts`、`.java`）歸屬於**路徑前綴最長、且語言與副檔名相符**的元件。
+   程式碼檢查的 finding 也依這條規則歸屬：每筆帶檔案的 finding 只在擁有該檔案的元件底下回報一次。工具碰到其他元件或 `ignore` 排除的檔案（例如子元件沿用根目錄 `pyrightconfig.json` 而檢查整個 repo，或父元件的 Prettier 走進子元件）所產生的 finding 會被丟棄；沒有檔案的 finding（如工具執行失敗）照常回報。
 3. **未涵蓋檔案（Uncovered Files）**：若 repo 中存在上述四種語言的程式檔，但沒有任何相符語言的元件涵蓋該路徑：
    - 依副檔名推定語言，直接套用該語言的**預設標準**（不含任何元件覆寫）。
    - `check` 會發出 `declaration/uncovered-files` **提示（hint）**，建議在 `.devguard.yaml` 的 `components` 中補上對應元件。
