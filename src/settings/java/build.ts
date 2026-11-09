@@ -32,14 +32,14 @@ export interface InferredBuildTool {
   ambiguous: boolean;
 }
 
-async function some(paths: readonly string[], has: HasFile): Promise<boolean> {
+async function anyExists(paths: readonly string[], has: HasFile): Promise<boolean> {
   for (const p of paths) if (await has(p)) return true;
   return false;
 }
 
 /** Whether the component's `tool` wrapper is there, in its directory or one above it (multi-module builds). */
 function hasWrapper(dir: string, tool: BuildTool, has: HasFile): Promise<boolean> {
-  return some(
+  return anyExists(
     upwards(dir).flatMap((d) => WRAPPER[tool].files.map((f) => d + f)),
     has,
   );
@@ -51,7 +51,7 @@ function hasWrapper(dir: string, tool: BuildTool, has: HasFile): Promise<boolean
  */
 export async function inferBuildTool(dir: string, has: HasFile): Promise<InferredBuildTool> {
   const maven = await has(`${dir}pom.xml`);
-  const gradle = await some(
+  const gradle = await anyExists(
     GRADLE_BUILD_FILES.map((f) => dir + f),
     has,
   );
@@ -75,6 +75,22 @@ export async function javaBuildTool(dir: string, declared: unknown, has: HasFile
 export function componentBuildTool(c: ResolvedComponent, has: HasFile): Promise<BuildTool> {
   const item = c.effective["build.tool"];
   return javaBuildTool(c.dir, item?.source === "override" ? item.value : undefined, has);
+}
+
+/** A code or test target: its effective values, with the keys the declaration sets itself in `overrides`. */
+interface Target {
+  dir: string;
+  effective: Readonly<Record<string, unknown>>;
+  overrides?: ReadonlySet<string>;
+}
+
+/** `javaBuildTool` of a code or test target, whose files are read from the working tree. */
+export function targetBuildTool(
+  t: Target,
+  read: (repoPath: string) => Promise<string | undefined>,
+): Promise<BuildTool> {
+  const declared = t.overrides?.has("build.tool") === true ? t.effective["build.tool"] : undefined;
+  return javaBuildTool(t.dir, declared, async (p) => (await read(p)) !== undefined);
 }
 
 /** The build wrapper must be committed, in the component directory or one above it (multi-module builds). */

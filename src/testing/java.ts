@@ -1,7 +1,7 @@
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Finding } from "../report/finding.ts";
-import { javaBuildTool } from "../settings/java/build.ts";
+import { targetBuildTool } from "../settings/java/build.ts";
 import { mavenReportDirs } from "../settings/java/modules.ts";
 import { parseXmlText } from "../xml/parse.ts";
 import {
@@ -57,11 +57,10 @@ const GRADLE: Build = {
   },
 };
 
-/** The component's build tool (`javaBuildTool`). */
+/** The component's build tool (`targetBuildTool`). */
 async function buildOf(target: TestTarget, ctx: TestContext): Promise<Build> {
-  const declared = target.overrides.has("build.tool") ? target.effective["build.tool"] : undefined;
-  const has = async (p: string) => (await readReport(join(ctx.cwd, p))) !== undefined;
-  return (await javaBuildTool(target.dir, declared, has)) === "gradle" ? GRADLE : MAVEN;
+  const tool = await targetBuildTool(target, (p) => readReport(join(ctx.cwd, p)));
+  return tool === "gradle" ? GRADLE : MAVEN;
 }
 
 const COUNTERS: Readonly<Record<string, CoverageMetric>> = { LINE: "lines", BRANCH: "branches" };

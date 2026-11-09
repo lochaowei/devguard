@@ -123,8 +123,6 @@ const stripXmlComments = (xml: string) => xml.replace(/<!--[\s\S]*?-->/g, (c) =>
 
 async function javaLockfile(s: Scope, emit: Emit): Promise<void> {
   const { dir } = s.component;
-  const pom = `${dir}pom.xml`;
-  const text = await s.read(pom);
   if ((await componentBuildTool(s.component, s.exists)) === "gradle") {
     requireCommitted(
       s,
@@ -135,6 +133,8 @@ async function javaLockfile(s: Scope, emit: Emit): Promise<void> {
     );
     return;
   }
+  const pom = `${dir}pom.xml`;
+  const text = await s.read(pom);
   if (text === undefined) {
     emit("error", "deps/manifest-missing", `找不到 ${pom}`, { file: pom });
     return;
