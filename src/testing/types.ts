@@ -11,6 +11,8 @@ export interface TestTarget {
   language: Language;
   /** Effective standard values for the component (`test.tool`, `build.tool`...). */
   effective: Readonly<Record<string, unknown>>;
+  /** The keys of `effective` the declaration sets itself; absent or missing keys hold the standard's default. */
+  overrides?: ReadonlySet<string>;
   /** The coverage threshold in force (%): the declared `coverage.lines`, including an accepted deviation. */
   threshold: number;
   /** True when the threshold is a deviation the declaration accepted. */

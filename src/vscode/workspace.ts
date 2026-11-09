@@ -1,5 +1,6 @@
 import type { Resolution, ResolvedComponent } from "../declaration/resolve.ts";
 import type { KeyPath, Layout } from "../fix/repair.ts";
+import { componentBuildTool } from "../settings/java/build.ts";
 import { CHECKSTYLE_FILES } from "../settings/java/checkstyle.ts";
 import { readGradleBuild } from "../versions/pinned.ts";
 
@@ -218,7 +219,7 @@ async function tasks(resolution: Resolution, read: ReadRepoText): Promise<Task[]
   const java = resolution.components.filter((c) => c.language === "java");
   for (const c of java) {
     const label = java.length > 1 ? `standards: format (Spotless) ${c.name}` : "standards: format (Spotless)";
-    const maven = (await read(`${c.dir}pom.xml`)) !== undefined || declared(c, "build.tool") !== "gradle";
+    const maven = (await componentBuildTool(c, async (p) => (await read(p)) !== undefined)) === "maven";
     list.push(spotlessTask(c, maven, label));
   }
   return list;

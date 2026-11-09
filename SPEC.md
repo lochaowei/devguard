@@ -338,7 +338,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | 項目 | 預設值 | 落地方式 |
 |---|---|---|
 | `java.minVersion` | 17（新專案建議 21 以上） | `maven.compiler.release` / Gradle toolchain |
-| `build.tool` | Maven 或 Gradle，必須提交 wrapper | CLI 一律透過 wrapper 呼叫 |
+| `build.tool` | Maven 或 Gradle，必須提交 wrapper | CLI 一律透過 wrapper 呼叫，只執行該建置工具的 wrapper（`mvnw` 或 `gradlew`，元件目錄或上層），不會改用另一種。建置工具的判斷（設定、程式碼、測試、依賴各層共用）：宣告的 `build.tool` 優先；沒有宣告時，只有 `pom.xml` 是 maven，只有 Gradle 建置檔（`build.gradle(.kts)`、`settings.gradle(.kts)`）是 gradle；兩者都有時依提交的 wrapper，只有 `gradlew` 是 gradle，其餘（只有 `mvnw`、兩者都有或都沒有）是 maven |
 | `format.tool` | Spotless 搭配 palantir-java-format（4 空白、120 欄，風格） | `spotless:check` / `spotless:apply` |
 | `lint.tool` / `lint.rules` | Checkstyle（以 `google_checks.xml` 為基礎，移除與 palantir 衝突的格式類規則）+ PMD quickstart | `checkstyle.xml`、PMD ruleset（由 CLI 產生）。內建設定**不含**複雜度與 import 規則，產生時必須自行加入：Checkstyle 的 `IllegalImport`、`CyclomaticComplexity`（max 10），以及 PMD 的 `CognitiveComplexity`（reportLevel 15）。PMD quickstart 中的複雜度規則預設是註解掉的。 |
 | `complexity.cyclomatic` / `cognitive` | 10 / 15 | Checkstyle / PMD |

@@ -19,6 +19,11 @@ export interface EffectiveItem {
   until?: string;
 }
 
+/** The keys of a component's effective items that the declaration sets itself, rather than the standard's defaults. */
+export function overriddenKeys(effective: Readonly<Record<string, EffectiveItem>>): Set<string> {
+  return new Set(Object.keys(effective).filter((k) => effective[k]?.source === "override"));
+}
+
 /**
  * The value an item holds the component to: the declared one, unless it is invalid or a widening without a valid
  * reason (the declaration layer reports those), in which case the standard's own value. The one rule for every layer

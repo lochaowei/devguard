@@ -109,6 +109,39 @@ describe("Java settings check", () => {
     expect(findings.find((f) => f.rule === "settings/wrapper-missing")?.message).toContain("gradlew");
   });
 
+  describe("with both pom.xml and build.gradle (#96)", () => {
+    // stleary/JSON-java: both build files, only the Gradle wrapper committed.
+    const BOTH = {
+      ...GOOD,
+      mvnw: undefined,
+      "mvnw.cmd": undefined,
+      "build.gradle": "",
+      gradlew: "",
+      "gradlew.bat": "",
+    };
+    const declare = (tool: string) => `${JAVA_ROOT}    overrides:\n      build.tool: ${tool}\n`;
+    const wrapperMissing = (findings: Finding[]) => findings.filter((f) => f.rule === "settings/wrapper-missing");
+
+    it("builds with Gradle when only the Gradle wrapper is committed", async () => {
+      expect(wrapperMissing(await check(BOTH))).toEqual([]);
+    });
+
+    it("builds with Gradle when the declaration says so", async () => {
+      expect(wrapperMissing(await check(BOTH, declare("gradle")))).toEqual([]);
+    });
+
+    it("asks for the Maven wrapper when the declaration says maven", async () => {
+      const [missing, ...rest] = wrapperMissing(await check(BOTH, declare("maven")));
+      expect(rest).toEqual([]);
+      expect(missing?.message).toContain("Maven wrapper");
+    });
+
+    it("asks for the Gradle wrapper of a declared Gradle build that has a pom.xml and mvnw", async () => {
+      const files = { ...GOOD, "build.gradle": "" };
+      expect(wrapperMissing(await check(files, declare("gradle")))[0]?.message).toContain("Gradle wrapper");
+    });
+  });
+
   it("accepts a wrapper committed in a parent directory of the component", async () => {
     const decl = "standard: team@1.0.0\ncomponents:\n  - {path: services/api, language: java}\n";
     const files = {
