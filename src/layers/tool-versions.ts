@@ -9,6 +9,7 @@ import { preCommitRevHints } from "../versions/pre-commit-revs.ts";
 import { inRange } from "../versions/range.ts";
 import type { CheckLayer } from "./types.ts";
 import { repoReaderSync } from "../shared/fs.ts";
+import { rangeApplies } from "../settings/type-checkers.ts";
 
 /** The version range a component is held to (`valueInForce`), as text. */
 export function rangeInForce(item: ItemDef, effective: EffectiveItem | undefined): string {
@@ -21,9 +22,10 @@ interface RangeItem {
   item: ItemDef;
 }
 
-function rangeItems(defs: Readonly<Record<string, ItemDef>>): RangeItem[] {
+/** The component's version-range items, less the type checkers it does not declare (`rangeApplies`, #113). */
+function rangeItems(c: ResolvedComponent, defs: Readonly<Record<string, ItemDef>>): RangeItem[] {
   return Object.entries(defs)
-    .filter(([, item]) => item.kind === "versionRange")
+    .filter(([key, item]) => item.kind === "versionRange" && rangeApplies(key, c, defs))
     .map(([key, item]) => ({ key, item }));
 }
 
@@ -95,7 +97,7 @@ export const toolVersionsLayer: CheckLayer = {
   async run({ cwd, resolution, tools }) {
     const standard = resolution?.standard;
     if (!standard) return { findings: [] };
-    const defs = (c: ResolvedComponent) => rangeItems(standard.languages[c.language]);
+    const defs = (c: ResolvedComponent) => rangeItems(c, standard.languages[c.language]);
     const pinned = resolution.components.flatMap((c) => checkPinned(c, defs(c), cwd));
     const onPath = await checkOnPath(resolution.components, defs, tools);
     const revs = preCommitRevHints(resolution.components, repoReaderSync(cwd));

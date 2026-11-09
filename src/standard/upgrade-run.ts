@@ -18,6 +18,7 @@ import {
 import type { KeyPath, Repair } from "../fix/repair.ts";
 import { createDeclarationLayer, readDeclaration } from "../layers/declaration.ts";
 import { rangeInForce } from "../layers/tool-versions.ts";
+import { rangeApplies } from "../settings/type-checkers.ts";
 import type { Finding } from "../report/finding.ts";
 import { PYTHON_MANAGERS, pythonManager, type FileExists, type PythonManager } from "../tools/python-manager.ts";
 import { createToolRunner, type PackageRequest, type ToolRunner } from "../tools/runner.ts";
@@ -198,8 +199,9 @@ function toolChangesOf(
 function toolChanges(cwd: string, t: Target, after: CheckResult): ToolChange[] {
   return (after.resolution?.components ?? []).flatMap((c) => {
     const pinned = pinnedVersions(c.language, c.dir, repoReaderSync(cwd));
-    return Object.entries(t.to.languages[c.language])
-      .filter(([, item]) => item.kind === "versionRange")
+    const defs = t.to.languages[c.language];
+    return Object.entries(defs)
+      .filter(([key, item]) => item.kind === "versionRange" && rangeApplies(key, c, defs))
       .flatMap(([key, item]) => toolChangesOf(c, key, item, t.from, pinned));
   });
 }

@@ -82,7 +82,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 - 在專案環境（`.venv`）安裝並鎖定標準要求的開發工具（寫入 `pyproject.toml` 與 `uv.lock`）：
   ```bash
   uv init --lib
-  uv add --dev "ruff>=0.17,<1" "mypy>=1.18,<2" "pytest>=8,<10" "pytest-cov>=6,<8"
+  uv add --dev "ruff>=0.17,<1" "mypy>=1.18,<3" "pytest>=8,<10" "pytest-cov>=6,<8"
   # 若型別檢查改用 pyright：
   # uv add --dev "pyright>=1.1.400,<2"
   # 若型別檢查改用 basedpyright（team@1.2.0 起）：
@@ -91,7 +91,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.3.0
+standard: team@1.4.0
 components:
   - path: ./
     language: python
@@ -155,7 +155,7 @@ branch = true
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.3.0
+standard: team@1.4.0
 components:
   - path: ./
     language: go
@@ -231,7 +231,7 @@ formatters:
 
 #### 專案宣告 `.devguard.yaml`
 ```yaml
-standard: team@1.3.0
+standard: team@1.4.0
 components:
   - path: ./
     language: typescript
