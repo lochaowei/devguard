@@ -221,8 +221,18 @@ describe("devguard check", () => {
     expect(r.err).toContain("安裝：pnpm install\n");
   });
 
+  it("exits 2 asking for `devguard fix` first, not `uv sync`, without a pyproject.toml (#112)", async () => {
+    const dir = project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: python}\n");
+    writeFileSync(join(dir, "a.py"), "a = 1\n");
+    const r = await run(["check", "--cwd", dir, "--only", "lint", join(dir, "a.py")], "real");
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("devguard fix --yes");
+    expect(r.err).not.toContain("uv sync");
+  });
+
   it("exits 2 with `uv sync` when the Python tools are not installed", async () => {
     const dir = project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: python}\n");
+    writeFileSync(join(dir, "pyproject.toml"), '[project]\nname = "a"\ndependencies = ["ruff"]\n');
     writeFileSync(join(dir, "a.py"), "a = 1\n");
     const r = await run(["check", "--cwd", dir, "--only", "lint", join(dir, "a.py")], "real");
     expect(r.code).toBe(2);
