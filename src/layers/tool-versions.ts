@@ -4,11 +4,12 @@ import { DECLARATION_FILE } from "../declaration/types.ts";
 import type { Finding } from "../report/finding.ts";
 import type { ItemDef } from "../standard/types.ts";
 import type { ToolRunner } from "../tools/runner.ts";
-import { pinnedVersions } from "../versions/pinned.ts";
+import { pinnedBuilds } from "../versions/pinned.ts";
 import { preCommitRevHints } from "../versions/pre-commit-revs.ts";
 import { inRange } from "../versions/range.ts";
 import type { CheckLayer } from "./types.ts";
 import { repoReaderSync } from "../shared/fs.ts";
+import { listDirsIn } from "../settings/java/gradle-projects.ts";
 import { rangeApplies } from "../settings/type-checkers.ts";
 
 /** The version range a component is held to (`valueInForce`), as text. */
@@ -30,25 +31,25 @@ function rangeItems(c: ResolvedComponent, defs: Readonly<Record<string, ItemDef>
 }
 
 /** Locked versions of the component's tools against the ranges in force (SPEC §5.2, §8). */
-function checkPinned(c: ResolvedComponent, items: RangeItem[], cwd: string): Finding[] {
-  const pinned = pinnedVersions(c.language, c.dir, repoReaderSync(cwd));
-  if (!pinned) return [];
+async function checkPinned(c: ResolvedComponent, items: RangeItem[], cwd: string): Promise<Finding[]> {
   const findings: Finding[] = [];
-  for (const { key, item } of items) {
-    if (item.onPath) continue;
-    const range = rangeInForce(item, c.effective[key]);
-    for (const name of item.pinnedAs ?? []) {
-      const version = pinned.versions.get(name);
-      if (version === undefined || inRange(version, range)) continue;
-      findings.push({
-        level: "error",
-        layer: "consistency",
-        rule: "tool-version/out-of-range",
-        message: `${name} ${version} 不在允許的版本範圍 ${range} 內`,
-        component: c.name,
-        file: pinned.file,
-        fix: `把 ${name} 改成 ${range} 內的版本並更新 lockfile；或在 ${DECLARATION_FILE} 以 {value, reason, until} 放寬 ${key}`,
-      });
+  for (const pinned of await pinnedBuilds(c.language, c.dir, repoReaderSync(cwd), listDirsIn(cwd))) {
+    for (const { key, item } of items) {
+      if (item.onPath) continue;
+      const range = rangeInForce(item, c.effective[key]);
+      for (const name of item.pinnedAs ?? []) {
+        const version = pinned.versions.get(name);
+        if (version === undefined || inRange(version, range)) continue;
+        findings.push({
+          level: "error",
+          layer: "consistency",
+          rule: "tool-version/out-of-range",
+          message: `${name} ${version} 不在允許的版本範圍 ${range} 內`,
+          component: c.name,
+          file: pinned.file,
+          fix: `把 ${name} 改成 ${range} 內的版本並更新 lockfile；或在 ${DECLARATION_FILE} 以 {value, reason, until} 放寬 ${key}`,
+        });
+      }
     }
   }
   return findings;
@@ -98,7 +99,7 @@ export const toolVersionsLayer: CheckLayer = {
     const standard = resolution?.standard;
     if (!standard) return { findings: [] };
     const defs = (c: ResolvedComponent) => rangeItems(c, standard.languages[c.language]);
-    const pinned = resolution.components.flatMap((c) => checkPinned(c, defs(c), cwd));
+    const pinned = (await Promise.all(resolution.components.map((c) => checkPinned(c, defs(c), cwd)))).flat();
     const onPath = await checkOnPath(resolution.components, defs, tools);
     const revs = preCommitRevHints(resolution.components, repoReaderSync(cwd));
     return { findings: [...pinned, ...onPath, ...revs] };
