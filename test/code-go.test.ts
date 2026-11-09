@@ -93,7 +93,7 @@ describe("go checker: file arguments", () => {
     const { tools, calls } = fakeTools({ code: 1, stdout });
     const files = ["pkg/a.go", "main.go", "pkg/b.go"];
     const findings = await check(target({ categories: only("lint"), files }), tools);
-    expect(calls.map((c) => c.args?.slice(7))).toEqual([["./pkg", "."]]);
+    expect(calls.map((c) => c.args?.filter((a) => !a.startsWith("-")).slice(1))).toEqual([["./pkg", "."]]);
     expect(findings.map((f) => f.file)).toEqual(["svc/pkg/a.go", "svc/main.go"]);
   });
 
