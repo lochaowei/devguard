@@ -327,12 +327,12 @@ function checkPythonVersion(
  */
 function reportTypecheckOff(r: Report, pyright: PyrightTool, found: ToolSection): void {
   const mode = r.want("typecheck.strict") === false ? "standard" : "strict";
-  const report = r.forFile(found.file);
-  report.fixable(
+  const inFile = r.forFile(found.file);
+  inFile.fixable(
     "typecheck-off",
     `${pyright} 的 typeCheckingMode 是 "off"：型別檢查實際被關閉`,
     `設定 typeCheckingMode = ${fmt(mode)}`,
-    [report.set([...found.prefix, "typeCheckingMode"], mode)],
+    [inFile.set([...found.prefix, "typeCheckingMode"], mode)],
   );
 }
 
@@ -429,7 +429,8 @@ function newRuff(r: Report, doc: Table): Repair[] {
 
 /**
  * [tool.ruff], [tool.mypy], [tool.pyright] and [tool.basedpyright] of pyproject.toml, or else Ruff's settings in
- * another file and pyrightconfig.json, which pyright and basedpyright both read.
+ * another file and pyrightconfig.json, which pyright and basedpyright both read; a pyrightconfig.json next to the
+ * pyproject.toml wins over its tables, as it does for pyright.
  */
 function resolveSections(
   doc: Table,
@@ -442,11 +443,16 @@ function resolveSections(
   };
   const other = (c?: ExternalToolConfig): ToolSection | undefined =>
     c && { file: c.file, prefix: c.prefix ?? [], table: c.table };
+  // pyright and basedpyright take a pyrightconfig.json over pyproject.toml in the same directory, and only look in a
+  // parent directory when the component's own directory has neither.
+  const sameDir = extra.pyright?.file === file.replace(/pyproject\.toml$/, "pyrightconfig.json");
+  const pyright = (tool: PyrightTool) =>
+    sameDir ? other(extra.pyright) : (own(["tool", tool]) ?? other(extra.pyright));
   return {
     ruff: own(["tool", "ruff"]) ?? other(extra.ruff),
     mypy: own(["tool", "mypy"]),
-    pyright: own(["tool", "pyright"]) ?? other(extra.pyright),
-    basedpyright: own(["tool", "basedpyright"]) ?? other(extra.pyright),
+    pyright: pyright("pyright"),
+    basedpyright: pyright("basedpyright"),
   };
 }
 

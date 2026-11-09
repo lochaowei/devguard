@@ -161,7 +161,7 @@ interface FileProbe {
    */
   typeCheckers: ReadonlySet<TypeChecker>;
   /** The pyrightconfig.json pyright would use for the component exists and does not turn type checking off. */
-  pyrightConfig: boolean;
+  pyrightConfigOn: boolean;
 }
 
 /** What the draft knows of the repo's files: which exist, and each Python component's type checker settings. */
@@ -175,7 +175,7 @@ interface DraftFiles {
 const CHOICE_RULES: Readonly<Record<Language, (p: FileProbe) => [boolean, string, string][]>> = {
   python: (p) => [
     [p.nearest(["poetry.lock"], ["uv.lock"]), "deps.manager", "poetry"],
-    [p.pyrightConfig, "typecheck.tool", "pyright"],
+    [p.pyrightConfigOn, "typecheck.tool", "pyright"],
     // basedpyright also reads pyrightconfig.json, so its own table wins over the rule above.
     [p.typeCheckers.has("basedpyright"), "typecheck.tool", "basedpyright"],
   ],
@@ -215,7 +215,7 @@ function inferToolChoices(c: DraftComponent, files: DraftFiles): Record<string, 
   const probe: FileProbe = {
     nearest: (win, lose) => nearestChoice(c.dir, files.present, win, lose),
     typeCheckers: files.typeCheckers.get(c.dir) ?? new Set(),
-    pyrightConfig: nearestPyrightConfigOn(c.dir, files),
+    pyrightConfigOn: nearestPyrightConfigOn(c.dir, files),
   };
   return Object.fromEntries(
     CHOICE_RULES[c.language](probe)

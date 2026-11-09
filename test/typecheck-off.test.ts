@@ -4,32 +4,9 @@ import { draftDeclaration } from "../src/draft.ts";
 import { declarationLayer } from "../src/layers/declaration.ts";
 import { pythonSettingsLayer } from "../src/layers/settings-python.ts";
 import { rules, TODAY } from "./helpers.ts";
-import { noTools, repo } from "./standard-helpers.ts";
+import { noTools, pyproject, repo } from "./standard-helpers.ts";
 
 // pyright / basedpyright with typeCheckingMode = "off" check nothing (#114).
-
-/** A pyproject.toml that meets the standard except for the type checker tables, which `typecheck` supplies. */
-const pyproject = (typecheck: string) => `[project]
-name = "app"
-requires-python = ">=3.11"
-
-[tool.ruff]
-line-length = 120
-target-version = "py311"
-
-[tool.ruff.lint]
-select = ["E", "W", "F", "I", "B", "UP", "C90", "SIM", "N", "S", "TID"]
-
-[tool.ruff.lint.mccabe]
-max-complexity = 10
-
-[tool.ruff.lint.per-file-ignores]
-"**/tests/**" = ["S101"]
-"**/test_*.py" = ["S101"]
-${typecheck}
-[tool.coverage.run]
-branch = true
-`;
 
 const MYPY = '\n[tool.mypy]\nstrict = true\npython_version = "3.11"\n';
 const BASED_OFF = '\n[tool.basedpyright]\ntypeCheckingMode = "off"\n';
@@ -60,6 +37,15 @@ describe("draft does not infer the type checker from settings that turn it off (
     const text = await draft(files);
     expect(text).not.toContain("typecheck.tool");
     expect(text).not.toContain("typecheck.strict");
+  });
+
+  it("keeps mypy when a pyrightconfig.json next to an on [tool.basedpyright] turns checking off", async () => {
+    const files = {
+      "pyproject.toml": pyproject(MYPY + '\n[tool.basedpyright]\ntypeCheckingMode = "strict"\n'),
+      "pyrightconfig.json": '{ "typeCheckingMode": "off" }\n',
+      "app.py": "",
+    };
+    expect(await draft(files)).not.toContain("typecheck.tool");
   });
 
   it("still infers basedpyright from a table that type-checks", async () => {
@@ -96,6 +82,19 @@ describe("a declared pyright-based checker set to off is an error (#114)", () =>
     expect(off?.repairs).toEqual([
       { op: "set", file: "pyrightconfig.json", path: ["typeCheckingMode"], value: "standard" },
     ]);
+  });
+
+  it("takes a pyrightconfig.json next to pyproject.toml over its table, as pyright does", async () => {
+    const based = (table: string, config: string) =>
+      settingsFindings({
+        ".devguard.yaml": declaring("basedpyright"),
+        "pyproject.toml": pyproject(`\n[tool.basedpyright]\ntypeCheckingMode = "${table}"\n`),
+        "pyrightconfig.json": `{ "typeCheckingMode": "${config}" }\n`,
+      });
+    const off = await based("strict", "off");
+    expect(rules(off)).toEqual(["error:settings/typecheck-off"]);
+    expect(off[0]?.file).toBe("pyrightconfig.json");
+    expect(await based("off", "strict")).toEqual([]);
   });
 
   it("says nothing about an undeclared checker that is off", async () => {
