@@ -245,6 +245,17 @@ describe("tool runner: a Python tool missing from the dev dependencies (#68)", (
 });
 
 describe("tool runner: TypeScript", () => {
+  it("runs Bun's node_modules/.bin/<tool>.exe on Windows, and the .cmd when both are there (#122)", async () => {
+    const exe = "C:\\repo\\node_modules\\.bin\\eslint.exe";
+    const cmd = "C:\\repo\\node_modules\\.bin\\eslint.cmd";
+    const bun = fakeRunner({ [exe]: "" });
+    await bun.runner.run(req({ language: "typescript", tool: "eslint" }));
+    expect(bun.started[0]?.file).toBe(exe);
+    const both = fakeRunner({ [exe]: "", [cmd]: "" });
+    await both.runner.run(req({ language: "typescript", tool: "eslint" }));
+    expect(both.started[0]?.file).toBe(cmd);
+  });
+
   it("runs node_modules/.bin/<tool>.cmd on Windows", async () => {
     const bin = "C:\\repo\\web\\node_modules\\.bin\\eslint.cmd";
     const { runner, started } = fakeRunner({ [bin]: "" });

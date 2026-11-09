@@ -146,6 +146,21 @@ describe("deps layer: TypeScript lockfile", () => {
     const yarn = decl("typescript", "app/", "      deps.manager: yarn\n");
     expect((await check({ declaration: yarn, files: { "yarn.lock": "" } })).findings).toEqual([]);
   });
+
+  it("says Bun is not an allowed package manager when only a Bun lockfile is there (#122)", async () => {
+    for (const bun of ["bun.lock", "bun.lockb"]) {
+      const { findings } = await check({ declaration: decl("typescript", "web/"), files: { [bun]: "" } });
+      expect(summary(findings)).toEqual(["error:deps/lockfile-missing:web/ (TypeScript):web/package-lock.json"]);
+      expect(findings[0]?.message).toContain(`偵測到 Bun（${bun}）`);
+      expect(findings[0]?.message).toContain("Bun 不是允許的套件管理工具（允許 npm／pnpm／yarn）");
+    }
+    const { findings } = await check({ declaration: decl("typescript"), files: {} });
+    expect(findings[0]?.message).toBe("沒有提交 package-lock.json");
+    // Another allowed lockfile is there: the project is not Bun-only, so only the manager's lockfile is missing.
+    const pnpm = decl("typescript", "./", "      deps.manager: pnpm\n");
+    const mixed = await check({ declaration: pnpm, files: { "package-lock.json": "{}", "bun.lock": "" } });
+    expect(mixed.findings[0]?.message).toBe("沒有提交 pnpm-lock.yaml");
+  });
 });
 
 const GO_MOD = "module example.com/app\n\ngo 1.26\n\nrequire (\n\tgithub.com/google/uuid v1.6.0\n)\n";

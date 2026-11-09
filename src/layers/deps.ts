@@ -94,9 +94,29 @@ function typescriptLockfile(s: Scope, emit: Emit): Promise<void> {
   const manager = effective(s.component, "deps.manager");
   // An unknown manager is already an error in the declaration; fall back to npm's lockfiles.
   const locks = (typeof manager === "string" ? TS_LOCKS[manager] : undefined) ?? NPM_LOCKS;
-  const candidates = upwards(s.component.dir).flatMap((d) => locks.map((l) => d + l));
-  requireCommitted(s, emit, candidates, `${s.component.dir}${locks[0] ?? ""}`);
+  const dirs = upwards(s.component.dir);
+  const candidates = dirs.flatMap((d) => locks.map((l) => d + l));
+  requireCommitted(s, emit, candidates, `${s.component.dir}${locks[0] ?? ""}`, bunNote(s, dirs));
   return Promise.resolve();
+}
+
+/**
+ * Bun's lockfiles: text `bun.lock` (Bun 1.2 and later; checked on 1.4.4) and binary `bun.lockb` (before 1.2). A
+ * project with one and no allowed lockfile is managed by Bun, which the standard does not allow.
+ */
+const BUN_LOCKS = ["bun.lock", "bun.lockb"];
+
+/**
+ * Why a Bun-only project has no allowed lockfile (#122). Empty when the component and the directories above have an
+ * allowed lockfile of any manager, or no Bun lockfile.
+ */
+function bunNote(s: Scope, dirs: readonly string[]): string {
+  const files = (locks: readonly string[]) => dirs.flatMap((d) => locks.map((l) => d + l));
+  if (files(Object.values(TS_LOCKS).flatMap((l) => l ?? [])).some((p) => s.exists(p))) return "";
+  const bun = files(BUN_LOCKS).find((p) => s.exists(p));
+  if (bun === undefined) return "";
+  const allowed = Object.keys(TS_LOCKS).join("／");
+  return `（偵測到 Bun（${bun}），但 Bun 不是允許的套件管理工具（允許 ${allowed}）：改用其中一個並提交它的 lockfile）`;
 }
 
 async function goLockfile(s: Scope, emit: Emit): Promise<void> {

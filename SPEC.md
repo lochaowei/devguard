@@ -204,7 +204,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 - **golangci-lint 例外**：不放進 `go.mod` 的 `tool`。使用指定版本的 binary，由開發者放到 PATH，CLI 從 PATH 呼叫並核對版本。
 - CLI 執行工具的方式：
   - Python：`uv run <tool>`，工具須已安裝在專案環境中。專案環境是 `UV_PROJECT_ENVIRONMENT` 指定的目錄（絕對路徑照用，相對路徑相對於專案目錄，與 uv 相同），未設定時為 `.venv`；找不到工具時，訊息列出實際找過的專案環境路徑。Poetry 專案（最近的 lockfile 是 `poetry.lock`）不讀 `UV_PROJECT_ENVIRONMENT`，直接執行專案內 `.venv` 中的工具，所以 Poetry 必須設定 `virtualenvs.in-project true`
-  - TypeScript：`node_modules/.bin/<tool>`
+  - TypeScript：`node_modules/.bin/<tool>`（Windows 依序找 `<tool>.cmd`、`<tool>.exe`：npm／pnpm／Yarn 產生 `.cmd`，Bun 產生 `.exe`）
   - Go：`go tool <名稱>`
   - Java：`./mvnw` / `./gradlew`
 - 工具尚未安裝時，CLI **不會自行下載**，而是報錯並附上一行安裝指令（例如 `uv sync`、`poetry config virtualenvs.in-project true && poetry install`、`npm ci`），套件來源是開發者使用者層級的設定（§10）。TypeScript 的安裝指令由元件目錄往上最近的 lockfile 決定，在該 lockfile 所在的目錄（workspace 根目錄）執行：`package-lock.json`／`npm-shrinkwrap.json` 為 `npm ci`，`pnpm-lock.yaml` 為 `pnpm install --frozen-lockfile`，`yarn.lock` 為 `yarn install --immutable`（Berry）或 `yarn install --frozen-lockfile`（classic），`bun.lock`／`bun.lockb` 為 `bun install --frozen-lockfile`；同一個目錄有多個 lockfile 時 `deps.manager` 的那一個優先；都沒有時改為 `deps.manager` 的一般安裝（例如 `npm install`），在最近的有 `package.json` 的目錄執行（#117）。標準要求的 Python 開發工具（型別檢查器、Ruff、pytest）不在專案環境、元件與上層目錄的 `pyproject.toml` 也都沒有列在依賴中時，`uv sync` 裝不到它，提示改為加入開發依賴的指令，格式與 `standard upgrade` 相同（§5.5）：uv 專案 `uv add --dev "<工具><範圍>"`，Poetry 專案 `poetry config virtualenvs.in-project true && poetry add --group dev "<工具><範圍>"`（前半與 `poetry install` 的提示相同，工具才會裝進 devguard 會找的專案內 `.venv`），範圍取標準的 `tools.<工具>`（#68）。已列在依賴中只是還沒安裝時，維持 `uv sync`／`poetry install`。找不到 uv 本身時，提示改為多行：列出官方安裝腳本、`pipx install uv`、`pip install uv`、`scoop install uv`（Windows），並說明已用 pip 安裝時要把 Python 的 Scripts 目錄（Windows）或 `~/.local/bin`（其他平台）加進 PATH，再以 `uv --version` 確認；devguard 不會到 PATH 以外的位置找 uv。
@@ -329,7 +329,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | `test.tool` | `vitest`；允許替代工具 `jest` | — |
 | `coverage.lines` | lines、branches、functions、statements 都是 80；覆蓋率必須涵蓋元件所有的原始碼，不只被測試 import 的檔案 | `coverage.thresholds` / `coverageThreshold.global`；並且必須設定 `coverage.include` / `collectCoverageFrom`，否則為錯誤 |
 | `deps.manager` | `npm`；允許替代工具 `pnpm`、`yarn` | — |
-| `deps.lockfile` | lockfile 必須提交；CI 使用 `npm ci` | CLI 檢查 |
+| `deps.lockfile` | lockfile 必須提交；CI 使用 `npm ci`。只有 Bun 的 `bun.lock`／`bun.lockb` 時，訊息說明 Bun 不是允許的套件管理工具（允許 npm／pnpm／yarn） | CLI 檢查 |
 
 solution-style 的 `tsconfig.json`（`"files": []`、沒有 `include`、有 `references`）本身不檢查任何檔案：`typecheck.strict` 與 `typecheck.options` 改對每個被參照的 tsconfig 判斷（finding 與 `fix` 都指向被參照的檔案，solution 檔不修改；位在其他元件目錄內的參照交給該元件，巢狀的 solution 檔繼續往下追），型別檢查對每個參照執行 `tsc --noEmit -p <ref>` 並合併相同的錯誤。
 
