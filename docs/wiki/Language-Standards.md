@@ -178,6 +178,8 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 
 **solution-style `tsconfig.json`**：元件的 `tsconfig.json` 是 `"files": []`、沒有 `include`、而有 `references` 時，`typecheck.strict` 與 `typecheck.options` 改對每個被參照的 tsconfig（`path` 是目錄時取其中的 `tsconfig.json`）依其實際生效的設定（含 `extends`）判斷：finding 指向被參照的檔案，`fix` 也修改那個檔案，solution 檔本身不產生設定 finding、不被修改；被參照的檔案讀不到時只給 `settings/unconfirmed` 提示。被參照的檔案位在另一個 TypeScript 元件目錄內時交給該元件判斷，不在任何元件目錄內時仍由這個元件判斷；被參照的檔案本身也是 solution-style 時繼續往下追。`draft` 也從被參照的檔案推斷，任一參照比標準寬即寫成放寬（#124）。
 
+**覆蓋率設定來自別處**：Vitest／Jest 設定檔用了 `mergeConfig`、展開運算子（`...`）或 `extends` 時，devguard 無法從這個檔案確認覆蓋率設定：缺少門檻只給 `settings/unconfirmed` 提示；Vitest 不檢查 `coverage.include`，Jest 則對 `collectCoverageFrom` 也給一筆 `settings/unconfirmed` 提示。Jest 的 `preset` 也算來自別處，但 `ts-jest` 與 `ts-jest/presets/*` 除外（它們只設定 transformer，不設定覆蓋率）：這時門檻與 `collectCoverageFrom` 照一般設定判斷，缺少即為錯誤，`fix` 照常補上。其他 preset（例如 `./my-preset`）下，門檻與 `collectCoverageFrom` 各給一筆 `settings/unconfirmed` 提示（#119）。
+
 ### 執行方式
 
 - **工具執行器**：`node_modules/.bin/<tool>`（Windows 下依序找 `.cmd`、`.exe`（Bun 產生的 shim），`.cmd` 自動透過 `cmd.exe /d /s /c` 啟動；鎖定版本讀取自 `package-lock.json`、`pnpm-lock.yaml` 或 `yarn.lock`）。

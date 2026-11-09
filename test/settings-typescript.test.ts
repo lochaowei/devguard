@@ -360,6 +360,24 @@ describe("TypeScript settings check: which files coverage counts (#45)", () => {
       expect(await jestCheck(noThreshold)).toEqual(["error:settings/looser:jest.config.js"]);
     });
 
+    it("gives fix the settings to add under a ts-jest preset", async () => {
+      const dir = (jest: string) =>
+        project({ ".devguard.yaml": decl, "vitest.config.ts": undefined, "jest.config.js": jest });
+      const [scope] = await check(dir(`module.exports = { preset: 'ts-jest', ${threshold} };\n`));
+      expect(scope?.repairs).toEqual([
+        { op: "set", file: "jest.config.js", path: ["collectCoverageFrom"], value: ["src/**/*.{ts,tsx}"] },
+      ]);
+      const [looser] = await check(dir(`module.exports = { preset: 'ts-jest', collectCoverageFrom: ["src/**"] };\n`));
+      expect(looser?.repairs).toEqual([
+        {
+          op: "set",
+          file: "jest.config.js",
+          path: ["coverageThreshold", "global"],
+          value: { lines: 80, branches: 80, functions: 80, statements: 80 },
+        },
+      ]);
+    });
+
     it("hints at both the thresholds and the file list under another preset", async () => {
       expect(await jestCheck(`module.exports = { preset: './my-preset' };\n`)).toEqual([
         "hint:settings/unconfirmed:jest.config.js",
