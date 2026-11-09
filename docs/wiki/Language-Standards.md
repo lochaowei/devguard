@@ -93,6 +93,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 2. 同一層依 `.golangci.json` > `.golangci.toml` > `.golangci.yaml` > `.golangci.yml` 取第一份。
 
 - 四種格式套用同樣的檢查與 rule id；finding 的 `file` 是採用的那一份，能取得行號時附上（TOML 目前沒有行號）。
+- 多個 Go 元件共用同一份設定檔（例如根目錄的 `.golangci.yml`）時，相同的 finding 只列一次、只算一次，修正也只套用一次。在回報它的元件中，列在目錄就是設定檔所在目錄的那個下；沒有時（例如設定放在 `go.work` 所在、不是元件的目錄），列在其中目錄最上層的那個下（同層依宣告順序）。因此只有一個元件回報的 finding（例如它的覆寫多要求一個 linter）照舊列在那個元件下（#92）。
 - `devguard fix` 沿用採用的那一份的格式修改它（TOML 就改 TOML、JSON 就改 JSON）。只有整條路徑上都沒有任何 golangci 設定檔時，才回報 `settings/golangci-missing` 並建立 `.golangci.yml`。
 - 語法錯誤依格式回報 `settings/golangci-yaml-syntax`、`settings/golangci-toml-syntax` 或 `settings/golangci-json-syntax`，不當成缺檔，也不自動修正。
 - 不是 v2 格式（沒有 `version`、`version: "1"` 或其他值）時，這份檔案**只**回報 `settings/golangci-version`，不檢查 linter、門檻、depguard、formatter，也沒有自動修正，所以 `fix` 不會改動 v1 設定檔（v1 的 `enable-all`、`linters-settings` 與 v2 的寫法不同，寫入 v2 的鍵只會得到一份 golangci-lint 無法載入的檔案）。先執行 `golangci-lint migrate`，再重新執行 `devguard check`。`go.mod` 照常檢查。
@@ -223,6 +224,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 - **程式碼檢查（`code` 層）**：
   - `format`：`mvnw -B -ntp spotless:check`（或 Gradle `spotlessCheck --console=plain -q`）
   - `lint`：`mvnw -B -ntp checkstyle:check pmd:check -Dcheckstyle.failOnViolation=false -Dpmd.failOnViolation=false`（或 Gradle `checkstyleMain checkstyleTest pmdMain pmdTest --continue --console=plain -q`），解析產生的 Checkstyle（`target/checkstyle-result.xml` 或 `build/reports/checkstyle/*.xml`）與 PMD（`target/pmd.xml` 或 `build/reports/pmd/*.xml`）XML 報告。
+  - Maven 多模組（`pom.xml` 有 `<modules>`）時，指令在 `checkstyle:check` 之前加上 `test-compile`，讓 reactor 先編譯並解析兄弟模組；因此會先編譯整個建置，比較慢，編譯失敗時回報 `code/tool-failed`，訊息是建置輸出中的錯誤行。報告從各模組的 `target/` 讀取。
 - **自動修正程式碼（`fix --code`）**：
   - `mvnw -B -ntp spotless:apply`（或 `gradlew spotlessApply --console=plain -q`）。
 - **測試與覆蓋率（`tests` 層，`--full`）**：

@@ -13,6 +13,7 @@ import {
   type CoverageMetric,
   type Measured,
 } from "./coverage.ts";
+import { typescriptToolRequest } from "../tools/runner.ts";
 import type { TestChecker, TestContext, TestTarget } from "./types.ts";
 
 const METRICS: readonly CoverageMetric[] = ["lines", "branches", "functions", "statements"];
@@ -85,7 +86,7 @@ export const typescriptTests: TestChecker = {
     const coverageDir = join(ctx.reportDir, "coverage");
     const reportFile = join(ctx.reportDir, "tests.json");
     const args = invocation(tool, coverageDir, reportFile);
-    const result = await ctx.tools.run({ language: "typescript", tool, dir: target.dir, args });
+    const result = await ctx.tools.run({ ...typescriptToolRequest(target, tool), args });
     // Older versions without an output file print the report to stdout.
     const json = parseJson((await readReport(reportFile)) ?? "") ?? jsonFromOutput(result.stdout);
     const report = failures(json, ctx.cwd);

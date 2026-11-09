@@ -1,0 +1,8 @@
+#!/bin/sh
+# husky
+
+# Created by Husky v4.3.8 (https://github.com/typicode/husky#readme)
+#   At: 2021/1/15 上午10:00:00
+#   From: /home/user/project (https://github.com/user/project#readme)
+
+. "$(dirname "$0")/husky.sh"

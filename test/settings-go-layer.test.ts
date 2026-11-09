@@ -118,6 +118,90 @@ describe("goSettingsLayer", () => {
     }
   });
 
+  describe("a golangci config several Go components share (#92)", () => {
+    const GOMOD = "module x\n\ngo 1.26\n";
+    const LINTERS =
+      "errcheck, govet, ineffassign, staticcheck, unused, gosec, revive, errorlint, bodyclose, misspell, cyclop, gocognit, gomodguard_v2, depguard";
+    const decl = (...paths: string[]) =>
+      `standard: team@1.0.0\ncomponents:\n${paths.map((p) => `  - {path: ${p}, language: go}\n`).join("")}`;
+    // carapace: a root config without revive, used by the root component and two below it.
+    const carapace = () =>
+      project({
+        ".devguard.yaml": decl("./", "example-multi/", "example-nonposix/"),
+        ".golangci.yml": GOLANGCI.replace("revive, ", ""),
+        "go.mod": GOMOD,
+        "example-multi/go.mod": GOMOD,
+        "example-nonposix/go.mod": GOMOD,
+      });
+
+    it("reports each finding about the shared file once, under the component in its directory", async () => {
+      const r = await run(carapace());
+      expect(rules(r.findings)).toEqual(["error:settings/golangci-linter-missing"]);
+      expect(r.findings[0]).toMatchObject({ component: "./ (Go)", file: ".golangci.yml" });
+    });
+
+    it("reports the shared file once, under the shallowest user, when no component is in its directory", async () => {
+      const cwd = project({
+        ".devguard.yaml": decl("tools/b/", "app/", "tools/a/"),
+        ".golangci.yml": GOLANGCI.replace("revive, ", ""),
+        "app/go.mod": GOMOD,
+        "tools/a/go.mod": GOMOD,
+        "tools/b/go.mod": GOMOD,
+      });
+      const r = await run(cwd);
+      expect(rules(r.findings)).toEqual(["error:settings/golangci-linter-missing"]);
+      expect(r.findings[0]).toMatchObject({ component: "app/ (Go)", file: ".golangci.yml" });
+    });
+
+    it("keeps a finding only one user of the file reports, under that user", async () => {
+      const cwd = project({
+        ".devguard.yaml": decl("./", "sub/").replace(
+          "{path: sub/, language: go}",
+          `{path: sub/, language: go, overrides: {lint.rules: [${LINTERS}, gocritic]}}`,
+        ),
+        ".golangci.yml": GOLANGCI,
+        "go.mod": GOMOD,
+        "sub/go.mod": GOMOD,
+      });
+      const r = await run(cwd);
+      expect(r.findings).toMatchObject([{ rule: "settings/golangci-linter-missing", component: "sub/ (Go)" }]);
+      expect(r.findings[0]?.message).toContain("gocritic");
+    });
+
+    it("lists a finding only some users report under the shallowest of those, not the file's directory", async () => {
+      const gocritic = `{language: go, overrides: {lint.rules: [${LINTERS}, gocritic]}}`;
+      const cwd = project({
+        ".devguard.yaml": `standard: team@1.0.0\ncomponents:\n  - {path: ./, language: go}\n  - {path: b/c/, ${gocritic.slice(1)}\n  - {path: a/, ${gocritic.slice(1)}\n`,
+        ".golangci.yml": GOLANGCI,
+        "go.mod": GOMOD,
+        "a/go.mod": GOMOD,
+        "b/c/go.mod": GOMOD,
+      });
+      const r = await run(cwd);
+      expect(r.findings).toMatchObject([{ rule: "settings/golangci-linter-missing", component: "a/ (Go)" }]);
+    });
+
+    it("still checks each component's own go.mod", async () => {
+      const cwd = project({
+        ".devguard.yaml": decl("./", "sub/"),
+        ".golangci.yml": GOLANGCI,
+        "go.mod": "module x\n\ngo 1.24\n",
+        "sub/go.mod": "module x\n\ngo 1.24\n",
+      });
+      const r = await run(cwd);
+      expect(r.findings.map((f) => f.file)).toEqual(["go.mod", "sub/go.mod"]);
+    });
+
+    it("reports the shared file's findings when check is given only a file of another user", async () => {
+      const r = await runCheck(
+        { cwd: carapace(), today: TODAY, scope: { files: ["example-multi/main.go"], full: false } },
+        [declarationLayer, goSettingsLayer],
+      );
+      // Settings layers check every component whatever the scope, so the file's owner is always there to list it.
+      expect(r.findings).toMatchObject([{ rule: "settings/golangci-linter-missing", component: "./ (Go)" }]);
+    });
+  });
+
   it("does nothing without a resolved declaration", async () => {
     expect((await run(project({}))).findings.map((f) => f.rule)).toEqual(["declaration/missing"]);
   });

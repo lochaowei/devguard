@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Command, Exec } from "../src/process/exec.ts";
 import { createToolRunner, ToolMissingError, type ToolRequest, type ToolRunnerDeps } from "../src/tools/runner.ts";
@@ -38,6 +40,8 @@ async function missing(run: Promise<unknown>): Promise<{ message: string; instal
   }
   throw new Error("expected ToolMissingError");
 }
+
+const fixture = (name: string) => readFileSync(join(import.meta.dirname, "fixtures/typescript", name), "utf8");
 
 const req = (r: Partial<ToolRequest> & Pick<ToolRequest, "language" | "tool">): ToolRequest => ({ dir: "", ...r });
 
@@ -256,8 +260,44 @@ describe("tool runner: TypeScript", () => {
   });
 
   it("asks for npm ci when node_modules lacks the tool", async () => {
-    const { runner } = fakeRunner({});
+    const { runner } = fakeRunner({ "C:\\repo\\package-lock.json": "{}" });
     expect((await missing(runner.run(req({ language: "typescript", tool: "eslint" })))).install).toBe("npm ci");
+  });
+
+  it("asks for the frozen install of the package manager whose lockfile it finds (#117)", async () => {
+    const hint = async (files: Record<string, string>) =>
+      (await missing(fakeRunner(files).runner.run(req({ language: "typescript", tool: "eslint" })))).install;
+    expect(await hint({ "C:\\repo\\pnpm-lock.yaml": "lockfileVersion: '9.0'\n" })).toBe(
+      "pnpm install --frozen-lockfile",
+    );
+    // Heads of the real lockfiles: jquense/yup (Yarn 4), facebook/react (Yarn 1), elysiajs/elysia (Bun 1.x).
+    expect(await hint({ "C:\\repo\\yarn.lock": fixture("yarn-berry.lock") })).toBe("yarn install --immutable");
+    expect(await hint({ "C:\\repo\\yarn.lock": fixture("yarn-classic.lock") })).toBe("yarn install --frozen-lockfile");
+    expect(await hint({ "C:\\repo\\bun.lock": fixture("bun.lock") })).toBe("bun install --frozen-lockfile");
+    expect(await hint({ "C:\\repo\\bun.lockb": "\u0000" })).toBe("bun install --frozen-lockfile");
+  });
+
+  it("prefers the declared manager's lockfile when one directory has several (#117)", async () => {
+    const files = { "C:\\repo\\package-lock.json": "{}", "C:\\repo\\pnpm-lock.yaml": "" };
+    const declared = req({ language: "typescript", tool: "eslint", manager: "pnpm" });
+    expect((await missing(fakeRunner(files).runner.run(declared))).install).toBe("pnpm install --frozen-lockfile");
+  });
+
+  it("installs at the workspace root that holds the lockfile, not in the component (#117)", async () => {
+    const files = { "C:\\repo\\package-lock.json": "{}", "C:\\repo\\package.json": "{}" };
+    const hooks = req({ language: "typescript", tool: "eslint", dir: ".claude/hooks/" });
+    expect((await missing(fakeRunner(files).runner.run(hooks))).install).toBe("npm ci");
+    const sub = { "C:\\repo\\web\\pnpm-lock.yaml": "", "C:\\repo\\package-lock.json": "{}" };
+    const web = req({ language: "typescript", tool: "eslint", dir: "web/src/" });
+    expect((await missing(fakeRunner(sub).runner.run(web))).install).toBe("cd web && pnpm install --frozen-lockfile");
+  });
+
+  it("asks for the declared manager's plain install where package.json is when there is no lockfile", async () => {
+    const files = { "C:\\repo\\web\\package.json": "{}" };
+    const web = req({ language: "typescript", tool: "eslint", dir: "web/", manager: "pnpm" });
+    expect((await missing(fakeRunner(files).runner.run(web))).install).toBe("cd web && pnpm install");
+    const bare = req({ language: "typescript", tool: "eslint", dir: "web/" });
+    expect((await missing(fakeRunner({}).runner.run(bare))).install).toBe("cd web && npm install");
   });
 
   it("runs node_modules/.bin/<tool> elsewhere", async () => {
