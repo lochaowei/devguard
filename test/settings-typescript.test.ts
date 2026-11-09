@@ -311,6 +311,7 @@ describe("TypeScript settings check: coverage thresholds", () => {
     const fs = await check(project({ ".devguard.yaml": decl, "vitest.config.ts": undefined, "jest.config.js": jest }));
     expect(summary(fs)).toEqual(["error:settings/looser:jest.config.js", "hint:settings/unconfirmed:jest.config.js"]);
     const pkg = JSON.stringify({
+      engines: { node: ">=22" },
       jest: {
         collectCoverageFrom: ["src/**"],
         coverageThreshold: { global: { lines: 80, branches: 80, functions: 80, statements: 80 } },
@@ -401,7 +402,10 @@ describe("TypeScript settings check: which files coverage counts (#45)", () => {
     });
 
     it("reads a ts-jest preset in package.json", async () => {
-      const pkg = JSON.stringify({ jest: { preset: "ts-jest", collectCoverageFrom: ["src/**"] } });
+      const pkg = JSON.stringify({
+        engines: { node: ">=22" },
+        jest: { preset: "ts-jest", collectCoverageFrom: ["src/**"] },
+      });
       const fs = await check(project({ ".devguard.yaml": decl, "vitest.config.ts": undefined, "package.json": pkg }));
       expect(summary(fs)).toEqual(["error:settings/looser:package.json"]);
     });
@@ -481,7 +485,8 @@ describe("TypeScript settings check: Prettier", () => {
   });
 
   it("reads the prettier key of package.json", async () => {
-    const dir = project({ ".prettierrc": undefined, "package.json": '{ "prettier": { "printWidth": 120 } }' });
+    const pkg = '{ "engines": { "node": ">=22" }, "prettier": { "printWidth": 120 } }';
+    const dir = project({ ".prettierrc": undefined, "package.json": pkg });
     expect(await check(dir)).toEqual([]);
   });
 
@@ -521,5 +526,51 @@ describe("TypeScript settings check: team@1.1.0 does not require eslint-plugin-s
     expect(summary(await check(project({ "eslint.config.js": builtinOnly })))).toEqual([
       "hint:settings/unconfirmed:eslint.config.js",
     ]);
+  });
+});
+
+describe("TypeScript settings check: engines.node against node.minVersion (#118)", () => {
+  const pkg = (engines?: unknown) => JSON.stringify({ name: "app", ...(engines === undefined ? {} : { engines }) });
+
+  it.each([">=22", "^22.11", ">=24", ">=22 <26", "22.x"])("accepts engines.node %s", async (node) => {
+    expect(await check(project({ "package.json": pkg({ node }) }))).toEqual([]);
+  });
+
+  it("reports an engines.node floor below the standard as looser", async () => {
+    const fs = await check(project({ "package.json": pkg({ node: ">=20" }) }));
+    expect(summary(fs)).toEqual(["error:settings/looser:package.json"]);
+    expect(fs[0]?.observed).toEqual({ key: "node.minVersion", value: "20" });
+  });
+
+  it("reports a missing engines.node as fixable", async () => {
+    const fs = await check(project({ "package.json": pkg() }));
+    expect(summary(fs)).toEqual(["error:settings/engines-node-missing:package.json"]);
+    expect(fs[0]?.repairs).toEqual([{ op: "set", file: "package.json", path: ["engines", "node"], value: ">=22" }]);
+  });
+
+  it.each(["18 || 20", "*", "latest", ">=18 || >=22"])("hints when engines.node %s cannot be read", async (node) => {
+    const fs = await check(project({ "package.json": pkg({ node }) }));
+    expect(summary(fs)).toEqual(["hint:settings/config-value-unreadable:package.json"]);
+  });
+
+  it("judges the workspace root's package.json for a sub-component without one", async () => {
+    const decl = "standard: team@1.0.0\ncomponents:\n  - path: web/\n    language: typescript\n";
+    const files = {
+      ".devguard.yaml": decl,
+      "tsconfig.json": undefined,
+      ".prettierrc": undefined,
+      "eslint.config.js": undefined,
+      "vitest.config.ts": undefined,
+      "web/tsconfig.json": STRICT_TSCONFIG,
+      "web/.prettierrc": '{ "printWidth": 120, "endOfLine": "lf" }',
+      "web/eslint.config.js": ESLINT,
+      "web/vitest.config.ts": VITEST,
+      "package.json": pkg({ node: ">=20" }),
+    };
+    expect(summary(await check(project(files)))).toEqual(["error:settings/looser:package.json"]);
+  });
+
+  it("does nothing without a package.json", async () => {
+    expect(await check(project())).toEqual([]);
   });
 });

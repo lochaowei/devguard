@@ -326,7 +326,7 @@ describe("devguard draft", () => {
     const web = join(dir, "web");
     mkdirSync(join(web, "src"), { recursive: true });
     writeTsConfigs(web, 60);
-    writeFileSync(join(web, "package.json"), "{}\n");
+    writeFileSync(join(web, "package.json"), '{ "engines": { "node": ">=22" } }\n');
     writeFileSync(join(web, "src", "app.ts"), "");
     return dir;
   }

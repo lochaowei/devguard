@@ -325,7 +325,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 
 | 項目 | 預設值 | 落地方式 |
 |---|---|---|
-| `node.minVersion` | 22 | `engines.node: ">=22"` |
+| `node.minVersion` | 22 | `engines.node: ">=22"`：取元件目錄往上最近的 `package.json`（workspace 子元件沿用根目錄的，不另建）。下限取範圍的最低主版本（`>=20 <24`、`^20.1`、`20.x` 都是 20），低於 22 為 `settings/looser`（`draft` 寫成帶 TODO 理由的放寬），高於或等於 22 沒有 finding（專案較嚴以專案為準）；沒有 `engines.node` 為 `settings/engines-node-missing`（`fix` 加入 `engines.node`）；`\|\|` 組合、`*`、標籤等無法讀出下限的範圍為 `settings/config-value-unreadable` 提示。找不到 `package.json` 時不檢查（#118） |
 | `lint.tool` | `eslint+prettier`；允許替代工具 `biome` | flat config + `.prettierrc` / `biome.json` |
 | `lint.rules` | typescript-eslint `strictTypeChecked` | flat config |
 | `format.printWidth` / `endOfLine` | 120 / `lf`（風格） | Prettier |
