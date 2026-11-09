@@ -50,7 +50,7 @@ async function readExtraConfigs(cwd: string, dir: string): Promise<PythonExtraCo
   return { ...(ruff ? { ruff } : {}), ...(pyright ? { pyright } : {}) };
 }
 
-/** The nearest pyproject.toml in a directory above the component's, parsed; undefined when none parses. */
+/** The nearest pyproject.toml in a directory above the component's, parsed; undefined when there is none or it does not parse. */
 async function parentPyproject(
   cwd: string,
   dir: string,
@@ -69,14 +69,14 @@ async function parentPyproject(
  * Findings on a file outside the component's directory, which a parent directory's component shares (#106): `fix`
  * leaves that file to its owner, so they carry no repair and say who decides.
  */
-function sharedFileFindings(component: ResolvedComponent, findings: Finding[]): Finding[] {
+function withoutRepairsOutside(component: ResolvedComponent, findings: Finding[]): Finding[] {
   return findings.map((f) => {
     if (f.file === undefined || f.file.startsWith(component.dir)) return f;
     const shared: Finding = {
       ...f,
       fix:
         `${f.file} 是上層共用的設定，devguard fix 不修改它：` +
-        `請調整 ${component.name} 在宣告中的 overrides，或由擁有它的元件修改 ${f.file}`,
+        `請調整 ${component.name} 在宣告中的 overrides，或直接修改 ${f.file}（也會影響其他使用它的元件）`,
     };
     delete shared.repairs;
     return shared;
@@ -91,9 +91,13 @@ async function checkComponent(cwd: string, component: ResolvedComponent, defs: D
   if (text === undefined) {
     // Tools read a parent directory's pyproject.toml when the component has none (#106).
     const parent = await parentPyproject(cwd, component.dir);
-    if (parent) return sharedFileFindings(component, checkPyproject(component, defs, parent.doc, parent.file, extra));
+    if (parent)
+      return withoutRepairsOutside(component, checkPyproject(component, defs, parent.doc, parent.file, extra));
     // What an empty pyproject.toml would be missing is what `fix` writes into the new file.
-    const repairs = checkPyproject(component, defs, {}, file, extra).flatMap((f) => f.repairs ?? []);
+    // A parent's ruff.toml or pyrightconfig.json is still left to its owner (#106).
+    const repairs = checkPyproject(component, defs, {}, file, extra)
+      .flatMap((f) => f.repairs ?? [])
+      .filter((r) => r.file.startsWith(component.dir));
     const fix = fixText(`建立 ${file}，寫入標準的 [tool.*] 設定`, repairs);
     return [{ ...at, rule: "settings/pyproject-missing", message: `找不到 ${file}`, fix, repairs }];
   }
@@ -104,7 +108,7 @@ async function checkComponent(cwd: string, component: ResolvedComponent, defs: D
     const message = `${file} 不是合法的 TOML：${(e as Error).message.split("\n")[0] ?? ""}`;
     return [{ ...at, rule: "settings/pyproject-invalid", message }];
   }
-  return sharedFileFindings(component, checkPyproject(component, defs, doc, file, extra));
+  return withoutRepairsOutside(component, checkPyproject(component, defs, doc, file, extra));
 }
 
 /** Settings check for Python components: the tool settings in each component's pyproject.toml (SPEC §6.1, §8). */

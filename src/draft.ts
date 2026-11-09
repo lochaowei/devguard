@@ -72,7 +72,8 @@ export interface ComponentPlan {
   absorbed: AbsorbedDir[];
 }
 
-const PYTHON_PROJECT_FILES = ["pyproject.toml", "setup.py", "setup.cfg"];
+/** The Python markers that make a project of their directory: every one but requirements.txt. */
+const PYTHON_PROJECT_FILES = MARKERS.python.filter((m) => m !== "requirements.txt");
 
 /** The component directory of a file of `language`, from its marked directories (nearest first). */
 function componentDir(language: Language, marked: readonly string[], present: ReadonlySet<string>) {
@@ -82,8 +83,8 @@ function componentDir(language: Language, marked: readonly string[], present: Re
 }
 
 /** The requirements.txt-only directories `pythonDir` passed over for an outer one; none for other languages. */
-function passedOver(language: Language, marked: readonly string[], dir: string | undefined): readonly string[] {
-  if (language !== "python" || dir === undefined) return [];
+function passedOver(language: Language, marked: readonly string[], dir: string): readonly string[] {
+  if (language !== "python") return [];
   return marked.slice(0, marked.indexOf(dir));
 }
 
@@ -149,7 +150,7 @@ export function inferComponents(files: readonly string[], workspaces: GoWorkspac
     if (!language) continue;
     const marked = upwards(dirOf(file)).filter((d) => MARKERS[language].some((m) => present.has(d + m)));
     const dir = componentDir(language, marked, present);
-    for (const skipped of passedOver(language, marked, dir)) absorbed.set(skipped, dir ?? "");
+    if (dir !== undefined) for (const skipped of passedOver(language, marked, dir)) absorbed.set(skipped, dir);
     if (dir === undefined) stray.set(language, [...(stray.get(language) ?? []), file]);
     else found.set(`${dir}|${language}`, { dir, language });
   }

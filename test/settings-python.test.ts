@@ -413,4 +413,21 @@ describe("a sub-component that uses a parent directory's settings (#106)", () =>
     );
     expect(lone.findings.map((f) => [f.rule, f.file])).toEqual([["settings/pyproject-missing", "svc/pyproject.toml"]]);
   });
+
+  it("creates the missing pyproject.toml without touching a parent's ruff.toml", async () => {
+    const r = await runCheck(
+      {
+        cwd: project({
+          ".devguard.yaml": "standard: team@1.4.0\ncomponents:\n  - path: svc/\n    language: python\n",
+          "ruff.toml": "line-length = 100\n",
+          "svc/requirements.txt": "regex\n",
+        }),
+        today: TODAY,
+      },
+      [declarationLayer, pythonSettingsLayer],
+    );
+    const missing = r.findings.find((f) => f.rule === "settings/pyproject-missing");
+    expect(missing?.repairs?.length).toBeGreaterThan(0);
+    expect(missing?.repairs?.map((rep) => rep.file)).toEqual(missing?.repairs?.map(() => "svc/pyproject.toml"));
+  });
 });

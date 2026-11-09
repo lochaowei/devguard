@@ -550,7 +550,7 @@ devguard 不檢查也不寫入套件從哪裡下載（#64；npm 的部分先於 
   - `pyproject.toml` 中任何位置的網址內含密碼（`user:password@`，密碼只引用變數如 `${PASS}` 的除外）或以 token 當作帳號（`ghp_…@`、`glpat-…@` 等），例如 uv 的 index 與 `[tool.uv.pip]`、`[tool.uv.sources]` 的 git／url、Poetry 的 source、直接以網址指定的依賴（`pkg @ https://…`）。只有帳號（`git@`、`deploy@`）不算帳密
   - `.mvn/settings.xml` 的 `<password>`、`<passphrase>` 不是屬性引用（`${env.PW}`、`${nexus.password}`）、Maven 加密過的密碼（`{…}`）或空值時。`<privateKey>` 是金鑰檔的路徑，不檢查
   - 每個元件的這些檔案，在元件目錄與上層各目錄中查找，與工具本身相同（npm workspace 根目錄的 `.npmrc`、uv workspace 根目錄的 `pyproject.toml`、多模組建置的 `.mvn/`）；多個元件共用的檔案只回報一次
-- 沿用上層設定的 Python 子元件（#106）：元件目錄沒有 `pyproject.toml` 時，設定檢查改以上層最近的 `pyproject.toml`（與工具相同）判斷，不再要求建立元件自己的 `pyproject.toml`。設定檢查的 finding 落在元件目錄以外的檔案（上層的 `pyproject.toml`、`ruff.toml`、`pyrightconfig.json` 等）時，不附自動修正，訊息說明這份設定由哪個檔案擁有、由使用者決定調整子元件宣告的 overrides 或修改那份檔案；`fix` 不修改它，也不在子元件目錄建立新的設定檔。擁有那份設定的上層元件，其 `fix` 照常修改。
+- 沿用上層設定的 Python 子元件（#106）：元件目錄沒有 `pyproject.toml` 時，設定檢查改以上層最近的 `pyproject.toml`（與工具相同）判斷，不再要求建立元件自己的 `pyproject.toml`。設定檢查的 finding 落在元件目錄以外的檔案（上層的 `pyproject.toml`、`ruff.toml`、`pyrightconfig.json` 等）時，不附自動修正，訊息說明這份設定由哪個檔案擁有、由使用者決定調整子元件宣告的 overrides 或修改那份檔案（元件目錄自己的 `pyproject.toml` 缺少某個工具的表、工具改讀上層的設定時也一樣）；`fix` 不修改它，也不在子元件目錄建立新的設定檔。擁有那份設定的上層元件，其 `fix` 照常修改。
 - `fix` 不改寫帳密：帳密已經外洩，必須更換；改由哪個環境變數或使用者層級設定提供，由開發者決定。
 - `fix`、`install` 與 `standard upgrade` 的預覽、印出的片段與報告中，一律遮蔽帳密的值（`.npmrc` 的 `_auth` / `_authToken` / `_password`、Maven 的 `<username>` / `<password>`、網址中的 `user:password@`）；只引用環境變數（`${…}`）的值照常顯示。
 
