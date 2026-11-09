@@ -136,7 +136,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 | `format.tools` | `["gofumpt", "goimports"]` | golangci 設定檔的 `formatters.enable` |
 | `complexity.cyclomatic` / `cognitive` | `10` / `15` | `cyclop.max-complexity` / `gocognit.min-complexity` |
 | `coverage.lines` | `80` | 排除 generated 檔案（`// Code generated … DO NOT EDIT.`）與 `mocks/` |
-| `deps.lockfile` | `true` | `go.mod` 與 `go.sum` 必須提交，且 `go mod tidy -diff` 必須乾淨 |
+| `deps.lockfile` | `true` | `go.mod` 與 `go.sum` 必須提交，且 `go mod tidy -diff` 必須乾淨（有 diff：`deps/go-mod-untidy`；模組快取沒有依賴、離線查不到：`deps/go-modules-missing`，修正 `go mod download`；其他失敗：`deps/tool-failed`） |
 | `deps.banned` | `["github.com/pkg/errors", "github.com/golang/protobuf"]` | 直接依賴禁用模組 + `gomodguard_v2` |
 | `deps.bannedApis` | `["io/ioutil"]` | golangci 設定檔的 `depguard` 規則 |
 

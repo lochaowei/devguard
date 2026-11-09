@@ -6,7 +6,7 @@ import { parseConfigText } from "../fix/edit.ts";
 import { componentBuildTool } from "../settings/java/build.ts";
 import type { Finding, Level } from "../report/finding.ts";
 import { listTrackedFiles } from "../repo/files.ts";
-import type { ToolRunner } from "../tools/runner.ts";
+import type { ToolResult, ToolRunner } from "../tools/runner.ts";
 import type { CheckLayer } from "./types.ts";
 import { readIfExists } from "../shared/fs.ts";
 import { upwards } from "../repo/paths.ts";
@@ -207,13 +207,38 @@ async function goLockfile(s: Scope, emit: Emit): Promise<void> {
   if (text !== undefined && /^\s*require\b/m.test(text)) requireCommitted(s, emit, [`${dir}go.sum`], `${dir}go.sum`);
   if (text === undefined) return;
   const r = await s.tools.run({ language: "go", tool: "go", dir, args: ["mod", "tidy", "-diff"] });
-  if (r.code !== 0) {
-    const detail = (r.stdout.trim() || r.stderr.trim()).split(/\r?\n/).slice(0, 5).join("\n");
+  if (r.code !== 0) reportGoTidyFailure(r, goMod, dir, emit);
+}
+
+function reportGoTidyFailure(r: ToolResult, goMod: string, dir: string, emit: Emit): void {
+  // `go: downloading ...` lines are progress noise; left in, they push the real cause out of the first lines (#83).
+  const lines = (r.stdout.trim() || r.stderr.trim()).split(/\r?\n/).filter((l) => !l.startsWith("go: downloading "));
+  const detail = lines.slice(0, 5).join("\n");
+  if (r.stdout.trim() !== "") {
     emit("error", "deps/go-mod-untidy", `go.mod / go.sum 與程式碼不一致（go mod tidy -diff 不乾淨）\n${detail}`, {
       file: goMod,
       fix: inDir(dir, "go mod tidy"),
     });
+    return;
   }
+  // No diff: the check itself could not run. With the checks offline (GOPROXY=off), an empty module cache is the usual cause.
+  const lookup = lines.find((l) => l.includes("module lookup disabled by GOPROXY=off"));
+  if (lookup !== undefined) {
+    emit("error", "deps/go-modules-missing", `依賴還沒下載到模組快取，無法確認 go.mod / go.sum\n${lookup.trim()}`, {
+      file: goMod,
+      fix: inDir(dir, "go mod download"),
+    });
+    return;
+  }
+  emit(
+    "error",
+    "deps/tool-failed",
+    `go mod tidy -diff 執行失敗（exit ${String(r.code)}）${detail === "" ? "" : `：\n${detail}`}`,
+    {
+      file: goMod,
+      fix: inDir(dir, "go mod tidy -diff"),
+    },
+  );
 }
 
 const ENFORCER_RULES = ["banDynamicVersions", "dependencyConvergence"];
