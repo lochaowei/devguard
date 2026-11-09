@@ -15,9 +15,9 @@ import { typescriptSettingsLayer } from "./layers/settings-typescript.ts";
 import type { CheckLayer } from "./layers/types.ts";
 import type { Finding } from "./report/finding.ts";
 import { listRepoFiles } from "./repo/files.ts";
+import { goWorkspaces } from "./repo/go-work.ts";
 import { defaultStandard } from "./standard/registry.ts";
 import { EXTENSION_LANGUAGE, LANGUAGE_LABEL, LANGUAGES, type Language, type Standard } from "./standard/types.ts";
-import { goWorkModules } from "./repo/go-work.ts";
 import { baseName, upwards } from "./repo/paths.ts";
 import { typeCheckerConfigs, type TypeChecker } from "./settings/type-checkers.ts";
 import { readIfExists } from "./shared/fs.ts";
@@ -65,19 +65,20 @@ export interface ComponentPlan {
 
 const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
-/** Directories of go.mod files that a go.work at or above them leaves out of its `use` list (never the root). */
-function modulesOutsideWorkspace(
-  paths: readonly string[],
-  goWorks: ReadonlyMap<string, ReadonlySet<string>>,
-): string[] {
-  return paths
-    .filter((p) => baseName(p) === "go.mod")
-    .map(dirOf)
-    .filter((dir) => {
-      if (dir === "") return false;
-      const work = upwards(dir).find((d) => goWorks.has(d));
-      return work !== undefined && !goWorks.get(work)?.has(dir);
-    });
+/** Per go.mod directory that a go.work applies to, the module directories that go.work uses (`goWorkspaces`). */
+export type GoWorkspaces = ReadonlyMap<string, ReadonlySet<string>>;
+
+const goModDirs = (paths: readonly string[]) => paths.filter((p) => baseName(p) === "go.mod").map(dirOf);
+
+/**
+ * Directories of go.mod files that their go.work leaves out of its `use` list. Never the root, which an `ignore:`
+ * entry cannot name, nor a directory holding a module the go.work does use.
+ */
+function modulesOutsideWorkspace(paths: readonly string[], workspaces: GoWorkspaces): string[] {
+  return goModDirs(paths).filter((dir) => {
+    const used = workspaces.get(dir);
+    return dir !== "" && used !== undefined && ![...used].some((u) => u.startsWith(dir));
+  });
 }
 
 /** Stray files as `ignore:` entries: one glob for several files of the same extension in a directory. */
@@ -103,12 +104,9 @@ function strayEntries(stray: ReadonlyMap<Language, readonly string[]>): DraftIgn
  * no component when the repo has marked ones: both are returned as `ignore:` entries. A repo with no marker file
  * at all gets a root component per language.
  */
-export function inferComponents(
-  files: readonly string[],
-  goWorks: ReadonlyMap<string, ReadonlySet<string>> = new Map(),
-): ComponentPlan {
+export function inferComponents(files: readonly string[], workspaces: GoWorkspaces = new Map()): ComponentPlan {
   const all = files.map(normalizePath);
-  const outside = modulesOutsideWorkspace(all, goWorks);
+  const outside = modulesOutsideWorkspace(all, workspaces);
   const paths = withoutIgnored(outside, all);
   const present = new Set(paths);
   const found = new Map<string, DraftComponent>();
@@ -131,16 +129,6 @@ export function inferComponents(
     ),
     ignore,
   };
-}
-
-/** Each go.work in the repo, by directory, with the module directories it uses. */
-async function readGoWorks(cwd: string, paths: readonly string[]): Promise<Map<string, Set<string>>> {
-  const found = new Map<string, Set<string>>();
-  for (const path of paths.filter((p) => baseName(p) === "go.work")) {
-    const text = await readIfExists(join(cwd, path));
-    if (text !== undefined) found.set(dirOf(path), goWorkModules(text, dirOf(path)));
-  }
-  return found;
 }
 
 export interface DraftOptions {
@@ -281,7 +269,7 @@ export async function draftDeclaration(options: DraftOptions): Promise<Draft> {
   const given = withoutIgnored(ignore, options.files);
   const standard = defaultStandard();
   if (!standard) throw new Error("no bundled standard");
-  const plan = inferComponents(given, await readGoWorks(cwd, given.map(normalizePath)));
+  const plan = inferComponents(given, await goWorkspaces(cwd, goModDirs(given.map(normalizePath))));
   const { components } = plan;
   const listed = withoutIgnored(
     plan.ignore.map((i) => i.entry),

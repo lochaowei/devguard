@@ -168,6 +168,36 @@ describe("draftDeclaration: files no component is made for (#89)", () => {
     expect(d.ignore).toBeUndefined();
   });
 
+  it("reads a go.work that git does not list", async () => {
+    const files = {
+      "go.mod": "module x\n\ngo 1.26\n",
+      "main.go": "",
+      "fixture/go.mod": "module f\n",
+      "fixture/x.go": "",
+    };
+    const cwd = project({ ...files, "go.work": "go 1.23\nuse .\n" });
+    const { text } = await draftDeclaration({ cwd, today: TODAY, files: Object.keys(files) });
+    const d = parse(text) as Drafted;
+    expect(paths(d)).toEqual([["./", "go"]]);
+    expect(d.ignore).toEqual(["fixture/"]);
+  });
+
+  it("keeps a used module nested in an unused one", async () => {
+    const d = parse(
+      await draftText({
+        "go.work": "use ./a/b\n",
+        "a/go.mod": "module a\n",
+        "a/x.go": "",
+        "a/b/go.mod": "module b\n",
+        "a/b/y.go": "",
+      }),
+    ) as Drafted;
+    expect(paths(d)).toEqual([
+      ["a/", "go"],
+      ["a/b/", "go"],
+    ]);
+  });
+
   it("reads a one-line use directive", async () => {
     const d = parse(
       await draftText({
