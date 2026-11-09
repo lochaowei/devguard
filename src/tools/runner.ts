@@ -1,6 +1,7 @@
 import { pathToolHint } from "../distribution.ts";
 import { existsSync } from "node:fs";
 import { posix, win32 } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import type { Language } from "../standard/types.ts";
 import { nodeExec, type Command, type EnvVars, type Exec } from "../process/exec.ts";
 import { goEnv } from "./go-env.ts";
@@ -44,6 +45,23 @@ export interface ToolResult {
   code: number;
   stdout: string;
   stderr: string;
+}
+
+/**
+ * The lines of a tool's output fit for a finding message (#128): colour and other terminal control sequences
+ * removed (Vitest colours even when not writing to a terminal), and lines left blank dropped.
+ */
+export function toolOutputLines(text: string): string[] {
+  return stripVTControlCharacters(text)
+    .trim()
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== "");
+}
+
+/** The lines of what a failed tool said: its stderr, or its stdout when stderr has nothing to show. */
+export function toolErrorLines(result: ToolResult): string[] {
+  const stderr = toolOutputLines(result.stderr);
+  return stderr.length > 0 ? stderr : toolOutputLines(result.stdout);
 }
 
 /** A command of the component's package manager (uv, npm, go), e.g. `devguard standard upgrade --apply`. */

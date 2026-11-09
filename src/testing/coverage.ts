@@ -1,5 +1,5 @@
 import type { Finding } from "../report/finding.ts";
-import type { ToolResult } from "../tools/runner.ts";
+import { toolErrorLines, toolOutputLines, type ToolResult } from "../tools/runner.ts";
 import type { TestTarget } from "./types.ts";
 import { readIfExists } from "../shared/fs.ts";
 
@@ -41,7 +41,7 @@ export function testsFailed(target: TestTarget, command: string, failed: readonl
 
 /** The test run did not produce a usable result (crash, bad configuration, missing plugin). */
 export function testToolFailed(target: TestTarget, tool: string, result: ToolResult): Finding {
-  const output = (result.stderr.trim() || result.stdout.trim()).split(/\r?\n/).slice(-5).join("\n");
+  const output = toolErrorLines(result).slice(-5).join("\n");
   return testFinding(
     target,
     "test/tool-failed",
@@ -52,7 +52,8 @@ export function testToolFailed(target: TestTarget, tool: string, result: ToolRes
 
 /** The tests ran but left no coverage report to judge; `detail` is what the reporting tool said. */
 export function reportMissing(target: TestTarget, report: string, fix: string, detail = ""): Finding {
-  const why = detail.trim() === "" ? "" : `（${detail.trim().split(/\r?\n/).slice(-3).join(" ")}）`;
+  const lines = toolOutputLines(detail);
+  const why = lines.length === 0 ? "" : `（${lines.slice(-3).join(" ")}）`;
   return testFinding(target, "coverage/no-report", `找不到覆蓋率報告 ${report}，無法判定覆蓋率${why}`, fix);
 }
 
