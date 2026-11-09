@@ -255,6 +255,38 @@ describe("code checks in devguard check", () => {
   });
 });
 
+describe("finding ownership (#107)", () => {
+  const NESTED =
+    "standard: team@1.0.0\ncomponents:\n  - {path: ./, language: typescript}\n  - {path: web/, language: typescript}\n";
+
+  it("reports a file's finding only under the deepest component that owns it", async () => {
+    const tools: ToolRunner = {
+      run: (req) => {
+        const prettier = req.tool === "prettier";
+        // The parent's run walks into web/ and lists the child's file too.
+        const stdout = !prettier
+          ? req.tool === "eslint"
+            ? "[]"
+            : ""
+          : req.dir === ""
+            ? "src/b.ts\nweb/src/a.ts\n"
+            : "src/a.ts\n";
+        return Promise.resolve({ code: prettier ? 1 : 0, stdout, stderr: "" });
+      },
+    };
+    const files = ["src/b.ts", "web/src/a.ts"];
+    const r = await runCheck(
+      { cwd: project(NESTED), today: TODAY, listFiles: () => Promise.resolve(files), tools },
+      LAYERS,
+    );
+    const format = r.findings.filter((f) => f.rule === "prettier/format");
+    expect(format.map((f) => `${f.component ?? ""} ${f.file ?? ""}`).sort()).toEqual([
+      "./ (TypeScript) src/b.ts",
+      "web/ (TypeScript) web/src/a.ts",
+    ]);
+  });
+});
+
 describe("Go code checks in devguard check", () => {
   it("runs golangci-lint for the Go component, with no Go mirror of devguard's (#64)", async () => {
     const declaration = ["standard: team@1.3.0", "components:", "  - {path: svc/, language: go}", ""].join("\n");

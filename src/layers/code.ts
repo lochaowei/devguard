@@ -8,6 +8,7 @@ import {
 } from "../code/types.ts";
 import { overriddenKeys, type ResolvedComponent } from "../declaration/resolve.ts";
 import type { Finding } from "../report/finding.ts";
+import { withoutIgnored } from "../declaration/ignore.ts";
 import { findOwner } from "../declaration/lookup.ts";
 import { assignFiles, type OwnedFile } from "../repo/files.ts";
 import { defaultStandard } from "../standard/registry.ts";
@@ -94,6 +95,35 @@ export interface PlannedTarget {
   checker: CodeChecker;
   target: CodeTarget;
   owned: readonly string[];
+  /**
+   * Whether a finding in this repo-relative file belongs to this target. A tool run on a whole directory can reach
+   * files another component owns (a parent's config, `include` or Prettier walk covers the child's files) or that
+   * `ignore:` excludes; those findings are dropped so each one is reported once, under the owning component (#107).
+   */
+  keeps: (file: string) => boolean;
+}
+
+function findingFilter(
+  group: Group,
+  components: readonly ResolvedComponent[],
+  ignore: readonly string[],
+): (file: string) => boolean {
+  const taking = components
+    .filter((c) => CODE_CHECKERS[c.language]?.takesEveryFile === true)
+    .sort((a, b) => b.dir.length - a.dir.length);
+  return (file) => {
+    if (withoutIgnored(ignore, [file]).length === 0) return false;
+    const owner = findOwner(components, file);
+    switch (owner.kind) {
+      case "component":
+        return group.owner.kind === "component" && group.owner.component === owner.component;
+      case "inferred":
+        return group.owner.kind === "inferred" && group.owner.language === owner.language;
+      case "out-of-scope":
+        // A non-source file belongs to the deepest component whose checker takes every file (#55, #56).
+        return group.owner.kind === "component" && taking.find((c) => file.startsWith(c.dir)) === group.owner.component;
+    }
+  };
 }
 
 /** The code targets in scope: one per component, or per language for files no component covers. */
@@ -108,7 +138,8 @@ export async function codeTargets(ctx: LayerContext): Promise<PlannedTarget[]> {
     const checker: CodeChecker | undefined = CODE_CHECKERS[group.language];
     const target = toTarget(group, ctx.scope, standard);
     if (!checker || target.categories.size === 0) return [];
-    return [{ checker, target, owned: [...group.files, ...(group.nonSource ?? [])] }];
+    const keeps = findingFilter(group, components, ctx.resolution?.ignore ?? []);
+    return [{ checker, target, owned: [...group.files, ...(group.nonSource ?? [])], keeps }];
   });
 }
 
@@ -118,10 +149,13 @@ export function codeCheckContext(ctx: Pick<LayerContext, "cwd" | "tools" | "stag
   return ctx.stagedText ? { ...base, staged: ctx.stagedText } : base;
 }
 
-/** Runs each target's checker in order. */
+/** Runs each target's checker in order, keeping a finding that names a file only under the target that owns it. */
 export async function checkTargets(targets: readonly PlannedTarget[], ctx: CodeCheckContext): Promise<Finding[]> {
   const findings: Finding[] = [];
-  for (const { checker, target } of targets) findings.push(...(await checker.check(target, ctx)));
+  for (const { checker, target, keeps } of targets) {
+    const found = await checker.check(target, ctx);
+    findings.push(...found.filter((f) => f.file === undefined || keeps(f.file)));
+  }
   return findings;
 }
 
