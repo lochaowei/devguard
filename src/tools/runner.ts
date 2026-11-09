@@ -401,3 +401,25 @@ export function createToolRunner(deps: ToolRunnerDeps): Required<ToolRunner> {
     },
   };
 }
+
+/**
+ * The project environment directories the runner looks in for the Python component at `dir` (repo-relative, trailing
+ * slash or empty), nearest first: the same resolution as running a tool, shared with `doctor`'s VS Code check (#115).
+ */
+export function pythonEnvironmentDirs(
+  cwd: string,
+  dir: string,
+  deps: Pick<ToolRunnerDeps, "platform" | "exists" | "processEnv"> = {},
+): string[] {
+  const windows = (deps.platform ?? process.platform) === "win32";
+  const env: Env = {
+    path: windows ? win32 : posix,
+    windows,
+    exists: deps.exists ?? existsSync,
+    readText: () => undefined,
+    pathEnv: "",
+    vars: deps.processEnv ?? process.env,
+  };
+  const dirs = searchDirs(cwd, dir, env.path);
+  return projectEnvironments(managerAt(dir, dirs.at(-1) ?? "", env), dirs, env);
+}

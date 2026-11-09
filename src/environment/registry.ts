@@ -3,6 +3,7 @@ import { gitHooksCheck } from "./git-hooks.ts";
 import { javaRuntimeCheck } from "./java-runtime.ts";
 import { createStandardUpgradeCheck } from "./standard-upgrade.ts";
 import { vscodeExtensionsCheck } from "./vscode-extensions.ts";
+import { vscodeInterpreterCheck } from "./vscode-interpreter.ts";
 import type { EnvironmentCheck } from "./types.ts";
 
 export type { EnvironmentCheck, EnvironmentContext } from "./types.ts";
@@ -16,5 +17,6 @@ export const ENVIRONMENT_CHECKS: readonly EnvironmentCheck[] = [
   gitHooksCheck,
   claudeCodeCheck,
   vscodeExtensionsCheck,
+  vscodeInterpreterCheck,
   javaRuntimeCheck,
 ];
