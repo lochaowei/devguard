@@ -57,7 +57,7 @@ describe("code checks in devguard check", () => {
       "web/:eslint --format json --no-warn-ignored .",
       "web/:prettier --list-different --ignore-unknown .",
       "web/:tsc --noEmit --pretty false",
-      ":golangci-lint run --output.json.path=stdout --show-stats=false --path-mode=abs ./...",
+      ":golangci-lint run --output.json.path=stdout --show-stats=false --path-mode=abs --max-same-issues=0 --max-issues-per-linter=0 --allow-serial-runners ./...",
     ]);
     expect(r.findings).toEqual([]);
   });
@@ -107,7 +107,7 @@ describe("code checks in devguard check", () => {
       `web/:eslint --format json --no-warn-ignored ${handed}`,
       `web/:prettier --list-different --ignore-unknown ${handed}`,
       "web/:tsc --noEmit --pretty false",
-      ":golangci-lint run --output.json.path=stdout --show-stats=false --path-mode=abs .",
+      ":golangci-lint run --output.json.path=stdout --show-stats=false --path-mode=abs --max-same-issues=0 --max-issues-per-linter=0 --allow-serial-runners .",
     ]);
   });
 

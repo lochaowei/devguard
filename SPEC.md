@@ -95,6 +95,7 @@
 - 每個指令都接受 `--cwd <dir>`，指定專案根目錄（預設為目前目錄）。
 - 各 `hook` 子指令自行處理該防線的輸入格式與 exit code 語意。
 - CLI 執行 Go 工具時，一律帶入 `GOTOOLCHAIN=local`。`go tool <名稱>` 與 `go mod` 等檢查用的指令另外帶入 `GOPROXY=off`，確保檢查時不會下載任何模組（模組不在快取中時，該次執行失敗，而不是改為下載）。golangci-lint 與套件管理指令的模組來源是開發者自己的 Go 設定（`go env GOPROXY`、`GOSUMDB`）。
+- CLI 執行 `golangci-lint run`（`check` 與 `fix --code` 的 `run --fix`）時一律加上 `--max-same-issues=0 --max-issues-per-linter=0`（不論設定檔怎麼寫，所有問題都列出、都修正，#90）與 `--allow-serial-runners`（另一個 golangci-lint 持有全域鎖時排隊等候，而不是失敗，#94）。`golangci-lint fmt` 不取這個鎖。
 - **`.cmd` / `.bat` 檔一律透過 `cmd.exe /d /s /c` 執行**，例如 `code.cmd`、`mvnw.cmd`、`gradlew.bat`、`npm.cmd`。這類檔案無法直接當作程序啟動。
 
 ---
