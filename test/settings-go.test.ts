@@ -48,12 +48,25 @@ describe("checkGoSettings", () => {
       "",
     ].join("\n");
 
-    it("reports only the version, with no repairs, telling to migrate and check again", () => {
+    it("reports only the version, with no repairs, and says to migrate then check again", () => {
       for (const text of [V1, `version: "1"\n${V1}`]) {
         const findings = check(text);
         expect(rules(findings)).toEqual(["error:settings/golangci-version"]);
         expect(findings[0]?.repairs).toBeUndefined();
         expect(findings[0]?.fix).toMatch(/golangci-lint migrate.*devguard check/);
+      }
+    });
+
+    it("stops the same way in a .golangci.toml or .golangci.json", () => {
+      const toml = "[linters]\nenable-all = true\n\n[linters-settings.cyclop]\nmax-complexity = 30\n";
+      const json = '{ "linters": { "enable-all": true }, "linters-settings": { "cyclop": { "max-complexity": 30 } } }';
+      for (const [golangci, golangciFile] of [
+        [toml, "backend/.golangci.toml"],
+        [json, "backend/.golangci.json"],
+      ] as const) {
+        const findings = checkGoSettings(component(), { golangci, golangciFile, gomod: GOMOD });
+        expect(rules(findings)).toEqual(["error:settings/golangci-version"]);
+        expect(findings[0]?.repairs).toBeUndefined();
       }
     });
 
