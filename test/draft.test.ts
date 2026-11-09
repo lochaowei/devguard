@@ -54,6 +54,33 @@ describe("draftDeclaration: components", () => {
   });
 });
 
+describe("draftDeclaration: requirements.txt-only directories inside a Python component (#106)", () => {
+  const expression = {
+    "pyproject.toml": "[project]\nname = 'expression'\n",
+    "pyrightconfig.json": "{}",
+    "expression/core.py": "",
+    "docs/requirements.txt": "sphinx\n",
+    "docs/guides/intro.py": "",
+  };
+
+  it("leaves docs/ to the root component and says so in a comment", async () => {
+    const { text } = await draftDeclaration({ cwd: project(expression), today: TODAY, files: Object.keys(expression) });
+    const d = parse(text) as DraftYaml;
+    expect(d.components.map((c) => c.path)).toEqual(["./"]);
+    expect(text).toContain("# docs/ 只有 requirements.txt，歸屬 ./ 元件，未另建元件");
+  });
+
+  it("still makes a component of a requirements.txt-only directory no Python component contains", async () => {
+    const d = await draft({ "requirements.txt": "regex\n", "minbpe/base.py": "" });
+    expect(d.components.map((c) => [c.path, c.language])).toEqual([["./", "python"]]);
+  });
+
+  it("still makes a component of a subdirectory with its own pyproject.toml", async () => {
+    const d = await draft({ ...expression, "docs/pyproject.toml": "[project]\nname = 'docs'\n" });
+    expect(d.components.map((c) => c.path)).toEqual(["./", "docs/"]);
+  });
+});
+
 describe("draftDeclaration: ignore", () => {
   const files = {
     "pyproject.toml": "[project]\nname = 'app'\n",

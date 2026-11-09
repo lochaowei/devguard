@@ -38,7 +38,7 @@ $ devguard draft
    | TypeScript | `package.json`、`tsconfig.json` |
    | Java | `pom.xml`、`build.gradle(.kts)`、`settings.gradle(.kts)` |
 
-   Java 的多模組建置以**最外層**的建置檔為一個元件，其他語言以**最近**的為準。
+   Java 的多模組建置以**最外層**的建置檔為一個元件，其他語言以**最近**的為準。Python 有一個例外（#106）：只有 `requirements.txt`、又位於另一個 Python 元件之內的目錄（例如給 Read the Docs 用的 `docs/requirements.txt`）不另成元件，檔案歸屬上層元件，草稿在上層元件上方加一行註解 `# docs/ 只有 requirements.txt，歸屬 ./ 元件，未另建元件`。
 
    下列檔案不成為元件，改寫進草稿的 `ignore`（排在 `--ignore` 的項目之後），每項上方有一行註解說明原因：
 

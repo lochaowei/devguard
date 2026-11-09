@@ -45,7 +45,7 @@ devguard check [檔案…] [--staged] [--only lint|format|typecheck] [--full]
 |---|---|---|---|
 | 1 | `declaration` | `config` | 解析 `.devguard.yaml`、驗證標準版本、比對覆寫與偏離理由 / 到期日、檢查同語言風格一致性 |
 | 2 | `uncovered-files` | `config` | 沒有被任何元件涵蓋的四語言程式檔，套用推定的預設標準並給提示 |
-| 3 | `settings-python` | `config` | `pyproject.toml` 的 Ruff、mypy / pyright / basedpyright 設定 |
+| 3 | `settings-python` | `config` | `pyproject.toml` 的 Ruff、mypy / pyright / basedpyright 設定。元件目錄沒有 `pyproject.toml` 時改看上層最近的一份；落在元件目錄以外（上層共用）的設定只回報，不附自動修正（#106） |
 | 4 | `settings-go` | `config` | `go.mod` 的 Go 版本與 golangci-lint 採用的設定檔（`.golangci.json` / `.toml` / `.yaml` / `.yml`，查找順序見 [Language-Standards](Language-Standards.md)）。多個元件共用同一份設定檔時，相同的 finding 只列一次，列在回報它的元件中目錄就是設定檔所在目錄的那個下，沒有時列在其中最上層的那個下（#92） |
 | 5 | `settings-java` | `config` | Maven / Gradle 建置檔、Wrapper、`checkstyle.xml`、PMD ruleset、`lombok.config` |
 | 6 | `deps` | `config` | lockfile 是否已提交（Go：`go mod tidy -diff` 有 diff 回報 `deps/go-mod-untidy`；依賴還沒下載到模組快取而無法離線檢查時回報 `deps/go-modules-missing`，執行 `go mod download`；其他失敗回報 `deps/tool-failed`，#83；Python：不帶 hash 的 `requirements.txt` 列出的套件是否都在 lockfile 中，`deps/requirements-unlocked`）、直接依賴是否違反 `deps.banned` |

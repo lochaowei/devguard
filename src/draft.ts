@@ -6,7 +6,7 @@ import { runCheck } from "./check.ts";
 import { compareToDefault } from "./declaration/compare.ts";
 import { withoutIgnored } from "./declaration/ignore.ts";
 import { displayDir, normalizePath } from "./declaration/path.ts";
-import { resolveDeclaration, type Resolution } from "./declaration/resolve.ts";
+import { resolveDeclaration, type Resolution, type ResolvedComponent } from "./declaration/resolve.ts";
 import { DECLARATION_FILE } from "./declaration/types.ts";
 import { inferBuildTool, type InferredBuildTool } from "./settings/java/build.ts";
 import { pythonSettingsLayer } from "./layers/settings-python.ts";
@@ -60,9 +60,40 @@ export interface DraftIgnore {
   comment: string;
 }
 
+/** A directory with only a requirements.txt inside another Python component, which owns its files (#106). */
+export interface AbsorbedDir {
+  dir: string;
+  into: string;
+}
+
 export interface ComponentPlan {
   components: DraftComponent[];
   ignore: DraftIgnore[];
+  absorbed: AbsorbedDir[];
+}
+
+/** The Python markers that make a project of their directory: every one but requirements.txt. */
+const PYTHON_PROJECT_FILES = MARKERS.python.filter((m) => m !== "requirements.txt");
+
+/** The component directory of a file of `language`, from its marked directories (nearest first). */
+function componentDir(language: Language, marked: readonly string[], present: ReadonlySet<string>) {
+  // A multi-module Java build is built from its outermost build file.
+  if (language === "java") return marked.at(-1);
+  return language === "python" ? pythonDir(marked, present) : marked[0];
+}
+
+/** The requirements.txt-only directories `pythonDir` passed over for an outer one; none for other languages. */
+function passedOver(language: Language, marked: readonly string[], dir: string): readonly string[] {
+  if (language !== "python") return [];
+  return marked.slice(0, marked.indexOf(dir));
+}
+
+/**
+ * The Python component directory of a file, from its marked directories (nearest first): the nearest, unless it only
+ * has a requirements.txt (often one for Read the Docs or deployment) and an outer directory is a component too (#106).
+ */
+function pythonDir(marked: readonly string[], present: ReadonlySet<string>): string | undefined {
+  return marked.find((d, i) => i === marked.length - 1 || PYTHON_PROJECT_FILES.some((m) => present.has(d + m)));
 }
 
 const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -142,6 +173,29 @@ function configOnlyEntries(
     .map((entry) => ({ entry, comment: CONFIG_ONLY }));
 }
 
+/** Gives each source file to the component directory it belongs to, or to `stray` when no marker file is above it. */
+function assignFiles(paths: readonly string[]) {
+  const present = new Set(paths);
+  const found = new Map<string, DraftComponent>();
+  const owned = new Map<string, string[]>();
+  const stray = new Map<Language, string[]>();
+  const absorbed = new Map<string, string>();
+  for (const file of paths) {
+    const language = languageOf(file);
+    if (!language) continue;
+    const marked = upwards(dirOf(file)).filter((d) => MARKERS[language].some((m) => present.has(d + m)));
+    const dir = componentDir(language, marked, present);
+    if (dir !== undefined) for (const skipped of passedOver(language, marked, dir)) absorbed.set(skipped, dir);
+    if (dir === undefined) stray.set(language, [...(stray.get(language) ?? []), file]);
+    else {
+      const key = `${dir}|${language}`;
+      found.set(key, { dir, language });
+      owned.set(key, [...(owned.get(key) ?? []), file]);
+    }
+  }
+  return { found, owned, stray, absorbed };
+}
+
 /**
  * Components inferred from the repo's files (SPEC §4.1, §4.3): each source file belongs to the nearest directory
  * holding a build or tool file of its language. Java modules nested in a Java build are one component. A go.mod
@@ -154,23 +208,7 @@ export function inferComponents(files: readonly string[], workspaces: GoWorkspac
   const all = files.map(normalizePath);
   const outside = modulesOutsideWorkspace(all, workspaces);
   const paths = withoutIgnored(outside, all);
-  const present = new Set(paths);
-  const found = new Map<string, DraftComponent>();
-  const owned = new Map<string, string[]>();
-  const stray = new Map<Language, string[]>();
-  for (const file of paths) {
-    const language = languageOf(file);
-    if (!language) continue;
-    const marked = upwards(dirOf(file)).filter((d) => MARKERS[language].some((m) => present.has(d + m)));
-    // A multi-module Java build is built from its outermost build file.
-    const dir = language === "java" ? marked.at(-1) : marked[0];
-    if (dir === undefined) stray.set(language, [...(stray.get(language) ?? []), file]);
-    else {
-      const key = `${dir}|${language}`;
-      found.set(key, { dir, language });
-      owned.set(key, [...(owned.get(key) ?? []), file]);
-    }
-  }
+  const { found, owned, stray, absorbed } = assignFiles(paths);
   const ignore = outside.sort(byCodeUnit).map((dir) => ({ entry: dir, comment: "不在 go.work 的 use 清單中" }));
   ignore.push(...configOnlyEntries(found, owned, paths));
   if (found.size > 0) ignore.push(...strayEntries(stray));
@@ -180,6 +218,7 @@ export function inferComponents(files: readonly string[], workspaces: GoWorkspac
       (a, b) => a.dir.localeCompare(b.dir) || LANGUAGES.indexOf(a.language) - LANGUAGES.indexOf(b.language),
     ),
     ignore,
+    absorbed: [...absorbed].sort(([a], [b]) => byCodeUnit(a, b)).map(([dir, into]) => ({ dir, into })),
   };
 }
 
@@ -361,15 +400,34 @@ async function javaBuilds(
 
 const AMBIGUOUS_BUILD = " 同時有 pom.xml 與 build.gradle，預設為 maven，請確認 build.tool";
 
-/** Writes a note above each component whose build tool the files leave open (#96). */
-function withBuildNotes(doc: Document, ambiguous: ReadonlySet<number>): Document {
+/** Writes each component's notes (`componentNotes`) above it. */
+function withComponentNotes(doc: Document, notes: ReadonlyMap<number, readonly string[]>): Document {
   const seq = doc.get("components");
   if (!isSeq(seq)) return doc;
-  for (const i of ambiguous) {
+  for (const [i, lines] of notes) {
     const item = seq.items[i];
-    if (isNode(item)) item.commentBefore = AMBIGUOUS_BUILD;
+    if (isNode(item)) item.commentBefore = lines.join("\n");
   }
   return doc;
+}
+
+/** Per component index, the comments the draft writes above it: an ambiguous Java build, absorbed directories. */
+function componentNotes(
+  components: readonly ResolvedComponent[],
+  ambiguous: (c: ResolvedComponent) => boolean,
+  absorbed: readonly AbsorbedDir[],
+): Map<number, string[]> {
+  const notes = new Map<number, string[]>();
+  components.forEach((c, i) => {
+    const lines = [
+      ...(ambiguous(c) ? [AMBIGUOUS_BUILD] : []),
+      ...absorbed
+        .filter((a) => c.language === "python" && a.into === c.dir)
+        .map((a) => ` ${displayDir(a.dir)} 只有 requirements.txt，歸屬 ${displayDir(c.dir)} 元件，未另建元件`),
+    ];
+    if (lines.length > 0) notes.set(i, lines);
+  });
+  return notes;
 }
 
 /** A draft `.devguard.yaml` for a project that has none, from the components and tool settings found (SPEC §4.3). */
@@ -416,8 +474,12 @@ export async function draftDeclaration(options: DraftOptions): Promise<Draft> {
     }),
     ...(ignore.length + plan.ignore.length > 0 ? { ignore: [...ignore, ...plan.ignore.map((i) => i.entry)] } : {}),
   };
-  const ambiguous = resolution.components.flatMap((c, i) => (files.javaBuilds.get(c.dir)?.ambiguous ? [i] : []));
-  const yaml = withBuildNotes(withIgnoreComments(new Document(doc), ignore.length, plan.ignore), new Set(ambiguous));
+  const notes = componentNotes(
+    resolution.components,
+    (c) => files.javaBuilds.get(c.dir)?.ambiguous === true,
+    plan.absorbed,
+  );
+  const yaml = withComponentNotes(withIgnoreComments(new Document(doc), ignore.length, plan.ignore), notes);
   return { text: HEADER + yaml.toString(), components };
 }
 
