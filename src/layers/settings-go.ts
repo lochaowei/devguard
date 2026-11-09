@@ -107,7 +107,8 @@ async function golangciHomes(cwd: string, components: readonly ResolvedComponent
     const topmost = components
       .filter((o) => c.dir.startsWith(o.dir))
       .reduce((best, o) => (o.dir.length < best.dir.length ? o : best), c);
-    return workDirs.get(c.dir) ?? topmost.dir;
+    // The topmost component's own home, so a module below a go.work's module shares that go.work's config.
+    return workDirs.get(c.dir) ?? workDirs.get(topmost.dir) ?? topmost.dir;
   });
 }
 
@@ -128,25 +129,46 @@ const findingKey = (f: Finding) => JSON.stringify([f.rule, f.file, f.line, f.mes
 /** A finding about the golangci config the component uses, as opposed to its own files. */
 const aboutGolangci = (s: ComponentSettings, f: Finding) => f.file === s.golangciFile;
 
-/**
- * Findings about a golangci config several components share are listed once (#92), under the owner among the
- * components that report them, so their repairs are applied once. One a single component reports stays as it is.
- */
-function mergeShared(settings: readonly ComponentSettings[]): Finding[] {
-  const reporters = new Map<string, ResolvedComponent[]>();
+interface Reported {
+  /** In declaration order. */
+  reporters: ResolvedComponent[];
+  /** Every reporter's repairs, each once. */
+  repairs: Repair[];
+}
+
+/** Each finding about a component's golangci config, by `findingKey`: who reports it, and all their repairs. */
+function reportedShared(settings: readonly ComponentSettings[]): Map<string, Reported> {
+  const out = new Map<string, Reported>();
   for (const s of settings) {
     for (const f of s.findings.filter((f) => aboutGolangci(s, f))) {
-      reporters.set(findingKey(f), [...(reporters.get(findingKey(f)) ?? []), s.component]);
+      const r = out.get(findingKey(f)) ?? { reporters: [], repairs: [] };
+      r.reporters.push(s.component);
+      const known = new Set(r.repairs.map((x) => JSON.stringify(x)));
+      r.repairs.push(...(f.repairs ?? []).filter((x) => !known.has(JSON.stringify(x))));
+      out.set(findingKey(f), r);
     }
   }
+  return out;
+}
+
+/**
+ * Findings about a golangci config several components share are listed once (#92), under the owner among the
+ * components that report them, so their repairs are applied once. The merged finding carries every reporter's
+ * repairs: a config `fix` creates for several components (#88) also gets what one component's overrides add.
+ * One a single component reports stays as it is.
+ */
+function mergeShared(settings: readonly ComponentSettings[]): Finding[] {
+  const reported = reportedShared(settings);
   const seen = new Set<string>();
   return settings.flatMap((s) =>
     s.findings.flatMap((f) => {
       const key = findingKey(f);
-      if (!aboutGolangci(s, f)) return [f];
+      const r = reported.get(key);
+      if (!aboutGolangci(s, f) || r === undefined) return [f];
       if (seen.has(key)) return [];
       seen.add(key);
-      return [{ ...f, component: golangciOwner(s.golangciFile, reporters.get(key) ?? [s.component]).name }];
+      const merged = { ...f, component: golangciOwner(s.golangciFile, r.reporters).name };
+      return [f.repairs === undefined ? merged : { ...merged, repairs: r.repairs }];
     }),
   );
 }

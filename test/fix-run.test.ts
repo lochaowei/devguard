@@ -109,6 +109,20 @@ default = true
     expect(existsSync(join(dir, "dbtests/.golangci.yml"))).toBe(false);
   });
 
+  it("Go: creates one root .golangci.yml for ./ and sub/, with what sub/'s overrides add (#88)", async () => {
+    const linters =
+      "errcheck, govet, ineffassign, staticcheck, unused, gosec, revive, errorlint, bodyclose, misspell, cyclop, gocognit, gomodguard_v2, depguard";
+    const dir = repo({
+      ".devguard.yaml": `${decl("go")}  - path: sub/\n    language: go\n    overrides:\n      lint.rules: [${linters}, gocritic]\n`,
+      "go.mod": "module x\n\ngo 1.26\n",
+      "sub/go.mod": "module x\n\ngo 1.26\n",
+    });
+    const after = await fixesEverything(dir);
+    expect(after.filter((f) => f.rule.startsWith("settings/golangci"))).toEqual([]);
+    expect(read(dir, ".golangci.yml")).toContain("gocritic");
+    expect(existsSync(join(dir, "sub/.golangci.yml"))).toBe(false);
+  });
+
   it("Go: edits a .golangci.yml several components share once (#92)", async () => {
     const dir = repo({
       ".devguard.yaml": `${decl("go")}  - path: sub/\n    language: go\n`,

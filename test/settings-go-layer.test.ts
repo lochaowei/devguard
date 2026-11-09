@@ -159,6 +159,16 @@ describe("goSettingsLayer", () => {
       expect(found).toEqual([["./ (Go)", ".golangci.yml", new Set([".golangci.yml"])]]);
     });
 
+    it("in the go.work directory for a component below one of its modules", async () => {
+      const found = await missingIn({
+        ".devguard.yaml": decl("svc/a/", "svc/a/b/"),
+        "svc/go.work": "go 1.26\n\nuse ./a\n",
+        "svc/a/go.mod": GOMOD,
+        "svc/a/b/go.mod": GOMOD,
+      });
+      expect(found).toEqual([["svc/a/ (Go)", "svc/.golangci.yml", new Set(["svc/.golangci.yml"])]]);
+    });
+
     it("in each component's own directory when neither holds the other", async () => {
       const found = await missingIn({ ".devguard.yaml": decl("a/", "b/"), "a/go.mod": GOMOD, "b/go.mod": GOMOD });
       expect(found).toEqual([
