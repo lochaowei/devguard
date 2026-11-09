@@ -102,7 +102,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 
 ### 執行方式
 
-- **工具執行器**：`uv run --no-sync <tool>`（鎖定版本讀取自 `uv.lock` 或 `poetry.lock`）。工具須已安裝在專案環境：有設定 `UV_PROJECT_ENVIRONMENT` 時就是它指定的目錄（絕對路徑照用，相對路徑相對於專案目錄，與 uv 相同），否則是 `.venv`；找不到時訊息會列出實際找過的路徑。安裝提示是 `uv sync`（Poetry：`poetry install`）；工具沒有列在 `pyproject.toml` 的依賴中時改為 `uv add --dev "<工具><範圍>"`（Poetry：`poetry config virtualenvs.in-project true && poetry add --group dev "<工具><範圍>"`），範圍取標準的 `tools.*`。Poetry 專案不讀 `UV_PROJECT_ENVIRONMENT`。Poetry 專案（最近的 lockfile 是 `poetry.lock`）改為直接執行專案內 `.venv` 中的工具，需要 `poetry config virtualenvs.in-project true`；以下的 `uv run --no-sync` 對 Poetry 專案都換成 `.venv` 中的執行檔
+- **工具執行器**：`uv run --no-sync <tool>`（鎖定版本讀取自 `uv.lock` 或 `poetry.lock`）。工具須已安裝在專案環境：有設定 `UV_PROJECT_ENVIRONMENT` 時就是它指定的目錄（絕對路徑照用，相對路徑相對於專案目錄，與 uv 相同），否則是 `.venv`；找不到時訊息會列出實際找過的路徑。安裝提示是 `uv sync`（Poetry：`poetry install`）；工具沒有列在 `pyproject.toml` 的依賴中時改為 `uv add --dev "<工具><範圍>"`（Poetry：`poetry config virtualenvs.in-project true && poetry add --group dev "<工具><範圍>"`），範圍取標準的 `tools.*`。元件與上層目錄都沒有 `pyproject.toml` 時，提示先是 `devguard fix --yes`（建立 `pyproject.toml`），再接上述的安裝指令。Poetry 專案不讀 `UV_PROJECT_ENVIRONMENT`。Poetry 專案（最近的 lockfile 是 `poetry.lock`）改為直接執行專案內 `.venv` 中的工具，需要 `poetry config virtualenvs.in-project true`；以下的 `uv run --no-sync` 對 Poetry 專案都換成 `.venv` 中的執行檔
 - **套件來源**：devguard 不檢查也不寫入 `[[tool.uv.index]]` 或 `[[tool.poetry.source]]`，交給 uv／Poetry 的使用者層級設定；只檢查 `pyproject.toml` 中的網址沒有內含帳密（`credentials/plaintext`）。`standard upgrade --apply` 對 Poetry 專案執行 `poetry add --group dev`
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
   - `tools.ruff`：`>=0.17,<0.18`（`team@1.1.0`：`>=0.17,<1`）

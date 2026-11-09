@@ -60,7 +60,7 @@ describe("tool runner: Python", () => {
   });
 
   it("asks for uv sync when the tool is not installed", async () => {
-    const { runner, started } = fakeRunner({});
+    const { runner, started } = fakeRunner({ "C:\\repo\\api\\pyproject.toml": '[project]\nname = "api"\n' });
     const m = await missing(runner.run(req({ language: "python", tool: "ruff", dir: "api/" })));
     expect(m.install).toBe("cd api && uv sync");
     expect(m.message).toContain("ruff");
@@ -148,7 +148,8 @@ describe("tool runner: Python with UV_PROJECT_ENVIRONMENT (#66)", () => {
   });
 
   it("names the project environments it looked in when the tool is missing", async () => {
-    const { runner } = fakeRunner({}, { processEnv: { UV_PROJECT_ENVIRONMENT: "venv" } });
+    const pyproject = { "C:\\repo\\api\\pyproject.toml": '[project]\nname = "api"\n' };
+    const { runner } = fakeRunner(pyproject, { processEnv: { UV_PROJECT_ENVIRONMENT: "venv" } });
     const m = await missing(runner.run(req({ language: "python", tool: "ruff", dir: "api/" })));
     expect(m.message).toBe("找不到 ruff：專案環境（C:\\repo\\api\\venv、C:\\repo\\venv）中沒有安裝");
     expect(m.install).toBe("cd api && uv sync");
@@ -183,7 +184,7 @@ describe("tool runner: Python with Poetry (#44)", () => {
   });
 
   it("asks for an in-project Poetry environment when the tool is not installed", async () => {
-    const { runner } = fakeRunner({ "C:\\repo\\poetry.lock": "" });
+    const { runner } = fakeRunner({ "C:\\repo\\poetry.lock": "", "C:\\repo\\pyproject.toml": "[tool.poetry]\n" });
     const m = await missing(runner.run(req({ language: "python", tool: "ruff", dir: "api/" })));
     expect(m.install).toBe("cd api && poetry config virtualenvs.in-project true && poetry install");
   });
@@ -249,11 +250,39 @@ describe("tool runner: a Python tool missing from the dev dependencies (#68)", (
     expect((await missing(runner.run(req(based)))).install).toBe("cd api && uv sync");
   });
 
-  it("keeps uv sync without a pyproject.toml or without a range to add", async () => {
-    expect((await missing(fakeRunner({}).runner.run(req(based)))).install).toBe("cd api && uv sync");
+  it("keeps uv sync without a range to add", async () => {
     const { runner } = fakeRunner({ [PYPROJECT]: '[project]\nname = "api"\n' });
     const noRange = { language: "python", tool: "basedpyright", dir: "api/" } as const;
     expect((await missing(runner.run(req(noRange)))).install).toBe("cd api && uv sync");
+  });
+});
+
+describe("tool runner: a Python component without a pyproject.toml (#112)", () => {
+  const based = { language: "python", tool: "basedpyright", dir: "api/", range: ">=1.40,<2" } as const;
+  const FIX = "先建立 pyproject.toml：devguard fix --yes";
+
+  it("asks for devguard fix first, then uv add --dev, never uv sync", async () => {
+    const m = await missing(fakeRunner({}).runner.run(req(based)));
+    expect(m.install).toBe(`${FIX}\n之後再安裝：cd api && uv add --dev "basedpyright>=1.40,<2"`);
+    expect(m.install).not.toContain("uv sync");
+  });
+
+  it("asks for devguard fix first in a Poetry project too", async () => {
+    const { runner } = fakeRunner({ "C:\\repo\\poetry.lock": "" });
+    const m = await missing(runner.run(req(based)));
+    const add = 'cd api && poetry config virtualenvs.in-project true && poetry add --group dev "basedpyright>=1.40,<2"';
+    expect(m.install).toBe(`${FIX}\n之後再安裝：${add}`);
+  });
+
+  it("asks for devguard fix first, then the manager's install, when there is no range to add", async () => {
+    const m = await missing(fakeRunner({}).runner.run(req({ language: "python", tool: "ruff", dir: "api/" })));
+    expect(m.install).toBe(`${FIX}\n之後再安裝：cd api && uv sync`);
+  });
+
+  it("counts a workspace root's pyproject.toml, as the lookup above the component does", async () => {
+    const { runner } = fakeRunner({ "C:\\repo\\pyproject.toml": '[project]\nname = "ws"\n' });
+    const m = await missing(runner.run(req(based)));
+    expect(m.install).toBe('cd api && uv add --dev "basedpyright>=1.40,<2"');
   });
 });
 

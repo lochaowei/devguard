@@ -218,6 +218,9 @@ function listedInPyproject(tool: string, dirs: readonly string[], env: Env): boo
   return texts.some((t) => pyprojectDependencies(t, "pyproject.toml").some((d) => pyName(d.name) === pyName(tool)));
 }
 
+/** The first step of a Python install hint for a component that has no pyproject.toml, run from the repo root. */
+const PYPROJECT_FIRST = "先建立 pyproject.toml：devguard fix --yes";
+
 /**
  * How to get a missing Python tool: the manager's install when a pyproject.toml lists it (or there is no range to
  * add it in), otherwise adding it to the dev dependencies the way `standard upgrade` does (#68), after what puts the
@@ -225,7 +228,7 @@ function listedInPyproject(tool: string, dirs: readonly string[], env: Env): boo
  */
 function pythonInstall(req: ToolRequest, dirs: readonly string[], env: Env, name: PythonManager): string {
   const manager = PYTHON_MANAGERS[name];
-  if (req.range === undefined || listedInPyproject(req.tool, dirs, env) !== false) return manager.install;
+  if (req.range === undefined || listedInPyproject(req.tool, dirs, env) === true) return manager.install;
   const add = [manager.program, ...manager.addDev, `"${req.tool}${req.range}"`].join(" ");
   return manager.inProject === undefined ? add : `${manager.inProject} && ${add}`;
 }
@@ -244,7 +247,10 @@ function python(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
     .map((e) => (env.windows ? env.path.join(e, "Scripts", `${req.tool}.exe`) : env.path.join(e, "bin", req.tool)))
     .find((p) => env.exists(p));
   if (!bin) {
-    const install = inDir(req.dir, pythonInstall(req, dirs, env, name));
+    const command = inDir(req.dir, pythonInstall(req, dirs, env, name));
+    // Without a pyproject.toml neither `uv sync` nor `uv add` can run (#112): `devguard fix` creates it first.
+    const install =
+      listedInPyproject(req.tool, dirs, env) === undefined ? `${PYPROJECT_FIRST}\n之後再安裝：${command}` : command;
     return { ok: false, message: `找不到 ${req.tool}：專案環境（${environments.join("、")}）中沒有安裝`, install };
   }
   return { ok: true, command: { ...manager.runTool(bin, req.tool, req.args ?? []), cwd } };
