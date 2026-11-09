@@ -1,5 +1,11 @@
 import type { Repair } from "../../fix/repair.ts";
 import type { JavaTarget } from "./common.ts";
+import {
+  DEVGUARD_MODULES_MARK,
+  GOOGLE_CHECKS_BODY,
+  GOOGLE_CHECKS_URL,
+  GOOGLE_CHECKS_VERSION,
+} from "./google-checks.ts";
 
 const xmlAttr = (s: string): string =>
   s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -35,16 +41,22 @@ export function checkstyleModule(t: JavaTarget, name: CheckstyleModule): string[
   ];
 }
 
-/** The CLI-owned Checkstyle config (SPEC §9.2): the CyclomaticComplexity and IllegalImport modules. */
+/**
+ * The CLI-owned Checkstyle config (SPEC §9.2, #131): google_checks.xml without the layout modules palantir decides (see
+ * `google-checks.ts`), with the CyclomaticComplexity and IllegalImport modules at the end of the TreeWalker.
+ */
 export function checkstyleXml(t: JavaTarget): string {
+  const ours = [...checkstyleModule(t, "CyclomaticComplexity"), ...checkstyleModule(t, "IllegalImport")];
+  const body = GOOGLE_CHECKS_BODY.split("\n").flatMap((line) =>
+    line.trim() === DEVGUARD_MODULES_MARK ? indent(ours, "    ") : [line],
+  );
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<!DOCTYPE module PUBLIC "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN" "https://checkstyle.org/dtds/configuration_1_3.dtd">',
+    `<!-- 以 Checkstyle ${GOOGLE_CHECKS_VERSION} 的 google_checks.xml 為基礎（${GOOGLE_CHECKS_URL}，LGPL-2.1），`,
+    "     移除與 palantir-java-format 衝突的格式類 module，再加上 CyclomaticComplexity 與 IllegalImport -->",
     '<module name="Checker">',
-    '  <module name="TreeWalker">',
-    ...indent(checkstyleModule(t, "CyclomaticComplexity"), "    "),
-    ...indent(checkstyleModule(t, "IllegalImport"), "    "),
-    "  </module>",
+    ...body,
     "</module>",
     "",
   ].join("\n");

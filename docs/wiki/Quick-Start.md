@@ -320,7 +320,7 @@ components:
 
 #### 設定檔產生與建置檔設定片段
 1. 執行 `devguard install` 會**自動產生或修補**：
-   - `checkstyle.xml`（`generated`）：由 CLI 全權產生，內含 `CyclomaticComplexity`（上限 10）與 `IllegalImport`（禁用 `sun.*`）
+   - `checkstyle.xml`（`generated`）：由 CLI 全權產生，內容是 Checkstyle 10.21 的 `google_checks.xml`（移除與 palantir 衝突的格式類 module），再加上 `CyclomaticComplexity`（上限 10）與 `IllegalImport`（禁用 `sun.*`）
    - `pmd-ruleset.xml`（`generated`）：由 CLI 全權產生，引用 `rulesets/java/quickstart.xml` 並設定 `CognitiveComplexity`（`reportLevel = 15`）
    - `lombok.config`（`managed`，當專案使用 Lombok 時）：自動加上 `lombok.addLombokGeneratedAnnotation = true`，讓 JaCoCo 排除 Lombok 產生的程式碼
    - `.vscode/`（`managed`）：關閉 `[java].editor.formatOnSave`（避免 IDE 格式化與 Spotless Palantir 衝突）、將 `java.checkstyle.configuration` 與 `java.checkstyle.version` 同步至建置設定，並在 `tasks.json` 加入 `standards: format (Spotless)`

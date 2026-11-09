@@ -79,7 +79,9 @@ devguard fix --code [檔案…] [--yes] [--cwd <dir>]
 
 `generated` 類的檔案已經存在、內容不是空白、卻沒有 `由 CLI 產生` 檔頭時，表示是專案自己寫的。`fix` 不會覆寫它，加上 `--yes` 也一樣，只印出要加入的內容，其他檔案照常處理：
 
-- `checkstyle.xml`：印出 `TreeWalker` 底下缺少或要換掉的 module（`CyclomaticComplexity`、`IllegalImport`），內含宣告的屬性值。
+- `checkstyle.xml`：印出 `TreeWalker` 底下缺少或要換掉的 module（`CyclomaticComplexity`、`IllegalImport`），內含宣告的屬性值；不要求補上 `google_checks.xml` 的規則。
+
+由 devguard 產生的 `checkstyle.xml`（有檔頭）重新產生時，內容是 Checkstyle 10.21 的 `google_checks.xml`（移除與 palantir-java-format 衝突的格式類 module，來源與 LGPL-2.1 註明在檔頭），加上 `CyclomaticComplexity` 與 `IllegalImport`。
 - PMD ruleset：印出 `CognitiveComplexity` 的 `<rule>`。
 - `.claude/rules/*`、`/standards-doctor` skill：印出完整的產生內容，請自行比對。
 
