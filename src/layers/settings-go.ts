@@ -71,17 +71,58 @@ function golangciMissing(component: ResolvedComponent): Finding {
   return { ...missing(component, GOLANGCI_FILE, "settings/golangci-missing", fix), repairs };
 }
 
-async function checkComponent(cwd: string, component: ResolvedComponent): Promise<Finding[]> {
+interface Checked {
+  component: ResolvedComponent;
+  /** The golangci config the component uses, if any. */
+  golangci?: string;
+  findings: Finding[];
+}
+
+async function checkComponent(cwd: string, component: ResolvedComponent): Promise<Checked> {
   const golangci = await findGolangci(cwd, component.dir);
   const gomod = await readIfExists(join(cwd, component.dir, GOMOD_FILE));
   const findings: Finding[] = [];
   if (golangci === undefined) findings.push(golangciMissing(component));
   else if (golangci.ignored.length > 0) findings.push(golangciMultiple(component, golangci));
   if (gomod === undefined) findings.push(missing(component, GOMOD_FILE, "settings/gomod-missing", "go mod init"));
-  return [
-    ...findings,
-    ...checkGoSettings(component, { golangci: golangci?.text, golangciFile: golangci?.file, gomod }),
-  ];
+  findings.push(...checkGoSettings(component, { golangci: golangci?.text, golangciFile: golangci?.file, gomod }));
+  return { component, findings, ...(golangci ? { golangci: golangci.file } : {}) };
+}
+
+const depth = (dir: string) => dir.split("/").length;
+
+/**
+ * Where a golangci config's findings are listed (#92): under the user whose directory holds the file, otherwise
+ * under the shallowest user, ties going to declaration order. `users` is in declaration order and never empty.
+ */
+function golangciOwner(file: string, users: readonly ResolvedComponent[]): ResolvedComponent {
+  const dir = file.slice(0, file.lastIndexOf("/") + 1);
+  const shallowest = users.reduce((best, c) => (depth(c.dir) < depth(best.dir) ? c : best));
+  return users.find((c) => c.dir === dir) ?? shallowest;
+}
+
+const findingKey = (f: Finding) => JSON.stringify([f.rule, f.file, f.line, f.message]);
+
+/**
+ * Findings about a golangci config several components share are listed once (#92): one several users report goes
+ * under the file's owner, and its repairs are applied once. One only a single user reports stays under that user.
+ */
+function mergeShared(checked: readonly Checked[]): Finding[] {
+  const users = new Map<string, ResolvedComponent[]>();
+  for (const c of checked) if (c.golangci) users.set(c.golangci, [...(users.get(c.golangci) ?? []), c.component]);
+  const reporters = new Map<string, number>();
+  for (const key of checked.flatMap((c) => c.findings.map(findingKey)))
+    reporters.set(key, (reporters.get(key) ?? 0) + 1);
+  const seen = new Set<string>();
+  return checked.flatMap(({ golangci, findings }) =>
+    findings.flatMap((f) => {
+      const key = findingKey(f);
+      if (golangci === undefined || f.file !== golangci || reporters.get(key) === 1) return [f];
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{ ...f, component: golangciOwner(golangci, users.get(golangci) ?? []).name }];
+    }),
+  );
 }
 
 /** Settings check for Go components: the golangci config golangci-lint uses and `go.mod` against the effective standard (SPEC §6.2). */
@@ -90,7 +131,7 @@ export const goSettingsLayer: CheckLayer = {
   fixable: true,
   async run({ cwd, resolution }) {
     const components = resolution?.components.filter((c) => c.language === "go") ?? [];
-    const findings = await Promise.all(components.map((c) => checkComponent(cwd, c)));
-    return { findings: findings.flat() };
+    const checked = await Promise.all(components.map((c) => checkComponent(cwd, c)));
+    return { findings: mergeShared(checked) };
   },
 };
