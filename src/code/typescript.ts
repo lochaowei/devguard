@@ -1,7 +1,7 @@
+import { posix } from "node:path";
 import type { Finding } from "../report/finding.ts";
 import { isRecord } from "../shared/guards.ts";
-import { parseJsonc } from "../settings/config-files.ts";
-import { solutionReferences } from "../settings/typescript/tsconfig.ts";
+import { referencedTsconfigs } from "../settings/typescript/tsconfig.ts";
 import type { ToolResult } from "../tools/runner.ts";
 import { codeFinding, firstDifferentLine, runBatched, splitStaged, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
@@ -138,9 +138,8 @@ function tscFinding(target: CodeTarget, ctx: CodeCheckContext, line: string): Fi
  * through several of them is reported once (#124).
  */
 async function typecheck(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
-  const tsconfig = await ctx.readText(`${target.dir}tsconfig.json`);
-  const references = tsconfig === undefined ? undefined : solutionReferences(parseJsonc(tsconfig));
-  const projects = references?.map((ref) => ["-p", ref]) ?? [[]];
+  const references = await referencedTsconfigs(`${target.dir}tsconfig.json`, ctx.readText);
+  const projects = references?.map((ref) => ["-p", posix.relative(target.dir, ref)]) ?? [[]];
   const findings = new Map<string, Finding>();
   for (const project of projects) {
     const args = ["--noEmit", "--pretty", "false", ...project];

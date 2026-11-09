@@ -12,6 +12,9 @@ interface Loaded {
   references: string[] | undefined;
 }
 
+/** A tsconfig that cannot be relied on: absent options may be set somewhere that could not be read. */
+const UNREADABLE: Loaded = { options: {}, unresolved: true, references: undefined };
+
 function parentDirs(dir: string): string[] {
   const dirs = [dir];
   for (let cur = dir; dirname(cur) !== cur; cur = dirname(cur)) dirs.push(dirname(cur));
@@ -33,7 +36,7 @@ async function loadBase(fromDir: string, spec: string, depth: number): Promise<L
     const loaded = await load(path, depth + 1);
     if (loaded) return loaded;
   }
-  return { options: {}, unresolved: true, references: undefined };
+  return UNREADABLE;
 }
 
 /** compilerOptions after following `extends` (later bases and the file itself win). Undefined when the file is missing. */
@@ -41,7 +44,7 @@ async function load(path: string, depth = 0): Promise<Loaded | undefined> {
   const text = depth > 10 ? undefined : await readIfExists(path);
   if (text === undefined) return undefined;
   const json = parseJsonc(text);
-  if (!isRecord(json)) return { options: {}, unresolved: true, references: undefined };
+  if (!isRecord(json)) return UNREADABLE;
   const ext = json.extends;
   const specs = typeof ext === "string" ? [ext] : Array.isArray(ext) ? ext.filter((s) => typeof s === "string") : [];
   let options: Record<string, unknown> = {};
@@ -72,6 +75,31 @@ function referencedFile(written: string): string {
   return posix.normalize(posix.extname(path) === ".json" ? path : posix.join(path, "tsconfig.json"));
 }
 
+/** The repo-relative path of a reference (as {@link solutionReferences} gives it) of the tsconfig at `file`. */
+const resolveReference = (file: string, ref: string): string => posix.normalize(posix.join(posix.dirname(file), ref));
+
+/**
+ * The tsconfig files tsc actually checks files with for the repo-relative tsconfig `file`: the files a solution-style
+ * tsconfig references, following nested solutions, each once. Undefined when `file` is not solution-style (or cannot
+ * be read), so tsc checks with it directly.
+ */
+export async function referencedTsconfigs(
+  file: string,
+  read: (repoPath: string) => Promise<string | undefined>,
+  seen = new Set<string>([file]),
+): Promise<string[] | undefined> {
+  const text = await read(file);
+  const references = text === undefined ? undefined : solutionReferences(parseJsonc(text));
+  if (!references) return undefined;
+  const leaves: string[] = [];
+  for (const ref of references.map((r) => resolveReference(file, r))) {
+    if (seen.has(ref)) continue;
+    seen.add(ref);
+    leaves.push(...((await referencedTsconfigs(ref, read, seen)) ?? [ref]));
+  }
+  return leaves;
+}
+
 interface Found {
   /** Repo-relative path. */
   file: string;
@@ -88,11 +116,11 @@ async function loadNearest(root: string, subDir: string): Promise<Found | undefi
   return undefined;
 }
 
-/** Which component directory a repo-relative file belongs to. */
-export type OwnerOf = (file: string) => string;
+/** The directory of the TypeScript component a repo-relative file belongs to; undefined when none holds it. */
+export type OwnerOf = (file: string) => string | undefined;
 
 /** `typecheck.strict` and `typecheck.options` against tsconfig.json (SPEC §6.3). */
-export async function checkTsconfig(root: string, judge: SettingsJudge, ownerOf?: OwnerOf): Promise<void> {
+export async function checkTsconfig(root: string, judge: SettingsJudge, ownerOf: OwnerOf): Promise<void> {
   const found = await loadNearest(root, judge.dir);
   const wanted = judge.declared("typecheck.options");
   const extraOptions = Array.isArray(wanted) ? wanted.filter((o): o is string => typeof o === "string") : [];
@@ -106,8 +134,9 @@ export async function checkTsconfig(root: string, judge: SettingsJudge, ownerOf?
     judge.missingFile(file, " tsconfig.json", repairs);
     return;
   }
-  const owned = (file: string) => (ownerOf ? ownerOf(file) === judge.dir : true);
-  await judgeEffective(judge, found, extraOptions, { owned, seen: new Set() });
+  // A reference in another component's directory is that component's to judge; one in no component's is this one's.
+  const owned = (file: string) => [undefined, judge.dir].includes(ownerOf(file));
+  await judgeEffective(judge, found, extraOptions, { owned, seen: new Set([found.file]) });
 }
 
 /**
@@ -125,10 +154,10 @@ async function judgeEffective(
     judgeOptions(judge, found.file, found.loaded, extraOptions);
     return;
   }
-  walk.seen.add(found.file);
   for (const ref of references) {
-    const file = posix.normalize(posix.join(posix.dirname(found.file), ref));
+    const file = resolveReference(found.file, ref);
     if (walk.seen.has(file) || !walk.owned(file)) continue;
+    walk.seen.add(file);
     const fsPath = join(dirname(found.fsPath), ref);
     const loaded = await load(fsPath);
     if (loaded) await judgeEffective(judge, { file, fsPath, loaded }, extraOptions, walk);

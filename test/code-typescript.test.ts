@@ -194,6 +194,15 @@ describe("typescript checker: tsc", () => {
     ]);
   });
 
+  it("follows a referenced solution-style tsconfig to the projects it references (#124)", async () => {
+    const { tools, calls } = fakeTools({});
+    await check(target({ categories: only("typecheck") }), tools, {
+      "web/tsconfig.json": JSON.stringify({ files: [], references: [{ path: "./packages" }] }),
+      "web/packages/tsconfig.json": JSON.stringify({ files: [], references: [{ path: "../../lib/tsconfig.json" }] }),
+    });
+    expect(calls.map((c) => c.args)).toEqual([["--noEmit", "--pretty", "false", "-p", "../lib/tsconfig.json"]]);
+  });
+
   it("passes when tsc exits 0", async () => {
     const { tools } = fakeTools({});
     expect(await check(target({ categories: only("typecheck") }), tools)).toEqual([]);

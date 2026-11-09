@@ -27,10 +27,12 @@ export const typescriptSettingsLayer: CheckLayer = {
     const standard = resolution?.standard;
     if (!standard) return { findings: [] };
     const findings = [];
-    const dirs = resolution.components.filter((c) => c.language === "typescript").map((c) => c.dir);
-    // The deepest TypeScript component whose directory holds the file ("" when none does).
-    const ownerOf: OwnerOf = (file) =>
-      dirs.filter((d) => file.startsWith(d)).reduce((a, b) => (b.length > a.length ? b : a), "");
+    // Deepest first, so the first directory holding a file is the component it belongs to.
+    const dirs = resolution.components
+      .filter((c) => c.language === "typescript")
+      .map((c) => c.dir)
+      .sort((a, b) => b.length - a.length);
+    const ownerOf: OwnerOf = (file) => dirs.find((d) => file.startsWith(d));
     for (const component of resolution.components) {
       if (component.language !== "typescript") continue;
       const judge = new SettingsJudge(standard, component);

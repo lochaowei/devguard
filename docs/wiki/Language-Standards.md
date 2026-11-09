@@ -175,7 +175,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 | `deps.banned` | `["moment", "request", "node-fetch"]` | 直接依賴禁用套件 |
 | `deps.bannedApis` | `[]` | ESLint `no-restricted-imports` |
 
-**solution-style `tsconfig.json`**：元件的 `tsconfig.json` 是 `"files": []`、沒有 `include`、而有 `references` 時，`typecheck.strict` 與 `typecheck.options` 改對每個被參照的 tsconfig（`path` 是目錄時取其中的 `tsconfig.json`）依其實際生效的設定（含 `extends`）判斷：finding 指向被參照的檔案，`fix` 也修改那個檔案，solution 檔本身不產生設定 finding、不被修改；被參照的檔案讀不到時只給 `settings/unconfirmed` 提示。被參照的檔案位在另一個 TypeScript 元件目錄內時交給該元件判斷。`draft` 也從被參照的檔案推斷，任一參照比標準寬即寫成放寬（#124）。
+**solution-style `tsconfig.json`**：元件的 `tsconfig.json` 是 `"files": []`、沒有 `include`、而有 `references` 時，`typecheck.strict` 與 `typecheck.options` 改對每個被參照的 tsconfig（`path` 是目錄時取其中的 `tsconfig.json`）依其實際生效的設定（含 `extends`）判斷：finding 指向被參照的檔案，`fix` 也修改那個檔案，solution 檔本身不產生設定 finding、不被修改；被參照的檔案讀不到時只給 `settings/unconfirmed` 提示。被參照的檔案位在另一個 TypeScript 元件目錄內時交給該元件判斷，不在任何元件目錄內時仍由這個元件判斷；被參照的檔案本身也是 solution-style 時繼續往下追。`draft` 也從被參照的檔案推斷，任一參照比標準寬即寫成放寬（#124）。
 
 ### 執行方式
 
