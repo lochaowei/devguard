@@ -262,12 +262,40 @@ describe("editConfigText: YAML", () => {
       const local = { repo: "local", hooks: [{ id: "devguard", entry: "devguard hook git-pre-commit" }] };
       const out = editConfigText(".pre-commit-config.yaml", config, [{ op: "add", path: ["repos"], value: local }]);
       expect(added(config, out).length).toBeGreaterThan(0);
+      const padded = config.replace("[--check]", "[ --check, --diff ]");
+      const again = editConfigText(".pre-commit-config.yaml", padded, [{ op: "add", path: ["repos"], value: local }]);
+      expect(again).toContain("        args: [ --check, --diff ]\n");
+    });
+
+    it("keeps lefthook.yml lines the same way", () => {
+      const lefthook =
+        'pre-commit:\n  parallel: true   # speed\n  jobs:\n    - run: ruff check {staged_files}\n      glob: ["*.py"]\n';
+      const out = editConfigText("lefthook.yml", lefthook, [
+        { op: "add", path: ["pre-commit", "jobs"], value: { name: "devguard", run: "devguard hook git-pre-commit" } },
+      ]);
+      expect(added(lefthook, out)).toEqual(["    - name: devguard", "      run: devguard hook git-pre-commit"]);
+    });
+
+    it("writes LF for a CRLF original, keeping its lines", () => {
+      const crlf = GOLANGCI.replace(/\n/g, "\r\n");
+      const out = editConfigText(".golangci.yml", crlf, addGosec);
+      expect(added(crlf, out.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n")).length).toBe(2);
     });
   });
 
   it("does not put back a line whose edit changed only whitespace in a value", () => {
-    const out = editConfigText("x.yml", "name: a  b # two spaces\n", [{ op: "set", path: ["name"], value: "a b" }]);
-    expect(parseConfigText("x.yml", out)).toEqual({ name: "a b" });
+    const text = "name: a  b # two spaces\nlevel: 1     # aligned\n";
+    const out = editConfigText("x.yml", text, [{ op: "set", path: ["name"], value: "a b" }]);
+    expect(parseConfigText("x.yml", out)).toEqual({ name: "a b", level: 1 });
+    expect(out).toContain("level: 1     # aligned\n");
+  });
+
+  it("does not put back a line where it would no longer parse", () => {
+    const out = editConfigText("x.yml", "a:\n- x\nb: 1\n", [
+      { op: "delete", path: ["a"] },
+      { op: "set", path: ["b"], value: { c: ["x"] } },
+    ]);
+    expect(parseConfigText("x.yml", out)).toEqual({ b: { c: ["x"] } });
   });
 
   it("treats a .prettierrc that is not JSON as YAML", () => {

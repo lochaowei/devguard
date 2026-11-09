@@ -3,7 +3,7 @@ import { applyEdits, modify, parse as parseJsoncTree, type FormattingOptions, ty
 import { isScalar, isSeq, parse as parseYaml, parseDocument, type Document, type YAMLSeq } from "yaml";
 import { baseName } from "../repo/paths.ts";
 import type { KeyEdit, KeyPath } from "./repair.ts";
-import { yamlText } from "./yaml-text.ts";
+import { renderKeepingLayout } from "./yaml-text.ts";
 
 /** How a structured shared file is read and written. */
 export type EditFormat = "toml" | "jsonc" | "yaml" | "lines";
@@ -231,7 +231,7 @@ function editYaml(text: string, edits: readonly KeyEdit[]): string {
     else if (isSeq(node)) editSeq(doc, node, e);
     else doc.setIn(e.path, doc.createNode(listAfter(e, undefined)));
   }
-  return yamlText(doc, text);
+  return renderKeepingLayout(doc, text);
 }
 
 function editLines(text: string, edits: readonly KeyEdit[]): string {
