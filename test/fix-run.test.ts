@@ -78,6 +78,45 @@ default = true
     expect(out).toContain('[[tool.uv.index]]\nname = "nexus"');
   });
 
+  it("Python: renames a commented multi-line extend-select to select in place and appends the missing groups (#111)", async () => {
+    const pyproject = `[project]
+name = "app"
+requires-python = ">=3.11"
+
+[tool.ruff.lint]
+extend-select = [
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+`;
+    const dir = repo({ ".devguard.yaml": decl("python"), "pyproject.toml": pyproject });
+    await fixesEverything(dir);
+    const out = read(dir, "pyproject.toml");
+    expect(out).not.toContain("extend-select");
+    expect(out).toContain('select = [\n    "B",   # flake8-bugbear\n    "UP",  # pyupgrade\n');
+    expect(out).toMatch(/"E",\n/);
+  });
+
+  it("Python: moves extend-select items with comments into an existing select, once (#111)", async () => {
+    const pyproject = `[project]
+name = "app"
+requires-python = ">=3.11"
+
+[tool.ruff.lint]
+select = ["E", "B"]
+extend-select = [
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+`;
+    const dir = repo({ ".devguard.yaml": decl("python"), "pyproject.toml": pyproject });
+    await fixesEverything(dir);
+    const out = read(dir, "pyproject.toml");
+    expect(out).not.toContain("extend-select");
+    expect(out.match(/"B"/g)).toHaveLength(1);
+    expect(out).toContain('"UP"');
+  });
+
   it("Python: creates pyproject.toml when it is missing", async () => {
     const dir = repo({ ".devguard.yaml": decl("python") });
     await fixesEverything(dir);

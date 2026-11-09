@@ -436,3 +436,81 @@ describe("editConfigText: arrays of tables", () => {
     expect(editConfigText("pyproject.toml", text, [add, add])).toBe(`${text}\n${expected}`);
   });
 });
+
+describe("editConfigText: renaming and moving TOML arrays (#111)", () => {
+  const LINT = ["tool", "ruff", "lint"];
+  const COMMENTED = `[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+extend-select = [
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+
+    "UP",     # pyupgrade
+]
+`;
+
+  it("renames a multi-line array in place and appends after it, keeping every comment", () => {
+    const out = editConfigText("pyproject.toml", COMMENTED, [
+      { op: "rename", path: [...LINT, "extend-select"], to: "select" },
+      { op: "add", path: [...LINT, "select"], value: "E" },
+      { op: "add", path: [...LINT, "select"], value: "W" },
+    ]);
+    const expected = COMMENTED.replace("extend-select", "select").replace(
+      '"UP",     # pyupgrade\n',
+      '"UP",     # pyupgrade\n    "E",\n    "W",\n',
+    );
+    expect(out).toBe(expected);
+  });
+
+  it("keeps a single-line array on one line", () => {
+    const out = editConfigText("pyproject.toml", '[tool.ruff.lint]\nextend-select = ["B", "UP"]\n', [
+      { op: "rename", path: [...LINT, "extend-select"], to: "select" },
+      { op: "add", path: [...LINT, "select"], value: "E" },
+    ]);
+    expect(out).not.toContain("extend-select");
+    expect(out.trim().split("\n")).toHaveLength(2);
+    expect(out).toContain('"B", "UP"');
+  });
+
+  it("renames a dotted key written under [tool.ruff]", () => {
+    const out = editConfigText("pyproject.toml", '[tool.ruff]\nlint.extend-select = ["B"]\n', [
+      { op: "rename", path: [...LINT, "extend-select"], to: "select" },
+    ]);
+    expect(out).toBe('[tool.ruff]\nlint.select = ["B"]\n');
+  });
+
+  it("moves items with their comments into an existing select, once, and deletes the source", () => {
+    const text = `[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle
+    "B"
+]
+extend-select = [
+    "B",   # dup
+    "UP",  # pyupgrade
+]
+line-length = 1
+`;
+    const out = editConfigText("pyproject.toml", text, [
+      { op: "move", path: [...LINT, "extend-select"], into: [...LINT, "select"] },
+    ]);
+    expect(out).toBe(`[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle
+    "B",
+    "UP",  # pyupgrade
+]
+line-length = 1
+`);
+  });
+
+  it("moves into a single-line select, staying on one line", () => {
+    const text = '[tool.ruff.lint]\nselect = ["E"]\nextend-select = ["B", "UP"]\n';
+    const out = editConfigText("pyproject.toml", text, [
+      { op: "move", path: [...LINT, "extend-select"], into: [...LINT, "select"] },
+    ]);
+    expect(out).toBe('[tool.ruff.lint]\nselect = ["E", "B", "UP"]\n');
+  });
+});

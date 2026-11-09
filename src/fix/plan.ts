@@ -81,6 +81,10 @@ function describeEdit(r: Repair): string {
       return `${r.path.join(".")}: ${JSON.stringify(r.value)}`;
     case "add":
       return `${r.path.join(".")}: 加上 ${JSON.stringify(r.value)}`;
+    case "rename":
+      return `${r.path.join(".")}: 改名為 ${r.to}`;
+    case "move":
+      return `${r.path.join(".")}: 併入 ${r.into.join(".")} 並刪除`;
     case "remove":
       return `${r.path.join(".")}: 移除 ${JSON.stringify(r.value)}`;
   }

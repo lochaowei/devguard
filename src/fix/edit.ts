@@ -13,6 +13,7 @@ import {
 import { isScalar, isSeq, parse as parseYaml, parseDocument, type Document, type YAMLSeq } from "yaml";
 import { baseName } from "../repo/paths.ts";
 import type { KeyEdit, KeyPath } from "./repair.ts";
+import { moveItems, renameKey } from "./toml-text.ts";
 import { renderKeepingLayout } from "./yaml-text.ts";
 
 /** How a structured shared file is read and written. */
@@ -36,9 +37,20 @@ const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null;
 
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 
-type PathEdit = Exclude<KeyEdit, { op: "line" }>;
+type PathEdit = Exclude<KeyEdit, { op: "line" | "rename" | "move" }>;
 
-const pathEdits = (edits: readonly KeyEdit[]): PathEdit[] => edits.filter((e): e is PathEdit => e.op !== "line");
+const pathEdits = (edits: readonly KeyEdit[]): PathEdit[] =>
+  edits.filter((e): e is PathEdit => e.op !== "line" && e.op !== "rename" && e.op !== "move");
+
+/** Renames and moves are TOML text edits (src/fix/toml-text.ts), applied before the value edits. */
+function textEdits(text: string, edits: readonly KeyEdit[]): string {
+  let out = text;
+  for (const e of edits) {
+    if (e.op === "rename") out = renameKey(out, e.path, e.to);
+    if (e.op === "move") out = moveItems(out, e.path, e.into);
+  }
+  return out;
+}
 
 /** The array an add/remove produces from the current value. */
 function listAfter(edit: PathEdit & { op: "add" | "remove" }, current: unknown): unknown[] {
@@ -123,7 +135,8 @@ function newArrayTables(adds: readonly PathEdit[]): Map<string, Obj[]> {
  * toml-patch writes a key of a table that does not exist yet as a dotted key at the top of the file
  * (`tool.mypy = {strict = true}`), so keys of new tables are collected and appended as `[section]` blocks instead.
  */
-function editToml(text: string, edits: readonly KeyEdit[]): string {
+function editToml(original: string, edits: readonly KeyEdit[]): string {
+  const text = textEdits(original, edits);
   const empty = text.trim() === "";
   const doc = (empty ? {} : parseToml(text)) as Obj;
   const newArray = (e: PathEdit) => e.op === "add" && isObj(e.value) && getIn(doc, e.path) === undefined;
