@@ -81,3 +81,19 @@ export async function goWorkspaces(
   }
   return out;
 }
+
+/**
+ * For each module directory (normalized, repo-relative) that the nearest go.work inside the repo uses, that
+ * go.work's directory, normalized like the module directories. Modules no go.work in the repo uses are left out.
+ */
+export async function goWorkDirs(repoRoot: string, moduleDirs: readonly string[]): Promise<Map<string, string>> {
+  const root = resolve(repoRoot);
+  const out = new Map<string, string>();
+  for (const dir of moduleDirs) {
+    const workDir = upwards(dir).find((d) => existsSync(join(root, d, "go.work")));
+    if (workDir === undefined) continue;
+    const text = await readIfExists(join(root, workDir, "go.work"));
+    if (text !== undefined && goWorkModules(text, join(root, workDir), root).has(dir)) out.set(dir, workDir);
+  }
+  return out;
+}

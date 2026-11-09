@@ -164,14 +164,17 @@ describe("TypeScript tests", () => {
     expect(rules(r.findings)).toEqual(["error:test/failed"]);
   });
 
-  it("names a test file that fails to load", async () => {
+  it("names a test file that fails to load by its repo-relative path (#125)", async () => {
+    const cwd = project(WEB);
+    // Vitest writes absolute paths with forward slashes, also on Windows.
+    const name = join(cwd, "web", "b.test.ts").replace(/\\/g, "/");
     const report = JSON.stringify({
       numFailedTests: 0,
       numFailedTestSuites: 1,
-      testResults: [{ name: "/repo/web/b.test.ts", status: "failed", assertionResults: [] }],
+      testResults: [{ name, status: "failed", assertionResults: [] }],
     });
-    const r = await check(WEB, vitest(ALL_80, [], () => ok(report, 1)).tools);
-    expect(r.findings[0]?.message).toBe("測試失敗：/repo/web/b.test.ts");
+    const r = await checkTests(cwd, vitest(ALL_80, [], () => ok(report, 1)).tools, ["web/a.ts"]);
+    expect(r.findings[0]?.message).toBe("測試失敗：web/b.test.ts");
   });
 
   it("reports failures the report does not name", async () => {

@@ -95,6 +95,7 @@
 - 每個指令都接受 `--cwd <dir>`，指定專案根目錄（預設為目前目錄）。
 - 各 `hook` 子指令自行處理該防線的輸入格式與 exit code 語意。
 - CLI 執行 Go 工具時，一律帶入 `GOTOOLCHAIN=local`。`go tool <名稱>` 與 `go mod` 等檢查用的指令另外帶入 `GOPROXY=off`，確保檢查時不會下載任何模組（模組不在快取中時，該次執行失敗，而不是改為下載）。golangci-lint 與套件管理指令的模組來源是開發者自己的 Go 設定（`go env GOPROXY`、`GOSUMDB`）。
+- CLI 執行 `golangci-lint run`（`check` 與 `fix --code` 的 `run --fix`）時一律加上 `--max-same-issues=0 --max-issues-per-linter=0`（不論設定檔怎麼寫，所有問題都列出、都修正，#90）與 `--allow-serial-runners`（另一個 golangci-lint 持有全域鎖時排隊等候，而不是失敗，#94）。`golangci-lint fmt` 不取這個鎖。
 - **`.cmd` / `.bat` 檔一律透過 `cmd.exe /d /s /c` 執行**，例如 `code.cmd`、`mvnw.cmd`、`gradlew.bat`、`npm.cmd`。這類檔案無法直接當作程序啟動。
 
 ---
@@ -169,6 +170,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 - 元件依標記檔推斷：每個程式檔歸屬往上最近、含有該語言標記檔（`pyproject.toml`、`go.mod`、`package.json`、`pom.xml` 等）的目錄。下列檔案不成為元件，而是寫進草稿的 `ignore`（排在 `--ignore` 的項目之後），每項上方加一行註解說明原因（#89）：
   - `go.mod` 所在目錄或上層有 `go.work`，但這個目錄不在最近的 `go.work` 的 `use` 清單中（單行與 `use ( ... )` 區塊都支援）：寫入該目錄，註解「不在 go.work 的 use 清單中」。golangci-lint 在 workspace 模式下無法檢查這種模組。與 `go` 相同，`go.work` 不論是否被 git 忽略、即使在 repo 根目錄之上都算。例外：repo 根目錄的模組（`ignore` 無法只排除它），以及底下有 `use` 清單中模組的目錄，照舊是元件。沒有 `go.work` 的 repo，每個 `go.mod` 照舊是一個元件。
   - 往上找不到該語言標記檔的零星程式檔，且 repo 至少有一個有標記檔的元件時：寫入該檔案（同一目錄、同副檔名有多個時寫成 `<目錄>/*.<副檔名>`），註解「沒有 <語言> 的標記檔，未建立元件；若要檢查，請補上標記檔並新增元件」。整個 repo 都沒有標記檔時（例如純腳本 repo），這些檔案照舊成為 repo 根目錄的元件。
+  - TypeScript 元件的目錄沒有 `tsconfig.json`，歸屬它的 TypeScript 與 JavaScript 檔案又全是工具設定檔（檔名為 `*.config.<副檔名>` 或 `.<名稱>rc.<副檔名>`，副檔名 `ts`／`mts`／`cts`／`js`／`mjs`／`cjs`，例如 npm workspaces 根目錄的 `lint-staged.config.ts`），且 repo 還有其他元件時：不成為元件，其中的 TypeScript 設定檔逐一寫入，註解「只有工具設定檔，沒有 TypeScript 原始碼與 tsconfig.json，未建立元件」（#125）。外層還有 TypeScript 元件時不寫入，這些檔案照 §4.1 歸屬外層元件。
 - Python 例外（#106）：只有 `requirements.txt`（沒有 `pyproject.toml`、`setup.py`、`setup.cfg`）、又位於另一個 Python 元件之內的目錄（例如給 Read the Docs 用的 `docs/requirements.txt`），不另成元件，檔案歸屬上層元件；草稿在上層元件上方加一行註解「`<目錄>` 只有 requirements.txt，歸屬 `<上層>` 元件，未另建元件」。不在其他 Python 元件內的 requirements.txt-only 目錄照舊成為元件。
 
 可直接移植的參考實作（`Std` 模組中的 `resolve`、`lookup`、`draftFromDetected`、`checkToolConfigs`）：[prototypes/07-project-declaration.prototype.html](.scratch/coding-standards-guard/prototypes/07-project-declaration.prototype.html)
@@ -205,10 +207,10 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 - **golangci-lint 例外**：不放進 `go.mod` 的 `tool`。使用指定版本的 binary，由開發者放到 PATH，CLI 從 PATH 呼叫並核對版本。
 - CLI 執行工具的方式：
   - Python：`uv run <tool>`，工具須已安裝在專案環境中。專案環境是 `UV_PROJECT_ENVIRONMENT` 指定的目錄（絕對路徑照用，相對路徑相對於專案目錄，與 uv 相同），未設定時為 `.venv`；找不到工具時，訊息列出實際找過的專案環境路徑。Poetry 專案（最近的 lockfile 是 `poetry.lock`）不讀 `UV_PROJECT_ENVIRONMENT`，直接執行專案內 `.venv` 中的工具，所以 Poetry 必須設定 `virtualenvs.in-project true`
-  - TypeScript：`node_modules/.bin/<tool>`
+  - TypeScript：`node_modules/.bin/<tool>`（Windows 依序找 `<tool>.cmd`、`<tool>.exe`：npm／pnpm／Yarn 產生 `.cmd`，Bun 產生 `.exe`）
   - Go：`go tool <名稱>`
   - Java：`./mvnw` / `./gradlew`
-- 工具尚未安裝時，CLI **不會自行下載**，而是報錯並附上一行安裝指令（例如 `uv sync`、`poetry config virtualenvs.in-project true && poetry install`、`npm ci`），套件來源是開發者使用者層級的設定（§10）。標準要求的 Python 開發工具（型別檢查器、Ruff、pytest）不在專案環境、元件與上層目錄的 `pyproject.toml` 也都沒有列在依賴中時，`uv sync` 裝不到它，提示改為加入開發依賴的指令，格式與 `standard upgrade` 相同（§5.5）：uv 專案 `uv add --dev "<工具><範圍>"`，Poetry 專案 `poetry config virtualenvs.in-project true && poetry add --group dev "<工具><範圍>"`（前半與 `poetry install` 的提示相同，工具才會裝進 devguard 會找的專案內 `.venv`），範圍取標準的 `tools.<工具>`（#68）。已列在依賴中只是還沒安裝時，維持 `uv sync`／`poetry install`。找不到 uv 本身時，提示改為多行：列出官方安裝腳本、`pipx install uv`、`pip install uv`、`scoop install uv`（Windows），並說明已用 pip 安裝時要把 Python 的 Scripts 目錄（Windows）或 `~/.local/bin`（其他平台）加進 PATH，再以 `uv --version` 確認；devguard 不會到 PATH 以外的位置找 uv。
+- 工具尚未安裝時，CLI **不會自行下載**，而是報錯並附上一行安裝指令（例如 `uv sync`、`poetry config virtualenvs.in-project true && poetry install`、`npm ci`），套件來源是開發者使用者層級的設定（§10）。TypeScript 的安裝指令由元件目錄往上最近的 lockfile 決定，在該 lockfile 所在的目錄（workspace 根目錄）執行：`package-lock.json`／`npm-shrinkwrap.json` 為 `npm ci`，`pnpm-lock.yaml` 為 `pnpm install --frozen-lockfile`，`yarn.lock` 為 `yarn install --immutable`（Berry）或 `yarn install --frozen-lockfile`（classic），`bun.lock`／`bun.lockb` 為 `bun install --frozen-lockfile`；同一個目錄有多個 lockfile 時 `deps.manager` 的那一個優先；都沒有時改為 `deps.manager` 的一般安裝（例如 `npm install`），在最近的有 `package.json` 的目錄執行（#117）。標準要求的 Python 開發工具（型別檢查器、Ruff、pytest）不在專案環境、元件與上層目錄的 `pyproject.toml` 也都沒有列在依賴中時，`uv sync` 裝不到它，提示改為加入開發依賴的指令，格式與 `standard upgrade` 相同（§5.5）：uv 專案 `uv add --dev "<工具><範圍>"`，Poetry 專案 `poetry config virtualenvs.in-project true && poetry add --group dev "<工具><範圍>"`（前半與 `poetry install` 的提示相同，工具才會裝進 devguard 會找的專案內 `.venv`），範圍取標準的 `tools.<工具>`（#68）。已列在依賴中只是還沒安裝時，維持 `uv sync`／`poetry install`。找不到 uv 本身時，提示改為多行：列出官方安裝腳本、`pipx install uv`、`pip install uv`、`scoop install uv`（Windows），並說明已用 pip 安裝時要把 Python 的 Scripts 目錄（Windows）或 `~/.local/bin`（其他平台）加進 PATH，再以 `uv --version` 確認；devguard 不會到 PATH 以外的位置找 uv。
 
 來源：[工具版本權威與一致性檢查](.scratch/coding-standards-guard/issues/14-tool-version-authority.md)
 
@@ -278,9 +280,10 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 - 所有 `mirrors.*`（§10）。
 - 各語言的 `deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`，以及 Go 的 `tools.govulncheck`（§5.3）。
 
-`team@1.4.0`（minor，§5.5）沿用 `team@1.3.0` 的所有項目，只有以下差異（#113）：
+`team@1.4.0`（minor，§5.5）沿用 `team@1.3.0` 的所有項目，只有以下差異（#113、#138）：
 
 - Python 的 `tools.mypy` 改為 `>=1.18,<3`，同時允許 mypy 1.x 與 2.x。2026-11-08 查證 PyPI：1.x 的最後一版是 1.20.2（2026-04-21），2.0.0 於 2026-05-06 發佈，目前最新是 2.4.1（2026-10-28），2.0 之後 1.x 沒有修補版。下限維持，與 `team@1.1.0` 對已停止發佈的版本線的處理一致。
+- TypeScript 的 `deps.manager` 增加替代工具 `bun`（預設仍是 `npm`，#138）。它的 lockfile 只認文字格式的 `bun.lock`（Bun 1.2 起）；Bun 1.2 之前的二進位 `bun.lockb` 讀不到套件版本，不算 lockfile。`bun test` 不算測試工具，`test.tool` 仍只允許 Vitest／Jest。
 
 `devguard draft` 寫入、`doctor` 建議升級到的都是 CLI 內建的最新 `team` 版本（目前是 `team@1.4.0`）。既有專案可以改宣告基線標準 `legacy@1.0.0`（§6.5）。
 
@@ -298,7 +301,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | `test.tool` | pytest + pytest-cov | — |
 | `coverage.lines` | 行覆蓋率與分支覆蓋率**各自**都要達到 80%（`branch = true`），與 TS、Java 一致 | CLI 執行 `coverage json`，從 `totals` 分別計算行與分支的覆蓋率並自行判定。不使用 `fail_under`，因為它在 branch 模式下檢查的是行加分支的合併總數。 |
 | `deps.manager` | `uv`；允許替代工具 `poetry` | 決定 `deps.lockfile` 要求哪個 lockfile。執行工具（§5.2）與 `standard upgrade`（§5.5）不讀這個項目，只看最近的 Python lockfile：`poetry.lock` 時用 Poetry，否則用 uv |
-| `deps.lockfile` | `uv.lock`（或 `poetry.lock`）必須提交；只有不帶 hash 的 `requirements.txt` 不算 lockfile | CLI 檢查 |
+| `deps.lockfile` | `uv.lock`（或 `poetry.lock`）必須提交；只有不帶 hash 的 `requirements.txt` 不算 lockfile。元件目錄的 `requirements.txt` 不帶 hash 而有 lockfile 時，`requirements.txt` 列出的套件（略過註解、空行、`-r`／`-c`／`--index-url` 等選項行、`-e`、URL 與本機路徑；名稱依 PEP 503 正規化：小寫、`_` 與 `.` 換成 `-`）都必須在 lockfile 的 `[[package]]` 中，否則回報錯誤 `deps/requirements-unlocked`，列出缺少的套件（最多 5 個，其餘只計數），修正提示為在元件目錄執行 `uv add -r requirements.txt`（`poetry.lock` 時為 `poetry add <套件…>`）。只比對名稱，不比對版本範圍；只看元件目錄的 `requirements.txt`，不看 `docs/requirements.txt`、`requirements-dev.txt` 等其他檔案（#137） | CLI 檢查 |
 
 來源：[預設標準：Python](.scratch/coding-standards-guard/issues/08-default-standard-python.md)
 
@@ -307,7 +310,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | 項目 | 預設值 | 落地方式 |
 |---|---|---|
 | `go.minVersion` | 1.26（`go.mod` 較高時以專案為準） | `go.mod` |
-| `lint.tool` | golangci-lint v2，**≥2.12** | golangci-lint 採用的設定檔（`version: "2"`）：從元件目錄往上到 repo 根目錄，最近一層有設定檔的目錄，同層依 `.golangci.json` > `.golangci.toml` > `.golangci.yaml` > `.golangci.yml` 取第一份。檢查與修正都針對這一份並沿用它的格式；同層有多份時提示其他的會被忽略；整條路徑都沒有時才建立 `.golangci.yml`。不是 v2 格式時只回報 `settings/golangci-version`（先 `golangci-lint migrate` 再重新 check），不檢查其他設定、不修正（#86）。多個 Go 元件共用同一份設定檔時，同一筆 finding（規則、檔案、行、訊息相同）只列一次、修正只套用一次：在回報它的元件中，列在目錄就是設定檔所在目錄的那個下，沒有時（例如設定在 `go.work` 所在、不是元件的目錄）列在目錄最上層的那個下（同層依宣告順序）。因此只有一個元件回報的 finding（例如該元件覆寫多加的 linter）照舊列在它下面（#92） |
+| `lint.tool` | golangci-lint v2，**≥2.12** | golangci-lint 採用的設定檔（`version: "2"`）：從元件目錄往上到 repo 根目錄，最近一層有設定檔的目錄，同層依 `.golangci.json` > `.golangci.toml` > `.golangci.yaml` > `.golangci.yml` 取第一份。檢查與修正都針對這一份並沿用它的格式；同層有多份時提示其他的會被忽略；整條路徑都沒有時才建立 `.golangci.yml`：元件在 repo 內某個 `go.work` 的 `use` 清單中時建立在 `go.work` 所在目錄，否則依元件或它上層最上面的 Go 元件決定：那個元件在 `go.work` 的 `use` 清單中時建在 `go.work` 所在目錄，否則建在它的目錄。這些元件共用一份，`fix` 只建立一次，內容包含每個元件的有效標準要加的設定（#88）。不是 v2 格式時只回報 `settings/golangci-version`（先 `golangci-lint migrate` 再重新 check），不檢查其他設定、不修正（#86）。多個 Go 元件共用同一份設定檔時，同一筆 finding（規則、檔案、行、訊息相同）只列一次、修正只套用一次：在回報它的元件中，列在目錄就是設定檔所在目錄的那個下，沒有時（例如設定在 `go.work` 所在、不是元件的目錄）列在目錄最上層的那個下（同層依宣告順序）。因此只有一個元件回報的 finding（例如該元件覆寫多加的 linter）照舊列在它下面（#92） |
 | `lint.rules` | v2 預設組加上 `gosec, revive, errorlint, bodyclose, misspell, cyclop, gocognit, gomodguard_v2, depguard` | `linters.enable`；depguard 一定要寫明確規則 |
 | `format.tools` | gofumpt + goimports（風格） | golangci-lint formatters；gopls `formatting.gofumpt` |
 | `complexity.cyclomatic` / `cognitive` | 10 / 15 | `cyclop.max-complexity`（預設 10）/ `gocognit.min-complexity`，**必須明確設為 15**（預設 30） |
@@ -329,8 +332,10 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | `complexity.cyclomatic` / `cognitive` | 10 / 15 | ESLint `complexity` / `eslint-plugin-sonarjs` 的 `cognitive-complexity`（**授權為 LGPL-3.0-only，見 §12**；`team@1.1.0` 起不再要求，ESLint 只檢查 `complexity`）；使用 Biome 時改開 `noExcessiveCognitiveComplexity`。`team@1.1.0` 與 `legacy@1.0.0` 下，`cognitive` 只在使用 Biome 時強制，使用 ESLint 時只是參考值 |
 | `test.tool` | `vitest`；允許替代工具 `jest` | — |
 | `coverage.lines` | lines、branches、functions、statements 都是 80；覆蓋率必須涵蓋元件所有的原始碼，不只被測試 import 的檔案 | `coverage.thresholds` / `coverageThreshold.global`；並且必須設定 `coverage.include` / `collectCoverageFrom`，否則為錯誤 |
-| `deps.manager` | `npm`；允許替代工具 `pnpm`、`yarn` | — |
-| `deps.lockfile` | lockfile 必須提交；CI 使用 `npm ci` | CLI 檢查 |
+| `deps.manager` | `npm`；允許替代工具 `pnpm`、`yarn`（`team@1.4.0` 起加上 `bun`） | 決定 `deps.lockfile` 要求哪個 lockfile：`package-lock.json`（或 `npm-shrinkwrap.json`）、`pnpm-lock.yaml`、`yarn.lock`、`bun.lock` |
+| `deps.lockfile` | lockfile 必須提交，由元件目錄往上找；CI 使用 `npm ci`。`deps.manager` 不是 `bun`、卻只有 Bun 的 `bun.lock`／`bun.lockb` 時，標準允許 `bun`（`team@1.4.0` 起）就提示把 `deps.manager` 設成 `bun`，否則說明 Bun 不是允許的套件管理工具（#122）。`deps.manager: bun` 卻只有 `bun.lockb` 時，提示執行 `bun install --save-text-lockfile` 轉換成 `bun.lock`（#138） | CLI 檢查 |
+
+元件沒有 `tsconfig.json` 時，`fix` 建立的檔案設定 `typecheck.strict` 與 `typecheck.options`；元件底下有其他 TypeScript 元件時再加上 `exclude`：最外層子元件的目錄（相對於這個元件）與 `node_modules`（設定 `exclude` 會取代 TypeScript 預設排除的 `node_modules`），讓 `tsc` 不檢查子元件與依賴的檔案（#125）。
 
 solution-style 的 `tsconfig.json`（`"files": []`、沒有 `include`、有 `references`）本身不檢查任何檔案：`typecheck.strict` 與 `typecheck.options` 改對每個被參照的 tsconfig 判斷（finding 與 `fix` 都指向被參照的檔案，solution 檔不修改；位在其他元件目錄內的參照交給該元件，巢狀的 solution 檔繼續往下追），型別檢查對每個參照執行 `tsc --noEmit -p <ref>` 並合併相同的錯誤。
 
@@ -350,6 +355,8 @@ solution-style 的 `tsconfig.json`（`"files": []`、沒有 `include`、有 `ref
 | `deps.lockfile` | Maven：Enforcer 的 `banDynamicVersions`（一條規則同時禁止版本範圍、LATEST / RELEASE 與 SNAPSHOT）加上 `dependencyConvergence`；Gradle：dependency locking 加上 `gradle.lockfile` | — |
 
 Maven 多模組建置（`pom.xml` 有 `<modules>`）的 lint 指令在 `checkstyle:check pmd:check` 之前加上 `test-compile` phase：只執行 plugin goal 時，reactor 解析不到尚未建置的兄弟模組（本機 `~/.m2` 沒有它們的 SNAPSHOT 時整個指令失敗），PMD 的型別解析也因此有 classpath。所以多模組的 lint 會先編譯，比較慢；編譯失敗時回報 `code/tool-failed`，訊息是建置輸出中的錯誤行。報告從各模組的 `target/` 讀取。單一模組的 Maven、Spotless 與 Gradle 不加 phase。
+
+建置檔的 plugin（#98）：設定層讀元件的建置檔（Maven `pom.xml` 的 `<build><plugins>` 與 `<pluginManagement>`；Gradle `build.gradle(.kts)` 的 `plugins {}`、`apply plugin`、`alias(libs.plugins.…)`；repo 中的 Maven parent POM 也算）。plugin 可能來自 devguard 讀不到的地方時（repo 外的 parent POM、`<profiles>`、Gradle convention plugin、`apply from`、上層 Gradle 建置、`apply false`）不回報，程式碼層照常執行。沒有 Spotless、Checkstyle 或 PMD 的 plugin 時各回報一筆 `settings/java-plugin-missing`；Checkstyle 沒有指向元件使用的 Checkstyle 設定檔（Maven `<configLocation>` 或 `checkstyle.config.location`；Gradle `configFile`／`configDirectory`，預設 `config/checkstyle/checkstyle.xml`），或 PMD 沒有指向元件使用的 ruleset（Maven `<rulesets>`；Gradle `ruleSetFiles`）時回報 `settings/java-plugin-config`，無法解析的路徑不回報。兩者依 §9.2 只印出片段（含 palantir-java-format，設定位置指向 devguard 的檔案），不修改建置檔。程式碼層不執行建置檔沒有 plugin 的工具；Gradle 的 Checkstyle 與 PMD task 分開執行，一個失敗不影響另一個的結果。JaCoCo 見 #99。
 
 來源：[預設標準：Java](.scratch/coding-standards-guard/issues/11-default-standard-java.md)
 
@@ -519,6 +526,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 - `devguard fix`：修正**設定**，包括工具設定檔、`.claude/`、`.vscode/`、git hook（重新產生被修改過的 devguard hook；尚未安裝的 hook 由 `install` 安裝），以及 `.gitattributes`、`.gitignore`、`lombok.config` 中屬於標準的規則。
 - `devguard fix --code [files]`：修正**程式碼**，包括 `ruff format`、`gofumpt`、`prettier --write`、`spotless:apply`，以及 `ruff check --fix`、`eslint --fix`、`golangci-lint run --fix`。
+- `fix` 建立元件的 `pyproject.toml`、而元件目錄有 `requirements.txt` 時，套用後多印一行，提示在元件目錄執行 `uv add -r requirements.txt`，把執行期依賴匯入 `pyproject.toml` 與 `uv.lock`；`fix` 不會自己執行（#137）。
 - **使用者層級的設定一律不修改**，只印出修改說明，例如 `~/.m2/settings.xml`、使用者的 `.npmrc`、`go env`、環境變數。
 
 ### 9.2 依檔案類別決定修改方式

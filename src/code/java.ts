@@ -2,6 +2,7 @@ import type { Finding, Level } from "../report/finding.ts";
 import { descendants, parseXmlText, type XmlEl } from "../xml/parse.ts";
 import { targetBuildTool, type BuildTool } from "../settings/java/build.ts";
 import { isMavenMultiModule, mavenReportDirs } from "../settings/java/modules.ts";
+import { readBuildPlugins, type JavaPlugin } from "../settings/java/plugins.ts";
 import { codeFinding, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
 
@@ -87,41 +88,71 @@ function buildOf(target: CodeTarget, ctx: CodeCheckContext): Promise<BuildTool> 
   return targetBuildTool(target, ctx.readText);
 }
 
-const GRADLE_REPORTS: readonly [string, string, ReportParser][] = [
-  ["Checkstyle", "build/reports/checkstyle/main.xml", checkstyleFindings],
-  ["Checkstyle", "build/reports/checkstyle/test.xml", checkstyleFindings],
-  ["PMD", "build/reports/pmd/main.xml", pmdFindings],
-  ["PMD", "build/reports/pmd/test.xml", pmdFindings],
+/** Checkstyle and PMD: how each runs through either wrapper and where it writes its reports. */
+interface LintTool {
+  plugin: "checkstyle" | "pmd";
+  label: string;
+  parse: ReportParser;
+  mavenGoal: string;
+  mavenFlag: string;
+  /** The report in each Maven module's directory. */
+  mavenReport: string;
+  gradleTasks: readonly string[];
+  gradleReports: readonly string[];
+}
+
+const LINT_TOOLS: readonly LintTool[] = [
+  {
+    plugin: "checkstyle",
+    label: "Checkstyle",
+    parse: checkstyleFindings,
+    mavenGoal: "checkstyle:check",
+    mavenFlag: "-Dcheckstyle.failOnViolation=false",
+    mavenReport: "target/checkstyle-result.xml",
+    gradleTasks: ["checkstyleMain", "checkstyleTest"],
+    gradleReports: ["build/reports/checkstyle/main.xml", "build/reports/checkstyle/test.xml"],
+  },
+  {
+    plugin: "pmd",
+    label: "PMD",
+    parse: pmdFindings,
+    mavenGoal: "pmd:check",
+    mavenFlag: "-Dpmd.failOnViolation=false",
+    mavenReport: "target/pmd.xml",
+    gradleTasks: ["pmdMain", "pmdTest"],
+    gradleReports: ["build/reports/pmd/main.xml", "build/reports/pmd/test.xml"],
+  },
 ];
 
 /** Gradle fails the build on violations; with --continue every task still runs and writes its report. */
 const GRADLE_VIOLATIONS = /rule violations were found/i;
 
 /**
- * A source set without files writes no report, so missing Gradle reports are skipped. A failed build is read only
- * when it failed because of rule violations; otherwise the reports may be left over from an earlier build.
+ * One tool's Gradle tasks, run apart from the other tool's so that one failing leaves the other's findings (#98). A
+ * source set without files writes no report, so missing reports are skipped. A failed build is read only when it
+ * failed because of rule violations; otherwise the reports may be left over from an earlier build.
  */
-async function gradleLint(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
+async function gradleLint(target: CodeTarget, ctx: CodeCheckContext, tool: LintTool): Promise<Finding[]> {
   const result = await ctx.tools.run({
     language: "java",
     tool: "gradlew",
     dir: target.dir,
-    args: ["checkstyleMain", "checkstyleTest", "pmdMain", "pmdTest", "--continue", "--console=plain", "-q"],
+    args: [...tool.gradleTasks, "--continue", "--console=plain", "-q"],
   });
   if (result.code !== 0 && !GRADLE_VIOLATIONS.test(result.stdout + result.stderr)) {
     return [toolFailed(target, "gradlew", result)];
   }
   const findings: Finding[] = [];
-  for (const [tool, path, parse] of GRADLE_REPORTS) {
+  for (const path of tool.gradleReports) {
     const repoPath = target.dir + path;
     if ((await ctx.readText(repoPath)) !== undefined)
-      findings.push(...(await readReport(target, ctx, tool, repoPath, parse)));
+      findings.push(...(await readReport(target, ctx, tool.label, repoPath, tool.parse)));
   }
   return findings;
 }
 
-async function lint(target: CodeTarget, ctx: CodeCheckContext, build: BuildTool): Promise<Finding[]> {
-  if (build === "gradle") return gradleLint(target, ctx);
+/** The given tools in one Maven run. */
+async function mavenLint(target: CodeTarget, ctx: CodeCheckContext, tools: readonly LintTool[]): Promise<Finding[]> {
   // Plugin goals alone do not resolve sibling modules from the reactor; a lifecycle phase first does (#102).
   const multiModule = await isMavenMultiModule(ctx.readText, target.dir);
   const result = await ctx.tools.run({
@@ -132,21 +163,38 @@ async function lint(target: CodeTarget, ctx: CodeCheckContext, build: BuildTool)
       "-B",
       "-ntp",
       ...(multiModule ? ["test-compile"] : []),
-      "checkstyle:check",
-      "pmd:check",
-      "-Dcheckstyle.failOnViolation=false",
-      "-Dpmd.failOnViolation=false",
+      ...tools.map((t) => t.mavenGoal),
+      ...tools.map((t) => t.mavenFlag),
     ],
   });
   if (result.code !== 0) return [toolFailed(target, "mvnw", result)];
   // A multi-module build writes the reports in each module's target/ (SPEC §6.4).
   const findings: Finding[] = [];
   for (const dir of await mavenReportDirs(ctx.readText, target.dir)) {
-    findings.push(
-      ...(await readReport(target, ctx, "Checkstyle", `${dir}target/checkstyle-result.xml`, checkstyleFindings)),
-      ...(await readReport(target, ctx, "PMD", `${dir}target/pmd.xml`, pmdFindings)),
-    );
+    for (const tool of tools)
+      findings.push(...(await readReport(target, ctx, tool.label, dir + tool.mavenReport, tool.parse)));
   }
+  return findings;
+}
+
+type MayRun = (plugin: JavaPlugin) => boolean;
+
+/**
+ * Whether a tool may run: unless the build surely lacks its plugin (#98). When devguard cannot tell, or there is no
+ * readable build file, it runs as before.
+ */
+async function pluginsOf(target: CodeTarget, ctx: CodeCheckContext, build: BuildTool): Promise<MayRun> {
+  const plugins = await readBuildPlugins(ctx.readText, target.dir, build);
+  return (plugin) => plugins?.applied(plugin) !== "no";
+}
+
+/** A tool whose plugin the build lacks is not run; the settings check reports the missing plugin (#98). */
+async function lint(target: CodeTarget, ctx: CodeCheckContext, build: BuildTool, mayRun: MayRun): Promise<Finding[]> {
+  const tools = LINT_TOOLS.filter((t) => mayRun(t.plugin));
+  if (tools.length === 0) return [];
+  if (build === "maven") return mavenLint(target, ctx, tools);
+  const findings: Finding[] = [];
+  for (const tool of tools) findings.push(...(await gradleLint(target, ctx, tool)));
   return findings;
 }
 
@@ -223,8 +271,9 @@ export const javaChecker: CodeChecker = {
   async check(target, ctx) {
     const findings: Finding[] = [];
     const build = await buildOf(target, ctx);
-    if (target.categories.has("lint")) findings.push(...(await lint(target, ctx, build)));
-    if (target.categories.has("format")) findings.push(...(await format(target, ctx, build)));
+    const mayRun = await pluginsOf(target, ctx, build);
+    if (target.categories.has("lint")) findings.push(...(await lint(target, ctx, build, mayRun)));
+    if (target.categories.has("format") && mayRun("spotless")) findings.push(...(await format(target, ctx, build)));
     // The build tools always check the whole component; findings outside the requested files are dropped.
     if (target.files === undefined) return findings;
     const wanted = new Set(target.files.map((f) => toRepoPath(ctx.cwd, target.dir, f)));
@@ -232,7 +281,9 @@ export const javaChecker: CodeChecker = {
   },
   /** Spotless formats the whole component; Checkstyle and PMD have no automatic fixes. */
   async fixSteps(target, ctx) {
-    const maven = (await buildOf(target, ctx)) === "maven";
+    const build = await buildOf(target, ctx);
+    if (!(await pluginsOf(target, ctx, build))("spotless")) return [];
+    const maven = build === "maven";
     return [
       maven
         ? { tool: "mvnw", args: ["-B", "-ntp", "spotless:apply"], okUpTo: 0 }

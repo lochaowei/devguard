@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { toRepoPath } from "../code/support.ts";
 import type { Finding } from "../report/finding.ts";
 import {
   isRecord,
@@ -12,6 +13,7 @@ import {
   type CoverageMetric,
   type Measured,
 } from "./coverage.ts";
+import { typescriptToolRequest } from "../tools/runner.ts";
 import type { TestChecker, TestContext, TestTarget } from "./types.ts";
 
 const METRICS: readonly CoverageMetric[] = ["lines", "branches", "functions", "statements"];
@@ -45,14 +47,19 @@ const text = (v: unknown): string => (typeof v === "string" ? v : "");
 
 const records = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.filter(isRecord) : []);
 
-/** Whether a Jest-style JSON report has failures, and the failing tests' names; undefined when it is not one. */
-function failures(report: unknown): { failed: boolean; names: string[] } | undefined {
+/**
+ * Whether a Jest-style JSON report has failures, and the failing tests' names (a test file by its path relative to
+ * the repo root `cwd`); undefined when it is not one.
+ */
+function failures(report: unknown, cwd: string): { failed: boolean; names: string[] } | undefined {
   if (!isRecord(report) || typeof report.numFailedTests !== "number") return undefined;
   const names = records(report.testResults).flatMap((file) => {
     const failed = records(file.assertionResults).filter((a) => a.status === "failed");
     const named = failed.map((a) => text(a.fullName) || text(a.title));
     // A test file that fails to load has no failing assertions of its own.
-    return named.length === 0 && file.status === "failed" ? [text(file.name)] : named;
+    const path = text(file.name);
+    if (named.length > 0 || file.status !== "failed") return named;
+    return path === "" ? [] : [toRepoPath(cwd, "", path)];
   });
   const suites = typeof report.numFailedTestSuites === "number" ? report.numFailedTestSuites : 0;
   return { failed: report.numFailedTests > 0 || suites > 0, names: names.filter((n) => n !== "") };
@@ -79,9 +86,10 @@ export const typescriptTests: TestChecker = {
     const coverageDir = join(ctx.reportDir, "coverage");
     const reportFile = join(ctx.reportDir, "tests.json");
     const args = invocation(tool, coverageDir, reportFile);
-    const result = await ctx.tools.run({ language: "typescript", tool, dir: target.dir, args });
+    const result = await ctx.tools.run({ ...typescriptToolRequest(target, tool), args });
     // Older versions without an output file print the report to stdout.
-    const report = failures(parseJson((await readReport(reportFile)) ?? "") ?? jsonFromOutput(result.stdout));
+    const json = parseJson((await readReport(reportFile)) ?? "") ?? jsonFromOutput(result.stdout);
+    const report = failures(json, ctx.cwd);
     if (report === undefined) return [testToolFailed(target, tool, result)];
     const findings: Finding[] = [];
     const command = tool === "jest" ? "npx jest" : "npx vitest run";
