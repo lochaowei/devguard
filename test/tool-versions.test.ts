@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -135,6 +135,17 @@ describe("tool version consistency (SPEC §8)", () => {
       ["tool-version/out-of-range", "svc/go.mod", "svc/ (Go)"],
       ["tool-version/out-of-range", "api/pom.xml", "api/ (Java)"],
     ]);
+  });
+});
+
+describe("Yarn Berry lockfile with multi-descriptor entries (#116)", () => {
+  it("reports eslint, prettier and typescript, which only appear under shared or patch: keys", async () => {
+    const lock = readFileSync(join(import.meta.dirname, "fixtures/typescript/yarn-berry-multi.lock"), "utf8");
+    const decl = "standard: team@1.0.0\ncomponents:\n  - {path: ./, language: typescript}\n";
+    const r = await check({ ".devguard.yaml": decl, "yarn.lock": lock });
+    const named = r.findings.map((f) => f.message.split(" ")[0]).sort();
+    expect(named).toEqual(["eslint", "prettier", "typescript"]);
+    expect(r.findings.every((f) => f.rule === "tool-version/out-of-range" && f.file === "yarn.lock")).toBe(true);
   });
 });
 

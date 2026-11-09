@@ -218,6 +218,38 @@ pmd {
     });
   });
 
+  it("reads every descriptor of a yarn.lock entry key, Berry patch: and v1 classic alike (#116)", () => {
+    const berry = pinnedVersions("typescript", "", files({ "yarn.lock": fixture("yarn-berry-multi.lock") }));
+    // `yup@workspace:.` is the project itself, not an install.
+    expect(Object.fromEntries(berry?.versions ?? [])).toEqual({
+      "@types/node": "22.1.0",
+      eslint: "8.57.1",
+      prettier: "2.8.8",
+      typescript: "4.9.5",
+    });
+
+    const patchOnly = '"typescript@patch:typescript@npm%3A^4.9.5#~builtin<compat/typescript>":\n  version: 4.9.5\n';
+    expect(pinnedVersions("typescript", "", files({ "yarn.lock": patchOnly }))?.versions.get("typescript")).toBe(
+      "4.9.5",
+    );
+
+    const classic = [
+      "# yarn lockfile v1",
+      "",
+      '"@types/node@^20", "@types/node@^22":',
+      '  version "22.1.0"',
+      "",
+      '"a@^1", "a@^2":',
+      '  version "2.0.0"',
+      "",
+      "b@^3:",
+      '  version "3.1.0"',
+    ].join("\n");
+    expect(
+      Object.fromEntries(pinnedVersions("typescript", "", files({ "yarn.lock": classic }))?.versions ?? []),
+    ).toEqual({ "@types/node": "22.1.0", a: "2.0.0", b: "3.1.0" });
+  });
+
   it("reads hoisted TypeScript versions from Bun's text bun.lock (JSONC, trailing commas) (#138)", () => {
     const fromBun = pinnedVersions("typescript", "", files({ "bun.lock": fixture("bun.lock") }));
     expect(fromBun?.file).toBe("bun.lock");

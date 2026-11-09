@@ -107,14 +107,39 @@ export function readPnpmLock(text: string, sub = ""): Map<string, string> {
   ]);
 }
 
-const YARN_ENTRY =
-  /^["']?((?:@[^@/"',\s]+\/)?[^@/"',\s]+)@(?:npm:)?[^:\n]+:\r?\n\s+version(?::\s+|\s+)["']?([^\s"']+)/gm;
+/** An unindented `yarn.lock` line ending in `:` is an entry key: one or more descriptors joined by `, `. */
+const YARN_KEY = /^\S.*:$/;
+const YARN_VERSION = /^\s+version(?::\s+|\s+)["']?([^\s"']+)/;
 
-/** Installed packages from a `yarn.lock` (v1 classic, which is not YAML, and Berry), read by line. */
+/** The package name of a descriptor (`eslint@npm:^8`, `@types/node@^20`, `typescript@patch:typescript@npm%3A…`). */
+function yarnDescriptorName(descriptor: string): string | undefined {
+  const at = descriptor.indexOf("@", 1);
+  if (at < 1) return undefined;
+  // `workspace:` entries are the project's own packages, not external installs.
+  return descriptor.slice(at + 1).startsWith("workspace:") ? undefined : descriptor.slice(0, at);
+}
+
+/**
+ * Installed packages from a `yarn.lock` (v1 classic, which is not YAML, and Berry), read entry by entry: every
+ * descriptor in an entry's key (v1 `"a@^1", "a@^2":`, Berry `"a@npm:^1, a@npm:^2":` or `a@patch:a@npm%3A…`) names a
+ * package installed at the entry's `version`.
+ */
 export function readYarnLock(text: string): Map<string, string> {
   const versions = new Map<string, string>();
-  for (const [, name = "", version = ""] of text.matchAll(YARN_ENTRY)) {
-    if (name && version) versions.set(name, version);
+  let names: string[] = [];
+  for (const line of text.split("\n").map((l) => l.trimEnd())) {
+    if (YARN_KEY.test(line) && !line.startsWith("#")) {
+      names = line
+        .slice(0, -1)
+        .split(",")
+        .flatMap((d) => yarnDescriptorName(d.trim().replace(/^["']|["']$/g, "")) ?? []);
+      continue;
+    }
+    const version = YARN_VERSION.exec(line)?.[1];
+    if (version) {
+      for (const name of names) versions.set(name, version);
+      names = [];
+    }
   }
   return versions;
 }
