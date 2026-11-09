@@ -175,6 +175,8 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 | `deps.banned` | `["moment", "request", "node-fetch"]` | 直接依賴禁用套件 |
 | `deps.bannedApis` | `[]` | ESLint `no-restricted-imports` |
 
+**solution-style `tsconfig.json`**：元件的 `tsconfig.json` 是 `"files": []`、沒有 `include`、而有 `references` 時，`typecheck.strict` 與 `typecheck.options` 改對每個被參照的 tsconfig（`path` 是目錄時取其中的 `tsconfig.json`）依其實際生效的設定（含 `extends`）判斷：finding 指向被參照的檔案，`fix` 也修改那個檔案，solution 檔本身不產生設定 finding、不被修改；被參照的檔案讀不到時只給 `settings/unconfirmed` 提示。被參照的檔案位在另一個 TypeScript 元件目錄內時交給該元件判斷。`draft` 也從被參照的檔案推斷，任一參照比標準寬即寫成放寬（#124）。
+
 ### 執行方式
 
 - **工具執行器**：`node_modules/.bin/<tool>`（Windows 下 `.cmd` 自動透過 `cmd.exe /d /s /c` 啟動；鎖定版本讀取自 `package-lock.json`、`pnpm-lock.yaml` 或 `yarn.lock`）。
@@ -185,7 +187,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 - **程式碼檢查（`code` 層）**：
   - `lint`：`eslint --format json`（`--staged` 時透過 `--stdin` 讀取 staged 內容；或 `biome lint --reporter=github`，Biome 2.x 從 stdin 不回報 lint 診斷，所以 `--staged` 時也檢查工作目錄版本）
   - `format`：`prettier --list-different`（或 `biome format --reporter=github`；`--staged` 時分別透過 `--stdin-filepath` 與 `--stdin-file-path` 讀取 staged 內容）
-  - `typecheck`：`tsc --noEmit --pretty false`
+  - `typecheck`：`tsc --noEmit --pretty false`；solution-style 的 `tsconfig.json`（見下）本身不檢查任何檔案，改對每個被參照的 tsconfig 各執行一次 `tsc --noEmit --pretty false -p <ref>`，同一筆錯誤只回報一次
 - **自動修正程式碼（`fix --code`）**：
   - `eslint --fix` + `prettier --write`（或 `biome lint --write` + `biome format --write`）
 - **測試與覆蓋率（`tests` 層，`--full`）**：
