@@ -42,7 +42,7 @@ export function testsFailed(target: TestTarget, command: string, failed: readonl
 
 /** The test run did not produce a usable result (crash, bad configuration, missing plugin). */
 export function testToolFailed(target: TestTarget, tool: string, result: ToolResult): Finding {
-  const output = failureCause(result, "last").join("\n");
+  const output = failureCause(tool, result, "last").join("\n");
   return testFinding(
     target,
     "test/tool-failed",

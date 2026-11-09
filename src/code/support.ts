@@ -126,7 +126,7 @@ export function codeFinding(target: CodeTarget, input: CodeFindingInput): Findin
 
 /** The tool ran but did not produce a usable result (crash, bad configuration). */
 export function toolFailed(target: CodeTarget, tool: string, result: ToolResult): Finding {
-  const output = failureCause(result, "first").join("\n");
+  const output = failureCause(tool, result, "first").join("\n");
   return codeFinding(target, {
     rule: "code/tool-failed",
     message: `${tool} 執行失敗（exit ${String(result.code)}）${output === "" ? "" : `：${output}`}`,

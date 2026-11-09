@@ -3,44 +3,51 @@ import { toolErrorLines, toolOutputLines, type ToolResult } from "./runner.ts";
 /** How many lines of a failed tool's output a finding message shows. */
 const SHOWN = 5;
 
-/** Picks the cause out of a tool's output lines, or undefined when the output is not in its tool's format. */
+/** Picks the cause out of a tool's output lines, or undefined when there is none in the tool's format. */
 type CauseFinder = (lines: readonly string[]) => string[] | undefined;
 
-/** Maven's closing advice after the cause, the same for every failure. */
-const MAVEN_TRAILER = [
+/**
+ * The advice Maven logs after the cause of every failure (MavenCli in 3.0 through 3.9, MavenInvoker in 4.0; 4.0
+ * quotes the switches, as in "re-run Maven with the '-e' switch").
+ */
+const MAVEN_ADVICE = [
   /^To see the full stack trace of the errors/,
-  /^Re-run Maven using the -X switch/,
+  /^Re-run Maven using the /,
   /^For more information about the errors and possible solutions/,
   /^\[Help \d+\]/,
-  /^After correcting the problems, you can resume the build/,
-  /^mvn .* -rf /,
   /^-> \[Help \d+\]$/,
+  /^After correcting the problems, you can resume the build/,
+  /^mvn \S+ -rf /,
 ];
 
+const MAVEN_LEVEL = /^\[(DEBUG|INFO|WARNING|WARN|ERROR|FATAL)\]/;
+const MAVEN_FAILURE = /^(\[(ERROR|FATAL)\] ?)+/;
+
 /**
- * Maven 3.x (every release; the wrapper runs the project's own): each line starts with [INFO], [WARNING] or [ERROR],
- * and the cause is the [ERROR] lines before the closing advice in MAVEN_TRAILER.
+ * Maven 3.0 through 4.0 log every line with a level in brackets; the cause is the [ERROR] (or [FATAL]) lines with
+ * the unbracketed lines that continue them (javac's `symbol:` and `location:`), less the closing MAVEN_ADVICE.
  */
 const mavenCause: CauseFinder = (lines) => {
-  if (!lines.some((l) => /^\[(INFO|ERROR)\]/.test(l))) return undefined;
-  const errors = lines
-    .filter((l) => l.startsWith("[ERROR]"))
-    .map((l) =>
-      l
-        .replace(/^\[ERROR\] ?/, "")
-        .replace(/ -> \[Help \d+\]$/, "")
-        .trimEnd(),
-    )
-    .filter((l) => l.trim() !== "" && !MAVEN_TRAILER.some((t) => t.test(l.trim())));
-  return errors.length > 0 ? errors : undefined;
+  const cause: string[] = [];
+  let inFailure = false;
+  for (const line of lines) {
+    if (MAVEN_LEVEL.test(line)) inFailure = MAVEN_FAILURE.test(line);
+    if (!inFailure) continue;
+    const text = line
+      .replace(MAVEN_FAILURE, "")
+      .replace(/ -> \[Help \d+\]$/, "")
+      .trimEnd();
+    if (text.trim() !== "" && !MAVEN_ADVICE.some((a) => a.test(text.trim()))) cause.push(text);
+  }
+  return cause.length > 0 ? cause : undefined;
 };
 
 /** A heading of Gradle's failure report ("* Try:") or a rule between the failures of a --continue build. */
 const GRADLE_SECTION_END = /^(\* \S|-{5,}$|={5,}$)/;
 
 /**
- * Gradle (1.x through 8.x): the failure report says what failed under "* What went wrong:", once per failure when a
- * --continue build failed more than once.
+ * Gradle 1.12 through 9.2 (BuildExceptionReporter): the report says what failed under "* What went wrong:", once per
+ * failure, between "-----------" and "=====" rules, when a --continue build failed more than once.
  */
 const gradleCause: CauseFinder = (lines) => {
   const cause: string[] = [];
@@ -53,20 +60,19 @@ const gradleCause: CauseFinder = (lines) => {
   return cause.length > 0 ? cause : undefined;
 };
 
-/** Build tools whose failure cause sits among lines of boilerplate (#97); #83 adds Go's `go: downloading` lines. */
-const CAUSE_FINDERS: readonly CauseFinder[] = [gradleCause, mavenCause];
+/** By program, the tools whose failure cause sits among lines of boilerplate (#97). */
+const CAUSE_FINDERS: Readonly<Record<string, CauseFinder>> = { mvnw: mavenCause, gradlew: gradleCause };
 
 /**
- * What a failed tool said about why, in up to SHOWN lines: the cause a build tool printed among its boilerplate
- * (looked for in stdout and stderr alike: the JVM warns on stderr while Maven reports on stdout), otherwise the
- * first or last lines of `toolErrorLines`.
+ * What a failed tool said about why, in up to SHOWN lines. For a build tool (`tool` names the program first, as in
+ * "mvnw test"), the cause it printed among its boilerplate, looked for in stdout and stderr alike: the JVM warns on
+ * stderr while Maven reports on stdout. Otherwise, or when there is no cause in its format, the first or last lines
+ * of `toolErrorLines`.
  */
-export function failureCause(result: ToolResult, fallback: "first" | "last"): string[] {
-  const lines = [...toolOutputLines(result.stdout), ...toolOutputLines(result.stderr)];
-  for (const find of CAUSE_FINDERS) {
-    const cause = find(lines);
-    if (cause) return cause.slice(0, SHOWN);
-  }
-  const said = toolErrorLines(result);
-  return fallback === "first" ? said.slice(0, SHOWN) : said.slice(-SHOWN);
+export function failureCause(tool: string, result: ToolResult, fallback: "first" | "last"): string[] {
+  const find = CAUSE_FINDERS[tool.split(" ")[0] ?? ""];
+  const cause = find ? [result.stdout, result.stderr].flatMap((out) => find(toolOutputLines(out)) ?? []) : [];
+  if (cause.length > 0) return cause.slice(0, SHOWN);
+  const errorLines = toolErrorLines(result);
+  return fallback === "first" ? errorLines.slice(0, SHOWN) : errorLines.slice(-SHOWN);
 }
