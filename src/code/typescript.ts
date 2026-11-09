@@ -2,7 +2,7 @@ import { posix } from "node:path";
 import type { Finding } from "../report/finding.ts";
 import { isRecord } from "../shared/guards.ts";
 import { referencedTsconfigs } from "../settings/typescript/tsconfig.ts";
-import type { ToolResult } from "../tools/runner.ts";
+import { typescriptToolRequest, type ToolResult } from "../tools/runner.ts";
 import { codeFinding, firstDifferentLine, runBatched, splitStaged, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
 
@@ -49,7 +49,7 @@ function eslintFindings(target: CodeTarget, ctx: CodeCheckContext, result: ToolR
 
 /** Staged files go through `eslint --stdin --stdin-filename` one by one; the rest are checked on disk. */
 async function lint(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
-  const request = { language: "typescript", tool: "eslint", dir: target.dir } as const;
+  const request = typescriptToolRequest(target, "eslint");
   const args = ["--format", "json", "--no-warn-ignored"];
   const { staged, onDisk } = await splitStaged(target, ctx);
   const results = await runBatched(ctx.tools, request, args, onDisk);
@@ -65,7 +65,7 @@ async function lint(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[
 async function prettierLine(target: CodeTarget, ctx: CodeCheckContext, file: string, repoPath: string) {
   const [original, formatted] = await Promise.all([
     ctx.readText(repoPath),
-    ctx.tools.run({ language: "typescript", tool: "prettier", dir: target.dir, args: [file] }),
+    ctx.tools.run({ ...typescriptToolRequest(target, "prettier"), args: [file] }),
   ]);
   if (original === undefined || formatted.code !== 0) return 1;
   return firstDifferentLine(original, formatted.stdout);
@@ -73,7 +73,7 @@ async function prettierLine(target: CodeTarget, ctx: CodeCheckContext, file: str
 
 /** Whether Prettier has a parser for `file`: `prettier --file-info` reports `inferredParser: null` when it has none. */
 async function prettierHandles(target: CodeTarget, ctx: CodeCheckContext, file: string): Promise<boolean> {
-  const request = { language: "typescript", tool: "prettier", dir: target.dir, args: ["--file-info", file] } as const;
+  const request = { ...typescriptToolRequest(target, "prettier"), args: ["--file-info", file] };
   const info = parseJson((await ctx.tools.run(request)).stdout);
   return isRecord(info) && typeof info.inferredParser === "string";
 }
@@ -84,7 +84,7 @@ async function prettierHandles(target: CodeTarget, ctx: CodeCheckContext, file: 
  * it does format, so empty output asks `--file-info` which of the two it was.
  */
 async function formatStaged(target: CodeTarget, ctx: CodeCheckContext, file: string, text: string): Promise<Finding[]> {
-  const request = { language: "typescript", tool: "prettier", dir: target.dir, stdin: text } as const;
+  const request = { ...typescriptToolRequest(target, "prettier"), stdin: text };
   const result = await ctx.tools.run({ ...request, args: ["--ignore-unknown", "--stdin-filepath", file] });
   if (result.code !== 0) return [toolFailed(target, "prettier", result)];
   if (result.stdout === text) return [];
@@ -94,7 +94,7 @@ async function formatStaged(target: CodeTarget, ctx: CodeCheckContext, file: str
 }
 
 async function format(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
-  const request = { language: "typescript", tool: "prettier", dir: target.dir } as const;
+  const request = typescriptToolRequest(target, "prettier");
   const findings: Finding[] = [];
   const { staged, onDisk } = await splitStaged(target, ctx);
   for (const { file, text } of staged) findings.push(...(await formatStaged(target, ctx, file, text)));
@@ -143,7 +143,7 @@ async function typecheck(target: CodeTarget, ctx: CodeCheckContext): Promise<Fin
   const findings = new Map<string, Finding>();
   for (const project of projects) {
     const args = ["--noEmit", "--pretty", "false", ...project];
-    const result = await ctx.tools.run({ language: "typescript", tool: "tsc", dir: target.dir, args });
+    const result = await ctx.tools.run({ ...typescriptToolRequest(target, "tsc"), args });
     if (result.code === 0) continue;
     const found = result.stdout.split(/\r?\n/).flatMap((line) => tscFinding(target, ctx, line) ?? []);
     if (found.length === 0) found.push(toolFailed(target, "tsc", result));
@@ -205,7 +205,7 @@ async function biomeFormatStaged(
 ): Promise<Finding[]> {
   // A file Biome does not handle comes back unchanged, exit 0.
   const args = ["format", `--stdin-file-path=${file}`, BIOME_SKIP_UNKNOWN];
-  const result = await ctx.tools.run({ language: "typescript", tool: "biome", dir: target.dir, args, stdin: text });
+  const result = await ctx.tools.run({ ...typescriptToolRequest(target, "biome"), args, stdin: text });
   if (result.code !== 0) return [toolFailed(target, "biome", result)];
   if (result.stdout === text) return [];
   const at = { file: toRepoPath(ctx.cwd, target.dir, file), line: firstDifferentLine(text, result.stdout) };
@@ -218,7 +218,7 @@ async function biomeFormatStaged(
  * version through stdin.
  */
 async function biome(target: CodeTarget, ctx: CodeCheckContext, command: "lint" | "format"): Promise<Finding[]> {
-  const request = { language: "typescript", tool: "biome", dir: target.dir } as const;
+  const request = typescriptToolRequest(target, "biome");
   const { staged, onDisk } = command === "lint" ? { staged: [], onDisk: target.files } : await splitStaged(target, ctx);
   const results = await runBatched(ctx.tools, request, [command, "--reporter=github", ...BIOME_UNKNOWN], onDisk);
   const findings = results.flatMap((result) => {
