@@ -221,9 +221,13 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
   - Maven plugins：`maven-checkstyle-plugin`（`>=3.6,<4`）、`maven-pmd-plugin`（`>=3.26,<4`）、`spotless-maven-plugin`（`>=2.44,<3`；`team@1.1.0`：`>=2.44,<4`）、`jacoco-maven-plugin`（`>=0.8.12,<0.9`）、`maven-enforcer-plugin`（`>=3.5,<4`）
   - Gradle plugin 與 `toolVersion`：`spotless-gradle-plugin` / `com.diffplug.spotless`（`>=7,<8`；`team@1.1.0`：`>=7,<9`）、`checkstyle`（`>=10.21,<11`；`team@1.1.0`：`>=10.21,<15`）、`pmd`（`>=7,<8`）、`jacoco`（`>=0.8.12,<0.9`）
+- **建置檔的 plugin（設定層）**：讀元件的建置檔（Maven：`pom.xml` 的 `<build><plugins>` 與 `<pluginManagement>`；Gradle：`build.gradle(.kts)` 的 `plugins {}`、`apply plugin`、版本目錄的 `alias(libs.plugins.…)`）；Maven 的 parent POM 在 repo 中時（`<relativePath>`，預設 `../pom.xml`）也算。plugin 可能來自 devguard 讀不到的地方時（repo 外的 parent POM、`<profiles>`、Gradle 的 buildSrc／`includeBuild` convention plugin、`apply from`、上層 Gradle 建置、根建置的 `apply false`）不回報，程式碼層照常執行該工具。建置檔不會被修改，`fix` 只印出要加入的片段。
+  - `settings/java-plugin-missing`：沒有 Spotless（`spotless-maven-plugin` / `com.diffplug.spotless`）、Checkstyle（`maven-checkstyle-plugin` / `checkstyle`）或 PMD（`maven-pmd-plugin` / `pmd`）plugin，各一筆錯誤；片段含 palantir-java-format，Checkstyle / PMD 的片段指向 devguard 的設定檔。
+  - `settings/java-plugin-config`：Checkstyle 沒有指向元件使用的 Checkstyle 設定檔（Maven `<configLocation>` 或 `checkstyle.config.location` 屬性；Gradle `configFile` / `configDirectory`，沒有設定時是 `config/checkstyle/checkstyle.xml`），或 PMD 沒有指向元件使用的 ruleset（Maven `<rulesets>`；Gradle `ruleSetFiles`）。Maven 沒有設定時 Checkstyle 用內建的 `sun_checks.xml`。路徑可以用 `${project.basedir}`、`${maven.multiModuleProjectDirectory}`、`$rootDir`、`rootProject.file(…)` 等；其他無法解析的寫法不回報。
 - **程式碼檢查（`code` 層）**：
+  - 建置檔沒有某個工具的 plugin 時不執行那個工具（由設定層回報），不會產生 `code/tool-failed`。Gradle 的 Checkstyle 與 PMD task 分開執行，一個失敗不影響另一個的結果。
   - `format`：`mvnw -B -ntp spotless:check`（或 Gradle `spotlessCheck --console=plain -q`）
-  - `lint`：`mvnw -B -ntp checkstyle:check pmd:check -Dcheckstyle.failOnViolation=false -Dpmd.failOnViolation=false`（或 Gradle `checkstyleMain checkstyleTest pmdMain pmdTest --continue --console=plain -q`），解析產生的 Checkstyle（`target/checkstyle-result.xml` 或 `build/reports/checkstyle/*.xml`）與 PMD（`target/pmd.xml` 或 `build/reports/pmd/*.xml`）XML 報告。
+  - `lint`：`mvnw -B -ntp checkstyle:check pmd:check -Dcheckstyle.failOnViolation=false -Dpmd.failOnViolation=false`（或 Gradle `checkstyleMain checkstyleTest --continue --console=plain -q` 與 `pmdMain pmdTest --continue --console=plain -q` 兩次執行），解析產生的 Checkstyle（`target/checkstyle-result.xml` 或 `build/reports/checkstyle/*.xml`）與 PMD（`target/pmd.xml` 或 `build/reports/pmd/*.xml`）XML 報告。
   - Maven 多模組（`pom.xml` 有 `<modules>`）時，指令在 `checkstyle:check` 之前加上 `test-compile`，讓 reactor 先編譯並解析兄弟模組；因此會先編譯整個建置，比較慢，編譯失敗時回報 `code/tool-failed`，訊息是建置輸出中的錯誤行。報告從各模組的 `target/` 讀取。
 - **自動修正程式碼（`fix --code`）**：
   - `mvnw -B -ntp spotless:apply`（或 `gradlew spotlessApply --console=plain -q`）。

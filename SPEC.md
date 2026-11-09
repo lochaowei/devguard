@@ -353,6 +353,8 @@ solution-style 的 `tsconfig.json`（`"files": []`、沒有 `include`、有 `ref
 
 Maven 多模組建置（`pom.xml` 有 `<modules>`）的 lint 指令在 `checkstyle:check pmd:check` 之前加上 `test-compile` phase：只執行 plugin goal 時，reactor 解析不到尚未建置的兄弟模組（本機 `~/.m2` 沒有它們的 SNAPSHOT 時整個指令失敗），PMD 的型別解析也因此有 classpath。所以多模組的 lint 會先編譯，比較慢；編譯失敗時回報 `code/tool-failed`，訊息是建置輸出中的錯誤行。報告從各模組的 `target/` 讀取。單一模組的 Maven、Spotless 與 Gradle 不加 phase。
 
+建置檔的 plugin（#98）：設定層讀元件的建置檔（Maven `pom.xml` 的 `<build><plugins>` 與 `<pluginManagement>`；Gradle `build.gradle(.kts)` 的 `plugins {}`、`apply plugin`、`alias(libs.plugins.…)`；repo 中的 Maven parent POM 也算）。plugin 可能來自 devguard 讀不到的地方時（repo 外的 parent POM、`<profiles>`、Gradle convention plugin、`apply from`、上層 Gradle 建置、`apply false`）不回報，程式碼層照常執行。沒有 Spotless、Checkstyle 或 PMD 的 plugin 時各回報一筆 `settings/java-plugin-missing`；Checkstyle 沒有指向元件使用的 Checkstyle 設定檔（Maven `<configLocation>` 或 `checkstyle.config.location`；Gradle `configFile`／`configDirectory`，預設 `config/checkstyle/checkstyle.xml`），或 PMD 沒有指向元件使用的 ruleset（Maven `<rulesets>`；Gradle `ruleSetFiles`）時回報 `settings/java-plugin-config`，無法解析的路徑不回報。兩者依 §9.2 只印出片段（含 palantir-java-format，設定位置指向 devguard 的檔案），不修改建置檔。程式碼層不執行建置檔沒有 plugin 的工具；Gradle 的 Checkstyle 與 PMD task 分開執行，一個失敗不影響另一個的結果。JaCoCo 見 #99。
+
 來源：[預設標準：Java](.scratch/coding-standards-guard/issues/11-default-standard-java.md)
 
 ### 6.5 既有專案的基線標準（`legacy@1.0.0`）
