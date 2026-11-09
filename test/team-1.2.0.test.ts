@@ -6,7 +6,7 @@ import { createStandardUpgradeCheck } from "../src/environment/standard-upgrade.
 import { declarationLayer } from "../src/layers/declaration.ts";
 import { pythonSettingsLayer } from "../src/layers/settings-python.ts";
 import { rules, TODAY } from "./helpers.ts";
-import { noTools, repo } from "./standard-helpers.ts";
+import { noTools, pyproject, repo } from "./standard-helpers.ts";
 
 // team@1.2.0 as this CLI bundles it (#68): basedpyright is an allowed type checker.
 
@@ -32,7 +32,7 @@ describe("doctor and draft move past team@1.2.0 to the newest team (#68, #64)", 
     const dir = repo({ ".devguard.yaml": "standard: team@1.1.0\ncomponents: []\n" });
     const { findings } = await runDoctor({ cwd: dir, today: TODAY, checks: [createStandardUpgradeCheck()] });
     expect(findings).toContainEqual(
-      expect.objectContaining({ rule: "standard/upgrade-available", fix: "devguard standard upgrade team@1.3.0" }),
+      expect.objectContaining({ rule: "standard/upgrade-available", fix: "devguard standard upgrade team@1.4.0" }),
     );
   });
 
@@ -42,7 +42,7 @@ describe("doctor and draft move past team@1.2.0 to the newest team (#68, #64)", 
       "app.py": "",
     };
     const { text } = await draftDeclaration({ cwd: repo(files), today: TODAY, files: Object.keys(files) });
-    expect(text).toContain("standard: team@1.3.0");
+    expect(text).toContain("standard: team@1.4.0");
     expect(text).toContain("typecheck.tool: basedpyright");
   });
 
@@ -52,29 +52,6 @@ describe("doctor and draft move past team@1.2.0 to the newest team (#68, #64)", 
     expect(text).not.toContain("typecheck.tool");
   });
 });
-
-/** A pyproject.toml that meets team@1.2.0 except for the type checker table, which `typecheck` supplies. */
-const pyproject = (typecheck: string) => `[project]
-name = "app"
-requires-python = ">=3.11"
-
-[tool.ruff]
-line-length = 120
-target-version = "py311"
-
-[tool.ruff.lint]
-select = ["E", "W", "F", "I", "B", "UP", "C90", "SIM", "N", "S", "TID"]
-
-[tool.ruff.lint.mccabe]
-max-complexity = 10
-
-[tool.ruff.lint.per-file-ignores]
-"**/tests/**" = ["S101"]
-"**/test_*.py" = ["S101"]
-${typecheck}
-[tool.coverage.run]
-branch = true
-`;
 
 const BASED = pythonWith("team@1.2.0", "      typecheck.tool: basedpyright\n");
 

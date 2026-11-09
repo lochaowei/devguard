@@ -44,11 +44,11 @@ describe("team@1.3.0 drops the mirrors and the vulnerability scans (#64)", () =>
 
   it("standard upgrade --apply from team@1.2.0 deletes the mirror and the vulnerability-scan override", async () => {
     const dir = repo({ ".devguard.yaml": goWithMirror("team@1.2.0") });
-    const preview = await upgrade(dir);
+    const preview = await upgrade(dir, { target: "team@1.3.0" });
     expect(preview.out).toContain("team@1.2.0 → team@1.3.0");
     expect(preview.out).toContain("整體｜mirrors.go（新標準已移除這個項目）");
     expect(preview.out).toContain("./ (Go)｜deps.vulnScan（新標準已移除這個項目）");
-    expect((await upgrade(dir, { apply: true })).code).toBe(0);
+    expect((await upgrade(dir, { apply: true, target: "team@1.3.0" })).code).toBe(0);
     // The emptied overrides: and mirrors: blocks go too.
     const after = read(dir, ".devguard.yaml");
     expect(after).toBe("standard: team@1.3.0\ncomponents:\n  - path: ./\n    language: go\n");

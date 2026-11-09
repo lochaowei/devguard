@@ -15,6 +15,8 @@ export interface CodeTarget {
   language: Language;
   /** Effective standard values for this target (`lint.tool`, `format.printWidth`...). */
   effective: Readonly<Record<string, unknown>>;
+  /** The keys of `effective` the declaration sets itself; absent or missing keys hold the standard's default. */
+  overrides?: ReadonlySet<string>;
   /**
    * Files to check, relative to `dir`. Absent means the whole directory: file-level checks run on "." and
    * type checks on the whole project. Type checks always cover the whole project (SPEC §7.1). For a checker that

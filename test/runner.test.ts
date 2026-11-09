@@ -273,7 +273,7 @@ describe("tool runner: TypeScript", () => {
     const { runner, started } = fakeRunner({ [rootBin]: "", [rootVenv]: "", [rootMvnw]: "" });
     await runner.run(req({ language: "typescript", tool: "eslint", dir: "packages/web/", args: ["."] }));
     await runner.run(req({ language: "python", tool: "ruff", dir: "services/api/", args: ["check"] }));
-    await runner.run(req({ language: "java", tool: "spotless", dir: "modules/core/", args: ["spotless:check"] }));
+    await runner.run(req({ language: "java", tool: "mvnw", dir: "modules/core/", args: ["spotless:check"] }));
     expect(started).toEqual([
       { file: rootBin, args: ["."], cwd: "C:\\repo\\packages\\web" },
       { file: "uv", args: ["run", "--no-sync", "ruff", "check"], cwd: "C:\\repo\\services\\api" },
@@ -372,22 +372,37 @@ describe("tool runner: Go", () => {
 });
 
 describe("tool runner: Java", () => {
-  it("runs the Maven wrapper, preferring it over Gradle", async () => {
+  it("runs the Maven wrapper for mvnw, even where a Gradle wrapper sits beside it", async () => {
     const mvnw = "C:\\repo\\svc\\mvnw.cmd";
     const { runner, started } = fakeRunner({ [mvnw]: "", "C:\\repo\\svc\\gradlew.bat": "" });
-    await runner.run(req({ language: "java", tool: "spotless", dir: "svc/", args: ["spotless:check"] }));
+    await runner.run(req({ language: "java", tool: "mvnw", dir: "svc/", args: ["spotless:check"] }));
     expect(started).toEqual([{ file: mvnw, args: ["spotless:check"], cwd: "C:\\repo\\svc" }]);
   });
 
-  it("falls back to the Gradle wrapper", async () => {
-    const { runner, started } = fakeRunner({ "/repo/gradlew": "" }, { cwd: "/repo", platform: "linux" });
-    await runner.run(req({ language: "java", tool: "checkstyle", args: ["check"] }));
+  it("runs the Gradle wrapper for gradlew, even where a Maven wrapper sits beside it", async () => {
+    const { runner, started } = fakeRunner(
+      { "/repo/gradlew": "", "/repo/mvnw": "" },
+      { cwd: "/repo", platform: "linux" },
+    );
+    await runner.run(req({ language: "java", tool: "gradlew", args: ["spotlessCheck"] }));
     expect(started[0]?.file).toBe("/repo/gradlew");
   });
 
-  it("asks to add a wrapper when there is none", async () => {
-    const { runner } = fakeRunner({});
-    expect((await missing(runner.run(req({ language: "java", tool: "spotless" })))).message).toContain("mvnw");
+  it("does not run gradlew when mvnw is asked for and missing (#96)", async () => {
+    const { runner, started } = fakeRunner({ "C:\\repo\\gradlew.bat": "" });
+    const m = await missing(runner.run(req({ language: "java", tool: "mvnw", dir: "svc/" })));
+    expect(m.message).toContain("mvnw");
+    expect(m.message).not.toContain("gradlew");
+    expect(m.install).toBe("cd svc && mvn -N wrapper:wrapper");
+    expect(started).toEqual([]);
+  });
+
+  it("does not run mvnw when gradlew is asked for and missing (#96)", async () => {
+    const { runner, started } = fakeRunner({ "C:\\repo\\mvnw.cmd": "" });
+    const m = await missing(runner.run(req({ language: "java", tool: "gradlew", dir: "svc/" })));
+    expect(m.message).toContain("gradlew");
+    expect(m.install).toBe("cd svc && gradle wrapper");
+    expect(started).toEqual([]);
   });
 });
 
@@ -474,7 +489,7 @@ describe("tool runner: git's repo-location variables stay out of project tools (
     await runner.run(req({ language: "python", tool: "ruff" }));
     await runner.run(req({ language: "typescript", tool: "eslint", stdin: "staged" }));
     await runner.run(req({ language: "go", tool: "goimports" }));
-    await runner.run(req({ language: "java", tool: "spotless" }));
+    await runner.run(req({ language: "java", tool: "mvnw" }));
     await runner.manage({ language: "typescript", dir: "", args: ["install"] });
     const gitRepoEnv = [
       "GIT_ALTERNATE_OBJECT_DIRECTORIES",

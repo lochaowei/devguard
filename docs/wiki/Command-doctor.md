@@ -33,7 +33,7 @@ devguard doctor [--quiet] [--exit-zero] [--format text|json|sarif|vscode|claude]
 | 順序 | 檢查 | 規則 ID（`environment/…`） | 什麼時候檢查 |
 |---|---|---|---|
 | 1 | 標準是否有更新：CLI 內建了宣告標準的較新 minor / patch 版本，提示執行 [`standard upgrade`](Command-standard-upgrade.md) | — | 一律 |
-| 2 | git hook：`core.hooksPath` 沒有停用 hook 或與框架衝突；hook 檔存在、是 devguard 的、checksum 沒變；或 hook 框架的設定有呼叫 devguard，且 pre-commit 框架已執行 `pre-commit install`、lefthook 框架已執行 `lefthook install`（hooks 目錄中有框架為該 hook 產生的檔案）、pre-commit 設定的 `minimum_pre_commit_version` 至少為 `"4.4.0"` | `not-a-git-repo`、`hooks-path-disabled`、`hooks-path-conflict`、`hooks-path-missing`、`hook-missing`、`hook-modified`、`hook-foreign`、`framework-entry-missing`、`framework-not-installed`、`pre-commit-min-version`（pre-push 的這幾項在沒有設定 `DEVGUARD_PRE_PUSH=full` 時只是提示，見[下方](#pre-push-的問題什麼時候算錯誤)） | 一律 |
+| 2 | git hook：`core.hooksPath` 沒有停用 hook 或與框架衝突；hook 檔存在、是 devguard 的、checksum 沒變；或 hook 框架的設定有呼叫 devguard，且 pre-commit 框架已執行 `pre-commit install`、lefthook 框架已執行 `lefthook install`（hooks 目錄中有框架為該 hook 產生的檔案）、pre-commit 設定的 `minimum_pre_commit_version` 至少為 `"4.4.0"`、有 devguard 的 pre-push 項目時設定了頂層 `default_stages` | `not-a-git-repo`、`hooks-path-disabled`、`hooks-path-conflict`、`hooks-path-missing`、`hook-missing`、`hook-modified`、`hook-foreign`、`framework-entry-missing`、`framework-not-installed`、`pre-commit-min-version`、`pre-commit-default-stages`（pre-push 的 hook 與項目問題在沒有設定 `DEVGUARD_PRE_PUSH=full` 時只是提示，`pre-commit-default-stages` 則一律是錯誤，見[下方](#pre-push-的問題什麼時候算錯誤)） | 一律 |
 | 3 | Claude Code：`claude --version` 達到 `claude.minVersion`；`.git/devguard/claude-last-seen` 存在（SessionStart hook 至少執行過一次） | `claude-version`、`claude-missing`（提示）、`claude-never-ran` | 專案有 devguard 的 Claude Code 設定時 |
 | 4 | VS Code 擴充套件：用 `code --list-extensions` 檢查推薦的已安裝、不推薦的沒有安裝 | 全部是提示，不會讓 `doctor` 失敗：`vscode-extension-missing`、`vscode-extension-unwanted`、`vscode-cli-missing`、`vscode-cli-failed` | 宣告有元件時 |
 | 5 | 執行 Java 工具的 JDK：`java -version` 的主版本至少是 11（`1.8.0_xxx` 這種舊格式視為 8）。`java.minVersion` 是程式碼的目標版本，Java 8 的專案也要以 JDK 11 以上執行工具（見[各語言預設標準](Language-Standards.md)） | `java-runtime`（提示）；找不到 `java` 時不提示，由 `check` 回報工具執行失敗 | 有 Java 元件時 |
@@ -101,6 +101,8 @@ $ DEVGUARD_PRE_PUSH=full devguard doctor --quiet
 ### pre-push 的問題什麼時候算錯誤
 
 pre-push hook 預設不跑任何檢查（見 [`hook git-pre-push`](Command-hook.md#git-pre-push)），所以沒有設定 `DEVGUARD_PRE_PUSH=full` 時，pre-push 的 `hook-missing`、`hook-modified`、`hook-foreign`、`framework-entry-missing`、`framework-not-installed` 只列為**提示**，訊息結尾註明「doctor 所在的 shell 沒有設定 DEVGUARD_PRE_PUSH=full，push 時不跑測試，所以只列為提示」。提示不影響 exit code，`--quiet` 也不會印出。設定之後，這些就和 pre-commit 的問題一樣是錯誤。
+
+`pre-commit-default-stages` 一律是錯誤：設定沒有 `default_stages` 時，專案自己沒寫 `stages` 的 hook 會在每次 push 執行，與 devguard 的 pre-push 做不做事無關。用 `devguard install` 修正（見 [`install`](Command-install.md)）。
 
 `doctor` 讀的是它自己所在 shell 的環境變數，和 `git push` 看到的不一定相同：在另一個終端機、IDE 或 GUI 客戶端 push 時，那邊可能有或沒有設定 `DEVGUARD_PRE_PUSH`。例如只在 Git Bash 用 `DEVGUARD_PRE_PUSH=full git push` 臨時開啟時，`doctor` 仍會把 pre-push 的問題列為提示。`core.hooksPath` 的問題會讓所有 hook 失效，一律是錯誤。
 

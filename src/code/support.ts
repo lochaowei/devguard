@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import { isAbsolute, posix, relative, sep } from "node:path";
 import { normalizePath } from "../declaration/path.ts";
 import type { Finding, Level } from "../report/finding.ts";
+import { failureCause } from "../tools/failure-cause.ts";
 import type { ToolRequest, ToolResult, ToolRunner } from "../tools/runner.ts";
 import type { CodeCheckContext, CodeTarget } from "./types.ts";
 
@@ -125,7 +126,7 @@ export function codeFinding(target: CodeTarget, input: CodeFindingInput): Findin
 
 /** The tool ran but did not produce a usable result (crash, bad configuration). */
 export function toolFailed(target: CodeTarget, tool: string, result: ToolResult): Finding {
-  const output = (result.stderr.trim() || result.stdout.trim()).split(/\r?\n/).slice(0, 5).join("\n");
+  const output = failureCause(tool, result, "first").join("\n");
   return codeFinding(target, {
     rule: "code/tool-failed",
     message: `${tool} 執行失敗（exit ${String(result.code)}）${output === "" ? "" : `：${output}`}`,

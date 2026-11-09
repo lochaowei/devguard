@@ -45,7 +45,7 @@ describe("draftDeclaration: components", () => {
       "web/src/app.ts": "",
       "README.md": "",
     });
-    expect(d.standard).toBe("team@1.3.0");
+    expect(d.standard).toBe("team@1.4.0");
     expect(d.components.map((c) => [c.path, c.language])).toEqual([
       ["./", "python"],
       ["backend/", "go"],
@@ -60,6 +60,7 @@ describe("draftDeclaration: ignore", () => {
     "app/main.py": "",
     "examples/demo/package.json": "{}",
     "examples/demo/index.ts": "",
+    "third_party/lib/go.mod": "module t\n\ngo 1.26\n",
     "third_party/lib/x.go": "",
   };
 
@@ -76,6 +77,139 @@ describe("draftDeclaration: ignore", () => {
     const d = (await draft(files)) as DraftYaml & { ignore?: string[] };
     expect(d.ignore).toBeUndefined();
     expect(d.components).toHaveLength(3);
+  });
+});
+
+describe("draftDeclaration: files no component is made for (#89)", () => {
+  type Drafted = DraftYaml & { ignore?: string[] };
+  const draftText = async (files: Record<string, string>, ignore?: string[]) =>
+    (await draftDeclaration({ cwd: project(files), today: TODAY, files: Object.keys(files), ignore })).text;
+  const paths = (d: DraftYaml) => d.components.map((c) => [c.path, c.language]);
+  /** The comment line directly above an `ignore:` entry in the draft text. */
+  const commentAbove = (text: string, entry: string) => {
+    const lines = text.split("\n");
+    return lines[lines.findIndex((l) => l.trim() === `- ${entry}`) - 1]?.trim();
+  };
+
+  const carapace = {
+    "go.work": 'go 1.23\n\nuse (\n\t.\n\t./example-multi // with examples\n\t"./example-nonposix"\n)\n',
+    "go.mod": "module github.com/carapace-sh/carapace\n\ngo 1.26\n",
+    "carapace.go": "",
+    "example/main.go": "",
+    "example/cmd/_test/xonsh.py": "",
+    "example/cmd/_test_files/go.mod": "module ignore\n",
+    "example/cmd/_test_files/x.go": "",
+    "example-multi/go.mod": "module m\n\ngo 1.26\n",
+    "example-multi/main.go": "",
+    "example-multi/cmd/_test/xonsh.py": "",
+    "example-nonposix/go.mod": "module n\n\ngo 1.26\n",
+    "example-nonposix/main.go": "",
+  };
+
+  it("makes components only of go.work's modules and ignores stray files, each with a comment", async () => {
+    const text = await draftText(carapace);
+    const d = parse(text) as Drafted;
+    expect(paths(d)).toEqual([
+      ["./", "go"],
+      ["example-multi/", "go"],
+      ["example-nonposix/", "go"],
+    ]);
+    expect(d.ignore).toEqual([
+      "example/cmd/_test_files/",
+      "example-multi/cmd/_test/xonsh.py",
+      "example/cmd/_test/xonsh.py",
+    ]);
+    expect(commentAbove(text, "example/cmd/_test_files/")).toBe("# 不在 go.work 的 use 清單中");
+    const stray = "# 沒有 Python 的標記檔，未建立元件；若要檢查，請補上標記檔並新增元件";
+    expect(commentAbove(text, "example-multi/cmd/_test/xonsh.py")).toBe(stray);
+    expect(commentAbove(text, "example/cmd/_test/xonsh.py")).toBe(stray);
+  });
+
+  it("keeps --ignore entries first, as given", async () => {
+    const d = parse(await draftText(carapace, ["docs/"])) as Drafted;
+    expect(d.ignore?.[0]).toBe("docs/");
+    expect(d.ignore).toHaveLength(4);
+  });
+
+  it("ignores a lone script at the root of a Java project", async () => {
+    const d = parse(
+      await draftText({ "pom.xml": "<project/>", "src/main/java/App.java": "", "filter_popular_issues.py": "" }),
+    ) as Drafted;
+    expect(paths(d)).toEqual([["./", "java"]]);
+    expect(d.ignore).toEqual(["filter_popular_issues.py"]);
+  });
+
+  it("writes one glob for several stray files of a language in one directory", async () => {
+    const d = parse(
+      await draftText({ "go.mod": "module x\n\ngo 1.26\n", "main.go": "", "scripts/a.py": "", "scripts/b.py": "" }),
+    ) as Drafted;
+    expect(d.ignore).toEqual(["scripts/*.py"]);
+  });
+
+  it("still makes a root component in a repo with no marker file at all", async () => {
+    const d = parse(await draftText({ "a.py": "", "tools/b.py": "" })) as Drafted;
+    expect(paths(d)).toEqual([["./", "python"]]);
+    expect(d.ignore).toBeUndefined();
+  });
+
+  it("makes every nested go.mod a component when there is no go.work", async () => {
+    const d = parse(
+      await draftText({
+        "go.mod": "module x\n\ngo 1.26\n",
+        "main.go": "",
+        "_examples/server/go.mod": "module s\n\ngo 1.26\n",
+        "_examples/server/main.go": "",
+      }),
+    ) as Drafted;
+    expect(paths(d)).toEqual([
+      ["./", "go"],
+      ["_examples/server/", "go"],
+    ]);
+    expect(d.ignore).toBeUndefined();
+  });
+
+  it("reads a go.work that git does not list", async () => {
+    const files = {
+      "go.mod": "module x\n\ngo 1.26\n",
+      "main.go": "",
+      "fixture/go.mod": "module f\n",
+      "fixture/x.go": "",
+    };
+    const cwd = project({ ...files, "go.work": "go 1.23\nuse .\n" });
+    const { text } = await draftDeclaration({ cwd, today: TODAY, files: Object.keys(files) });
+    const d = parse(text) as Drafted;
+    expect(paths(d)).toEqual([["./", "go"]]);
+    expect(d.ignore).toEqual(["fixture/"]);
+  });
+
+  it("keeps a used module nested in an unused one", async () => {
+    const d = parse(
+      await draftText({
+        "go.work": "use ./a/b\n",
+        "a/go.mod": "module a\n",
+        "a/x.go": "",
+        "a/b/go.mod": "module b\n",
+        "a/b/y.go": "",
+      }),
+    ) as Drafted;
+    expect(paths(d)).toEqual([
+      ["a/", "go"],
+      ["a/b/", "go"],
+    ]);
+  });
+
+  it("reads a one-line use directive", async () => {
+    const d = parse(
+      await draftText({
+        "go.work": "go 1.23\nuse ./svc\n",
+        "svc/go.mod": "module s\n\ngo 1.26\n",
+        "svc/main.go": "",
+        "tools/go.mod": "module t\n\ngo 1.26\n",
+        "tools/main.go": "",
+      }),
+    ) as Drafted;
+    expect(paths(d)).toEqual([["svc/", "go"]]);
+    expect(d.ignore).toEqual(["tools/"]);
   });
 });
 
@@ -175,6 +309,29 @@ describe("draftDeclaration: other languages", () => {
     expect(d.components[0]?.overrides?.["java.minVersion"]).toEqual({
       value: "7",
       reason: expect.stringMatching(/^TODO/) as unknown,
+    });
+  });
+
+  describe("Java build tool with both pom.xml and build.gradle (#96)", () => {
+    const BOTH = { "pom.xml": "<project/>", "build.gradle": "", "src/main/java/App.java": "" };
+    const NOTE = "同時有 pom.xml 與 build.gradle，預設為 maven，請確認 build.tool";
+    const draftText = async (files: Record<string, string>) =>
+      (await draftDeclaration({ cwd: project(files), today: TODAY, files: Object.keys(files) })).text;
+
+    it("picks the build tool whose wrapper is the only one committed", async () => {
+      // stleary/JSON-java
+      const gradle = await draft({ ...BOTH, gradlew: "", "gradlew.bat": "" });
+      expect(gradle.components[0]?.overrides).toEqual({ "build.tool": "gradle" });
+      const maven = await draft({ ...BOTH, mvnw: "", "mvnw.cmd": "" });
+      expect(maven.components[0]?.overrides).toBeUndefined();
+      expect(await draftText({ ...BOTH, gradlew: "" })).not.toContain(NOTE);
+    });
+
+    it("leaves a note to confirm maven when the wrappers do not tell", async () => {
+      const none = await draftText(BOTH);
+      expect(none).toContain(`# ${NOTE}`);
+      expect((parse(none) as DraftYaml).components[0]?.overrides).toBeUndefined();
+      expect(await draftText({ ...BOTH, gradlew: "", mvnw: "" })).toContain(`# ${NOTE}`);
     });
   });
 

@@ -50,7 +50,7 @@ devguard check [檔案…] [--staged] [--only lint|format|typecheck] [--full]
 | 5 | `settings-java` | `config` | Maven / Gradle 建置檔、Wrapper、`checkstyle.xml`、PMD ruleset、`lombok.config` |
 | 6 | `deps` | `config` | lockfile 是否已提交、直接依賴是否違反 `deps.banned` |
 | 7 | `settings-typescript` | `config` | `package.json`、`tsconfig.json`、ESLint flat config、Prettier、Biome、Vitest / Jest 覆蓋率門檻 |
-| 8 | `tool-versions` | `consistency` | lockfile / 建置檔鎖定的工具版本（與 PATH 上的 `golangci-lint`）是否在標準的 `tools.*` 範圍內 |
+| 8 | `tool-versions` | `consistency` | lockfile / 建置檔鎖定的工具版本（與 PATH 上的 `golangci-lint`）是否在標準的 `tools.*` 範圍內。Python 的型別檢查器只檢查元件宣告的 `typecheck.tool` 那一個 |
 | 9 | `gitattributes` | `config` | repo 根目錄 `.gitattributes` 有 `* text=auto eol=lf` |
 | 10 | `working-tree-crlf` | `environment` | 工作目錄的換行字元：有追蹤中的檔案在 git 裡是 LF、在工作目錄是 CRLF 時給一筆提示，見[工作目錄是 CRLF](#工作目錄是-crlf) |
 | 11 | `credentials` | `config` | 提交進 repo 的專案設定檔中沒有明碼帳密（`credentials/plaintext`）：`.npmrc` 的 `_auth`、`_authToken`、`_password` 必須引用環境變數（`${NAME}`，可加引號）；`pyproject.toml` 中任何網址（index、source、`[tool.uv.sources]`、`pkg @ https://…` 依賴）不得內含密碼或 token（只有帳號不算）；`.mvn/settings.xml` 的 `<password>`、`<passphrase>` 必須是屬性引用（`${…}`）、Maven 加密的 `{…}` 或空值。各檔案也在元件的上層目錄中查找（workspace 根目錄的 `.npmrc` 等），共用的檔案只回報一次。只回報、不印出值，`fix` 也不會改寫。套件從哪裡下載（registry、index、鏡像）不檢查，交給使用者層級的設定 |
@@ -188,7 +188,7 @@ $ devguard check --strict > /dev/null; echo $?
 | `找不到 eslint：node_modules 中沒有安裝`，exit `2` | `check` 遇到專案工具沒有安裝會直接中止。照提示安裝（`npm ci`、`uv sync`、`poetry install` 等）。標準要求的 Python 工具（例如 `basedpyright`）沒有列在 `pyproject.toml` 的依賴中時，`uv sync` 也裝不到它，提示改為 `uv add --dev "basedpyright>=1.40,<2"`（Poetry 專案為 `poetry config virtualenvs.in-project true && poetry add --group dev "…"`，讓工具裝進 devguard 會找的專案內 `.venv`），範圍取標準的 `tools.*`；想看完整的環境問題清單改跑 [`doctor`](Command-doctor.md)，它會把缺工具列成一筆錯誤並繼續 |
 | `找不到 uv`，exit `2` | uv 專案的 Python 工具透過 `uv run` 執行，devguard 只在 PATH 上找 uv。照提示選一種方式安裝（官方安裝腳本、`pipx install uv`、`pip install uv`、`scoop install uv`）。已用 `pip install uv` 安裝卻仍出現時，uv 在 Python 的 Scripts 目錄（Windows）或 `~/.local/bin`（其他平台），預設不在 PATH 上：把該目錄加進 PATH，重開終端機後以 `uv --version` 確認 |
 | TypeScript 專案卻出現 `找不到 golangci-lint` | 檔案清單來自 `git ls-files`（含未被忽略的未追蹤檔）。沒有 `.gitignore` 時 `node_modules/` 裡的 `.go`、`.py` 等檔案也會被當成專案檔案。把 `node_modules/`、`.venv/` 等加進 `.gitignore` |
-| `eslint 執行失敗（exit 2）…` `[code/tool-failed]` | 工具本身執行失敗（缺設定檔、缺 plugin 等）。照提示在元件目錄直接執行該工具看完整訊息 |
+| `eslint 執行失敗（exit 2）…` `[code/tool-failed]` | 工具本身執行失敗（缺設定檔、缺 plugin 等）。訊息附上工具輸出的最多 5 行：Maven 取 `[ERROR]` 的原因（略過 `[INFO]`／`[WARNING]` 與結尾的 `Re-run Maven…`、`[Help 1]`），Gradle 取 `* What went wrong:` 段落，其他工具取開頭幾行（`test/tool-failed` 取結尾幾行）。照提示在元件目錄直接執行該工具看完整訊息 |
 | `Parsing error: … was not found by the project service` | `typescript-eslint` 的 `projectService` 找不到 `eslint.config.js`、`vitest.config.ts` 等不在 `tsconfig.json` 範圍內的檔案。在 ESLint 設定中加上 `projectService: { allowDefaultProject: [...] }` |
 | `Vitest coverage.include 沒有設定` `[settings/coverage-include]` | Vitest 與 Jest 預設只計算被測試 import 的檔案，沒有測試的檔案不會拉低覆蓋率。在 `vitest.config.ts` 設定 `coverage.include`（例如 `["src/**/*.ts"]`），Jest 則設定 `collectCoverageFrom`。`fix` 只會印出片段 |
 

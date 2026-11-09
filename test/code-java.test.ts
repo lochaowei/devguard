@@ -51,6 +51,7 @@ function check(t: CodeTarget, tools: ToolRunner, texts: Record<string, string> =
 
 const only = (...c: CodeCategory[]) => new Set<CodeCategory>(c);
 const MAVEN = { "svc/pom.xml": "<project/>" };
+const GRADLE = { "svc/build.gradle": "" };
 
 describe("java checker: Maven multi-module lint", () => {
   it("reads each module's reports, not only the aggregator's", async () => {
@@ -139,7 +140,7 @@ describe("java checker: Maven lint", () => {
 describe("java checker: Gradle lint", () => {
   const GRADLE_ARGS = ["checkstyleMain", "checkstyleTest", "pmdMain", "pmdTest", "--continue", "--console=plain", "-q"];
 
-  it("runs the Checkstyle and PMD tasks through the wrapper when there is no pom.xml and reads each report", async () => {
+  it("runs the Checkstyle and PMD tasks through the Gradle wrapper and reads each report", async () => {
     const { tools, calls } = fakeWrapper({
       checkstyleMain: {
         code: 1,
@@ -147,6 +148,7 @@ describe("java checker: Gradle lint", () => {
       },
     });
     const texts = {
+      ...GRADLE,
       "svc/build/reports/checkstyle/main.xml": sample("checkstyle-result.xml"),
       "svc/build/reports/pmd/main.xml": sample("pmd.xml"),
     };
@@ -163,7 +165,7 @@ describe("java checker: Gradle lint", () => {
 
   it("reports a failed Gradle build that is not about rule violations", async () => {
     const { tools } = fakeWrapper({ checkstyleMain: { code: 1, stderr: "Could not resolve all files" } });
-    const texts = { "svc/build/reports/checkstyle/main.xml": sample("checkstyle-result.xml") };
+    const texts = { ...GRADLE, "svc/build/reports/checkstyle/main.xml": sample("checkstyle-result.xml") };
     const findings = await check(target({ categories: only("lint") }), tools, texts);
     expect(findings).toEqual([
       expect.objectContaining({
@@ -197,7 +199,7 @@ describe("java checker: Spotless", () => {
 
   it("runs spotlessCheck through the Gradle wrapper", async () => {
     const { tools, calls } = fakeWrapper({ spotlessCheck: { code: 1, stderr: sample("spotless-gradle.txt") } });
-    const findings = await check(target({ categories: only("format") }), tools);
+    const findings = await check(target({ categories: only("format") }), tools, GRADLE);
     expect(calls[0]?.args).toEqual(["spotlessCheck", "--console=plain", "-q"]);
     expect(findings).toEqual([
       expect.objectContaining({ rule: "spotless/format", file: "svc/src/main/java/com/example/App.java", line: 3 }),
@@ -291,6 +293,38 @@ describe("java checker: wrapper", () => {
   });
 });
 
+describe("java checker: build tool with both pom.xml and build.gradle (#96)", () => {
+  // stleary/JSON-java: both build files, only the Gradle wrapper committed.
+  const BOTH = { "svc/pom.xml": "<project/>", "svc/build.gradle": "", "svc/gradlew": "", "svc/gradlew.bat": "" };
+  const declared = (tool: string): Partial<CodeTarget> => ({
+    effective: { "build.tool": tool },
+    overrides: new Set(["build.tool"]),
+  });
+  const wrappers = async (over: Partial<CodeTarget>, texts: Record<string, string>) => {
+    const { tools, calls } = fakeWrapper();
+    await check(target({ categories: only("lint", "format"), ...over }), tools, texts);
+    const steps = await javaChecker.fixSteps(target(over), {
+      cwd: CWD,
+      tools,
+      readText: (p) => Promise.resolve(texts[p]),
+    });
+    return [...calls.map((c) => c.tool), ...steps.map((s) => s.tool)];
+  };
+
+  it("runs Gradle when only the Gradle wrapper is committed", async () => {
+    expect(await wrappers({}, BOTH)).toEqual(["gradlew", "gradlew", "gradlew"]);
+  });
+
+  it("runs the declared build tool over the build files", async () => {
+    expect(await wrappers(declared("gradle"), MAVEN)).toEqual(["gradlew", "gradlew", "gradlew"]);
+    expect(await wrappers(declared("maven"), BOTH)).toEqual(["mvnw", "mvnw", "mvnw"]);
+  });
+
+  it("ignores the standard's default build.tool, which the declaration does not set", async () => {
+    expect(await wrappers({ effective: { "build.tool": "maven" } }, BOTH)).toEqual(["gradlew", "gradlew", "gradlew"]);
+  });
+});
+
 describe("java checker: build failures", () => {
   it("reports a failed Maven run instead of reading reports left over from an earlier build", async () => {
     const { tools } = fakeWrapper({ "checkstyle:check": { code: 1, stdout: "[ERROR] Non-resolvable parent POM" } });
@@ -299,7 +333,7 @@ describe("java checker: build failures", () => {
     expect(findings).toEqual([
       expect.objectContaining({
         rule: "code/tool-failed",
-        message: "mvnw 執行失敗（exit 1）：[ERROR] Non-resolvable parent POM",
+        message: "mvnw 執行失敗（exit 1）：Non-resolvable parent POM",
       }),
     ]);
   });

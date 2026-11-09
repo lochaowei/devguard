@@ -1,13 +1,14 @@
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { stringify } from "yaml";
+import { Document, isNode, isSeq } from "yaml";
 import { runCheck } from "./check.ts";
 import { compareToDefault } from "./declaration/compare.ts";
 import { withoutIgnored } from "./declaration/ignore.ts";
 import { displayDir, normalizePath } from "./declaration/path.ts";
 import { resolveDeclaration, type Resolution } from "./declaration/resolve.ts";
 import { DECLARATION_FILE } from "./declaration/types.ts";
+import { inferBuildTool, type InferredBuildTool } from "./settings/java/build.ts";
 import { pythonSettingsLayer } from "./layers/settings-python.ts";
 import { goSettingsLayer } from "./layers/settings-go.ts";
 import { javaSettingsLayer } from "./layers/settings-java.ts";
@@ -15,10 +16,12 @@ import { typescriptSettingsLayer } from "./layers/settings-typescript.ts";
 import type { CheckLayer } from "./layers/types.ts";
 import type { Finding } from "./report/finding.ts";
 import { listRepoFiles } from "./repo/files.ts";
+import { goWorkspaces } from "./repo/go-work.ts";
 import { defaultStandard } from "./standard/registry.ts";
-import { EXTENSION_LANGUAGE, LANGUAGES, type Language, type Standard } from "./standard/types.ts";
+import { EXTENSION_LANGUAGE, LANGUAGE_LABEL, LANGUAGES, type Language, type Standard } from "./standard/types.ts";
 import { baseName, upwards } from "./repo/paths.ts";
-import { typeCheckerConfigs, type TypeChecker } from "./settings/type-checkers.ts";
+import { typeCheckerConfigs, typeCheckingOff, type TypeChecker } from "./settings/type-checkers.ts";
+import { parseConfigText } from "./fix/edit.ts";
 import { readIfExists } from "./shared/fs.ts";
 
 /** The settings checks whose readers the draft reuses: their findings carry the values read from config files. */
@@ -51,25 +54,83 @@ function languageOf(file: string): Language | undefined {
   return dot <= 0 ? undefined : EXTENSION_LANGUAGE[name.slice(dot).toLowerCase()];
 }
 
+/** An `ignore:` entry the draft adds itself, with the comment written above it. */
+export interface DraftIgnore {
+  entry: string;
+  comment: string;
+}
+
+export interface ComponentPlan {
+  components: DraftComponent[];
+  ignore: DraftIgnore[];
+}
+
+const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+/** Per go.mod directory that a go.work applies to, the module directories that go.work uses (`goWorkspaces`). */
+export type GoWorkspaces = ReadonlyMap<string, ReadonlySet<string>>;
+
+const goModDirs = (paths: readonly string[]) => paths.filter((p) => baseName(p) === "go.mod").map(dirOf);
+
+/**
+ * Directories of go.mod files that their go.work leaves out of its `use` list. Never the root, which an `ignore:`
+ * entry cannot name, nor a directory holding a module the go.work does use.
+ */
+function modulesOutsideWorkspace(paths: readonly string[], workspaces: GoWorkspaces): string[] {
+  return goModDirs(paths).filter((dir) => {
+    const used = workspaces.get(dir);
+    return dir !== "" && used !== undefined && ![...used].some((u) => u.startsWith(dir));
+  });
+}
+
+/** Stray files as `ignore:` entries: one glob for several files of the same extension in a directory. */
+function strayEntries(stray: ReadonlyMap<Language, readonly string[]>): DraftIgnore[] {
+  const out: DraftIgnore[] = [];
+  for (const [language, files] of stray) {
+    const comment = `沒有 ${LANGUAGE_LABEL[language]} 的標記檔，未建立元件；若要檢查，請補上標記檔並新增元件`;
+    const groups = new Map<string, string[]>();
+    for (const f of files) {
+      const glob = dirOf(f) + "*" + f.slice(f.lastIndexOf("."));
+      groups.set(glob, [...(groups.get(glob) ?? []), f]);
+    }
+    for (const [glob, members] of groups)
+      out.push({ entry: members.length > 1 ? glob : (members[0] ?? glob), comment });
+  }
+  return out.sort((a, b) => byCodeUnit(a.entry, b.entry));
+}
+
 /**
  * Components inferred from the repo's files (SPEC §4.1, §4.3): each source file belongs to the nearest directory
- * holding a build or tool file of its language, or to the root. Java modules nested in a Java build are one component.
+ * holding a build or tool file of its language. Java modules nested in a Java build are one component. A go.mod
+ * that the go.work above it does not use is not a component, and source files with no marker file above them make
+ * no component when the repo has marked ones: both are returned as `ignore:` entries. A repo with no marker file
+ * at all gets a root component per language.
  */
-export function inferComponents(files: readonly string[]): DraftComponent[] {
-  const paths = files.map(normalizePath);
+export function inferComponents(files: readonly string[], workspaces: GoWorkspaces = new Map()): ComponentPlan {
+  const all = files.map(normalizePath);
+  const outside = modulesOutsideWorkspace(all, workspaces);
+  const paths = withoutIgnored(outside, all);
   const present = new Set(paths);
   const found = new Map<string, DraftComponent>();
+  const stray = new Map<Language, string[]>();
   for (const file of paths) {
     const language = languageOf(file);
     if (!language) continue;
     const marked = upwards(dirOf(file)).filter((d) => MARKERS[language].some((m) => present.has(d + m)));
     // A multi-module Java build is built from its outermost build file.
-    const dir = (language === "java" ? marked.at(-1) : marked[0]) ?? "";
-    found.set(`${dir}|${language}`, { dir, language });
+    const dir = language === "java" ? marked.at(-1) : marked[0];
+    if (dir === undefined) stray.set(language, [...(stray.get(language) ?? []), file]);
+    else found.set(`${dir}|${language}`, { dir, language });
   }
-  return [...found.values()].sort(
-    (a, b) => a.dir.localeCompare(b.dir) || LANGUAGES.indexOf(a.language) - LANGUAGES.indexOf(b.language),
-  );
+  const ignore = outside.sort(byCodeUnit).map((dir) => ({ entry: dir, comment: "不在 go.work 的 use 清單中" }));
+  if (found.size > 0) ignore.push(...strayEntries(stray));
+  else for (const language of stray.keys()) found.set(`|${language}`, { dir: "", language });
+  return {
+    components: [...found.values()].sort(
+      (a, b) => a.dir.localeCompare(b.dir) || LANGUAGES.indexOf(a.language) - LANGUAGES.indexOf(b.language),
+    ),
+    ignore,
+  };
 }
 
 export interface DraftOptions {
@@ -95,20 +156,30 @@ const JEST_CONFIGS = ["js", "mjs", "cjs", "ts", "mts", "cts", "json"].map((e) =>
 
 interface FileProbe {
   nearest: (win: readonly string[], lose?: readonly string[]) => boolean;
-  /** The type checkers only the component's own settings are for (a `[tool.basedpyright]` table, a mypy.ini). */
+  /**
+   * The type checkers only the component's own settings are for (a `[tool.basedpyright]` table, a mypy.ini), leaving
+   * out settings with `typeCheckingMode = "off"`, which check nothing (#114).
+   */
   typeCheckers: ReadonlySet<TypeChecker>;
+  /** The pyrightconfig.json pyright would use for the component exists and does not turn type checking off. */
+  pyrightConfigOn: boolean;
+  /** A Java component's build tool, as its build files and wrappers point to it (`inferBuildTool`). */
+  javaBuild?: InferredBuildTool;
 }
 
 /** What the draft knows of the repo's files: which exist, and each Python component's type checker settings. */
 interface DraftFiles {
   present: ReadonlySet<string>;
   typeCheckers: ReadonlyMap<string, ReadonlySet<TypeChecker>>;
+  /** The pyrightconfig.json files that set `typeCheckingMode = "off"`. */
+  pyrightOff: ReadonlySet<string>;
+  javaBuilds: ReadonlyMap<string, InferredBuildTool>;
 }
 
 const CHOICE_RULES: Readonly<Record<Language, (p: FileProbe) => [boolean, string, string][]>> = {
   python: (p) => [
     [p.nearest(["poetry.lock"], ["uv.lock"]), "deps.manager", "poetry"],
-    [p.nearest(["pyrightconfig.json"]), "typecheck.tool", "pyright"],
+    [p.pyrightConfigOn, "typecheck.tool", "pyright"],
     // basedpyright also reads pyrightconfig.json, so its own table wins over the rule above.
     [p.typeCheckers.has("basedpyright"), "typecheck.tool", "basedpyright"],
   ],
@@ -119,7 +190,7 @@ const CHOICE_RULES: Readonly<Record<Language, (p: FileProbe) => [boolean, string
     [p.nearest(["pnpm-lock.yaml"], ["package-lock.json", "npm-shrinkwrap.json"]), "deps.manager", "pnpm"],
     [p.nearest(["yarn.lock"], ["package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml"]), "deps.manager", "yarn"],
   ],
-  java: (p) => [[p.nearest(["build.gradle", "build.gradle.kts"], ["pom.xml"]), "build.tool", "gradle"]],
+  java: (p) => [[p.javaBuild?.tool === "gradle", "build.tool", "gradle"]],
 };
 
 function nearestChoice(
@@ -135,11 +206,21 @@ function nearestChoice(
   return false;
 }
 
+/** Whether the nearest pyrightconfig.json above `dir` exists and leaves type checking on. */
+function nearestPyrightConfigOn(dir: string, files: DraftFiles): boolean {
+  const found = upwards(dir)
+    .map((d) => `${d}pyrightconfig.json`)
+    .find((f) => files.present.has(f));
+  return found !== undefined && !files.pyrightOff.has(found);
+}
+
 /** Infers non-default tool choices (`build.tool`, `deps.manager`, `lint.tool`, etc.) from the component's files. */
 function inferToolChoices(c: DraftComponent, files: DraftFiles): Record<string, string> {
   const probe: FileProbe = {
     nearest: (win, lose) => nearestChoice(c.dir, files.present, win, lose),
     typeCheckers: files.typeCheckers.get(c.dir) ?? new Set(),
+    pyrightConfigOn: nearestPyrightConfigOn(c.dir, files),
+    javaBuild: files.javaBuilds.get(c.dir),
   };
   return Object.fromEntries(
     CHOICE_RULES[c.language](probe)
@@ -188,31 +269,73 @@ function overridesFrom(findings: readonly Finding[], standard: Standard, languag
   return overrides;
 }
 
-/** Per Python component directory, the type checkers whose settings only they read (`typeCheckerConfigs`). */
+/**
+ * Per Python component directory, the type checkers whose settings only they read (`typeCheckerConfigs`), leaving out
+ * settings that turn type checking off (#114); and the pyrightconfig.json files that turn it off.
+ */
 async function pythonTypeCheckers(
   cwd: string,
   components: readonly DraftComponent[],
   present: ReadonlySet<string>,
-): Promise<Map<string, Set<TypeChecker>>> {
+): Promise<Pick<DraftFiles, "typeCheckers" | "pyrightOff">> {
   const read = (file: string) => (present.has(file) ? readIfExists(join(cwd, file)) : Promise.resolve(undefined));
-  const found = new Map<string, Set<TypeChecker>>();
+  const typeCheckers = new Map<string, Set<TypeChecker>>();
   for (const c of components.filter((c) => c.language === "python")) {
-    const configs = await typeCheckerConfigs(c.dir, read);
-    found.set(c.dir, new Set(configs.flatMap((config) => (config.tools.length === 1 ? config.tools : []))));
+    const configs = (await typeCheckerConfigs(c.dir, read)).filter((config) => !config.off);
+    typeCheckers.set(c.dir, new Set(configs.flatMap((config) => (config.tools.length === 1 ? config.tools : []))));
+  }
+  const pyrightOff = new Set<string>();
+  for (const file of [...present].filter((f) => baseName(f) === "pyrightconfig.json")) {
+    const text = await read(file);
+    if (text !== undefined && typeCheckingOff(parseConfigText(file, text))) pyrightOff.add(file);
+  }
+  return { typeCheckers, pyrightOff };
+}
+
+/** Per Java component directory, the build tool its files point to (`inferBuildTool`). */
+async function javaBuilds(
+  components: readonly DraftComponent[],
+  present: ReadonlySet<string>,
+): Promise<Map<string, InferredBuildTool>> {
+  const found = new Map<string, InferredBuildTool>();
+  for (const c of components.filter((c) => c.language === "java")) {
+    found.set(c.dir, await inferBuildTool(c.dir, (p) => present.has(p)));
   }
   return found;
+}
+
+const AMBIGUOUS_BUILD = " 同時有 pom.xml 與 build.gradle，預設為 maven，請確認 build.tool";
+
+/** Writes a note above each component whose build tool the files leave open (#96). */
+function withBuildNotes(doc: Document, ambiguous: ReadonlySet<number>): Document {
+  const seq = doc.get("components");
+  if (!isSeq(seq)) return doc;
+  for (const i of ambiguous) {
+    const item = seq.items[i];
+    if (isNode(item)) item.commentBefore = AMBIGUOUS_BUILD;
+  }
+  return doc;
 }
 
 /** A draft `.devguard.yaml` for a project that has none, from the components and tool settings found (SPEC §4.3). */
 export async function draftDeclaration(options: DraftOptions): Promise<Draft> {
   const { cwd, today } = options;
   const ignore = options.ignore ?? [];
-  const listed = withoutIgnored(ignore, options.files);
+  const given = withoutIgnored(ignore, options.files);
   const standard = defaultStandard();
   if (!standard) throw new Error("no bundled standard");
+  const plan = inferComponents(given, await goWorkspaces(cwd, goModDirs(given.map(normalizePath))));
+  const { components } = plan;
+  const listed = withoutIgnored(
+    plan.ignore.map((i) => i.entry),
+    given,
+  );
   const present = new Set(listed.map(normalizePath));
-  const components = inferComponents(listed);
-  const files = { present, typeCheckers: await pythonTypeCheckers(cwd, components, present) };
+  const files: DraftFiles = {
+    present,
+    ...(await pythonTypeCheckers(cwd, components, present)),
+    javaBuilds: await javaBuilds(components, present),
+  };
   const resolution = defaultResolution(components, standard, today, files);
   const seed: CheckLayer = { id: "draft", run: () => Promise.resolve({ findings: [], resolution }) };
   const { findings } = await runCheck({ cwd, today, listFiles: () => Promise.resolve([...listed]) }, [
@@ -236,9 +359,22 @@ export async function draftDeclaration(options: DraftOptions): Promise<Draft> {
         ...(Object.keys(overrides).length > 0 ? { overrides } : {}),
       };
     }),
-    ...(ignore.length > 0 ? { ignore: [...ignore] } : {}),
+    ...(ignore.length + plan.ignore.length > 0 ? { ignore: [...ignore, ...plan.ignore.map((i) => i.entry)] } : {}),
   };
-  return { text: HEADER + stringify(doc), components };
+  const ambiguous = resolution.components.flatMap((c, i) => (files.javaBuilds.get(c.dir)?.ambiguous ? [i] : []));
+  const yaml = withBuildNotes(withIgnoreComments(new Document(doc), ignore.length, plan.ignore), new Set(ambiguous));
+  return { text: HEADER + yaml.toString(), components };
+}
+
+/** Writes each ignore entry's comment above it; the entries the draft adds follow the `skip` given ones. */
+function withIgnoreComments(doc: Document, skip: number, added: readonly DraftIgnore[]): Document {
+  const seq = doc.get("ignore");
+  if (!isSeq(seq)) return doc;
+  added.forEach(({ comment }, i) => {
+    const item = seq.items[skip + i];
+    if (isNode(item)) item.commentBefore = ` ${comment}`;
+  });
+  return doc;
 }
 
 const HEADER = `# 由 devguard draft 依既有的工具設定產生的草稿（SPEC §4.3）。

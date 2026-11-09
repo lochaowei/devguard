@@ -95,4 +95,12 @@ describe("Python tests", () => {
     expect(rules(r.findings)).toEqual(["error:coverage/no-report"]);
     expect(r.findings[0]?.message).toContain("No data to report");
   });
+
+  it("explains a missing coverage report from stdout when stderr holds only colour codes (#128)", async () => {
+    const { tools } = fakeTools((req: ToolRequest) =>
+      req.tool === "pytest" ? ok("3 passed") : ok("No data to report.", 1, "\x1b[0m\n"),
+    );
+    const r = await check(tools);
+    expect(r.findings[0]?.message).toContain("（No data to report.）");
+  });
 });

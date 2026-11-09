@@ -166,6 +166,9 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 - 與預設相同的項目省略。
 - 比預設寬鬆的項目帶上 `TODO` 理由，要填寫之後才算通過。
 - `draft --ignore <路徑或 glob>`（可重複）：符合的檔案不用來推斷元件，清單原樣寫進草稿的 `ignore`。
+- 元件依標記檔推斷：每個程式檔歸屬往上最近、含有該語言標記檔（`pyproject.toml`、`go.mod`、`package.json`、`pom.xml` 等）的目錄。下列檔案不成為元件，而是寫進草稿的 `ignore`（排在 `--ignore` 的項目之後），每項上方加一行註解說明原因（#89）：
+  - `go.mod` 所在目錄或上層有 `go.work`，但這個目錄不在最近的 `go.work` 的 `use` 清單中（單行與 `use ( ... )` 區塊都支援）：寫入該目錄，註解「不在 go.work 的 use 清單中」。golangci-lint 在 workspace 模式下無法檢查這種模組。與 `go` 相同，`go.work` 不論是否被 git 忽略、即使在 repo 根目錄之上都算。例外：repo 根目錄的模組（`ignore` 無法只排除它），以及底下有 `use` 清單中模組的目錄，照舊是元件。沒有 `go.work` 的 repo，每個 `go.mod` 照舊是一個元件。
+  - 往上找不到該語言標記檔的零星程式檔，且 repo 至少有一個有標記檔的元件時：寫入該檔案（同一目錄、同副檔名有多個時寫成 `<目錄>/*.<副檔名>`），註解「沒有 <語言> 的標記檔，未建立元件；若要檢查，請補上標記檔並新增元件」。整個 repo 都沒有標記檔時（例如純腳本 repo），這些檔案照舊成為 repo 根目錄的元件。
 
 可直接移植的參考實作（`Std` 模組中的 `resolve`、`lookup`、`draftFromDetected`、`checkToolConfigs`）：[prototypes/07-project-declaration.prototype.html](.scratch/coding-standards-guard/prototypes/07-project-declaration.prototype.html)
 
@@ -253,7 +256,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 
 ---
 
-## 6. 各語言的預設標準（`team@1.0.0` 草案，及 `team@1.1.0`～`team@1.3.0`、`legacy@1.0.0`）
+## 6. 各語言的預設標準（`team@1.0.0` 草案，及 `team@1.1.0`～`team@1.4.0`、`legacy@1.0.0`）
 
 本節的表格是 `team@1.0.0`。`team@1.1.0`（minor，§5.5）沿用 `team@1.0.0` 的所有項目，只有以下差異：
 
@@ -274,7 +277,11 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 - 所有 `mirrors.*`（§10）。
 - 各語言的 `deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`，以及 Go 的 `tools.govulncheck`（§5.3）。
 
-`devguard draft` 寫入、`doctor` 建議升級到的都是 CLI 內建的最新 `team` 版本（目前是 `team@1.3.0`）。既有專案可以改宣告基線標準 `legacy@1.0.0`（§6.5）。
+`team@1.4.0`（minor，§5.5）沿用 `team@1.3.0` 的所有項目，只有以下差異（#113）：
+
+- Python 的 `tools.mypy` 改為 `>=1.18,<3`，同時允許 mypy 1.x 與 2.x。2026-11-08 查證 PyPI：1.x 的最後一版是 1.20.2（2026-04-21），2.0.0 於 2026-05-06 發佈，目前最新是 2.4.1（2026-10-28），2.0 之後 1.x 沒有修補版。下限維持，與 `team@1.1.0` 對已停止發佈的版本線的處理一致。
+
+`devguard draft` 寫入、`doctor` 建議升級到的都是 CLI 內建的最新 `team` 版本（目前是 `team@1.4.0`）。既有專案可以改宣告基線標準 `legacy@1.0.0`（§6.5）。
 
 ### 6.1 Python
 
@@ -285,8 +292,8 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | `lint.rules` | `E, W, F, I, B, UP, C90, SIM, N, S, TID`；測試檔放寬 `S101` | 一律寫入 `lint.select`（會取代 Ruff 的預設規則集；Ruff 0.16 起預設規則大幅增加），不使用 `extend-select`；`per-file-ignores` |
 | `format.lineLength` | 120（風格） | Ruff `line-length` |
 | `complexity.cyclomatic` | 10 | Ruff C901 `max-complexity` |
-| `typecheck.tool` | `mypy`；允許替代工具 `pyright`（`team@1.2.0` 起另有 `basedpyright`） | `[tool.mypy]` / `[tool.pyright]`（或 `pyrightconfig.json`）/ `[tool.basedpyright]`（或 `pyrightconfig.json`）。basedpyright 以 `basedpyright --outputjson` 執行，輸出格式與 pyright 相同。`devguard draft` 遇到 `pyrightconfig.json` 寫入 `pyright`，遇到 `[tool.basedpyright]` 寫入 `basedpyright`。專案已有宣告的工具不讀的型別檢查器設定（`[tool.mypy]`／`mypy.ini`、`[tool.pyright]`、`[tool.basedpyright]`、`pyrightconfig.json`）時，`devguard install` 的預覽發出警告，說明可以宣告 `typecheck.tool` 改用既有工具；`install` 不修改宣告 |
-| `typecheck.strict` | `true` | mypy `strict` / pyright、basedpyright `typeCheckingMode = "strict"` |
+| `typecheck.tool` | `mypy`；允許替代工具 `pyright`（`team@1.2.0` 起另有 `basedpyright`） | `[tool.mypy]` / `[tool.pyright]`（或 `pyrightconfig.json`）/ `[tool.basedpyright]`（或 `pyrightconfig.json`）。basedpyright 以 `basedpyright --outputjson` 執行，輸出格式與 pyright 相同。`devguard draft` 遇到 `pyrightconfig.json` 寫入 `pyright`，遇到 `[tool.basedpyright]` 寫入 `basedpyright`；`typeCheckingMode = "off"` 的設定（只是關掉編輯器的檢查）不作為推斷依據（#114）。與 pyright 相同，同一目錄的 `pyrightconfig.json` 優先於 `[tool.pyright]`／`[tool.basedpyright]`，元件目錄兩者都沒有時才往上層找。專案已有宣告的工具不讀的型別檢查器設定（`[tool.mypy]`／`mypy.ini`、`[tool.pyright]`、`[tool.basedpyright]`、`pyrightconfig.json`）時，`devguard install` 的預覽發出警告，說明可以宣告 `typecheck.tool` 改用既有工具；`install` 不修改宣告 |
+| `typecheck.strict` | `true` | mypy `strict` / pyright、basedpyright `typeCheckingMode = "strict"`。宣告的 pyright／basedpyright 實際生效的設定是 `typeCheckingMode = "off"` 時，型別檢查等於被關閉，回報錯誤 `settings/typecheck-off`（不是 `typecheck.strict` 的偏離），`fix` 改為 `"strict"`（宣告 `typecheck.strict: false` 時改為 pyright 的預設 `"standard"`）；未宣告的檢查器設為 off 不回報（#114） |
 | `test.tool` | pytest + pytest-cov | — |
 | `coverage.lines` | 行覆蓋率與分支覆蓋率**各自**都要達到 80%（`branch = true`），與 TS、Java 一致 | CLI 執行 `coverage json`，從 `totals` 分別計算行與分支的覆蓋率並自行判定。不使用 `fail_under`，因為它在 branch 模式下檢查的是行加分支的合併總數。 |
 | `deps.manager` | `uv`；允許替代工具 `poetry` | 決定 `deps.lockfile` 要求哪個 lockfile。執行工具（§5.2）與 `standard upgrade`（§5.5）不讀這個項目，只看最近的 Python lockfile：`poetry.lock` 時用 Poetry，否則用 uv |
@@ -299,7 +306,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | 項目 | 預設值 | 落地方式 |
 |---|---|---|
 | `go.minVersion` | 1.26（`go.mod` 較高時以專案為準） | `go.mod` |
-| `lint.tool` | golangci-lint v2，**≥2.12** | golangci-lint 採用的設定檔（`version: "2"`）：從元件目錄往上到 repo 根目錄，最近一層有設定檔的目錄，同層依 `.golangci.json` > `.golangci.toml` > `.golangci.yaml` > `.golangci.yml` 取第一份。檢查與修正都針對這一份並沿用它的格式；同層有多份時提示其他的會被忽略；整條路徑都沒有時才建立 `.golangci.yml` |
+| `lint.tool` | golangci-lint v2，**≥2.12** | golangci-lint 採用的設定檔（`version: "2"`）：從元件目錄往上到 repo 根目錄，最近一層有設定檔的目錄，同層依 `.golangci.json` > `.golangci.toml` > `.golangci.yaml` > `.golangci.yml` 取第一份。檢查與修正都針對這一份並沿用它的格式；同層有多份時提示其他的會被忽略；整條路徑都沒有時才建立 `.golangci.yml`。不是 v2 格式時只回報 `settings/golangci-version`（先 `golangci-lint migrate` 再重新 check），不檢查其他設定、不修正（#86） |
 | `lint.rules` | v2 預設組加上 `gosec, revive, errorlint, bodyclose, misspell, cyclop, gocognit, gomodguard_v2, depguard` | `linters.enable`；depguard 一定要寫明確規則 |
 | `format.tools` | gofumpt + goimports（風格） | golangci-lint formatters；gopls `formatting.gofumpt` |
 | `complexity.cyclomatic` / `cognitive` | 10 / 15 | `cyclop.max-complexity`（預設 10）/ `gocognit.min-complexity`，**必須明確設為 15**（預設 30） |
@@ -331,7 +338,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | 項目 | 預設值 | 落地方式 |
 |---|---|---|
 | `java.minVersion` | 17（新專案建議 21 以上） | `maven.compiler.release` / Gradle toolchain |
-| `build.tool` | Maven 或 Gradle，必須提交 wrapper | CLI 一律透過 wrapper 呼叫 |
+| `build.tool` | Maven 或 Gradle，必須提交 wrapper | CLI 一律透過 wrapper 呼叫，只執行該建置工具的 wrapper（`mvnw` 或 `gradlew`，元件目錄或上層），不會改用另一種。建置工具的判斷（設定、程式碼、測試、依賴各層共用）：宣告的 `build.tool` 優先；沒有宣告時，只有 `pom.xml` 是 maven，只有 Gradle 建置檔（`build.gradle(.kts)`、`settings.gradle(.kts)`）是 gradle；兩者都有時依提交的 wrapper，只有 `gradlew` 是 gradle，其餘（只有 `mvnw`、兩者都有或都沒有）是 maven |
 | `format.tool` | Spotless 搭配 palantir-java-format（4 空白、120 欄，風格） | `spotless:check` / `spotless:apply` |
 | `lint.tool` / `lint.rules` | Checkstyle（以 `google_checks.xml` 為基礎，移除與 palantir 衝突的格式類規則）+ PMD quickstart | `checkstyle.xml`、PMD ruleset（由 CLI 產生）。內建設定**不含**複雜度與 import 規則，產生時必須自行加入：Checkstyle 的 `IllegalImport`、`CyclomaticComplexity`（max 10），以及 PMD 的 `CognitiveComplexity`（reportLevel 15）。PMD quickstart 中的複雜度規則預設是註解掉的。 |
 | `complexity.cyclomatic` / `cognitive` | 10 / 15 | Checkstyle / PMD |
@@ -459,7 +466,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
   - 檔案內含 CLI 標記與 checksum。
   - 不使用 pre-commit、lefthook 或 husky 等框架。
 - **既有 hook 框架**：專案已經在用這類框架時，CLI 不覆寫它的 hook，而是在它的設定中注入一條呼叫 `devguard` 的項目：
-  - pre-commit：一條 `language: unsupported` 的 local hook。`unsupported` 是 pre-commit 4.4.0 加入的值（`system` 的新名稱），所以需要 pre-commit 4.4.0 以上；CLI 同時確保頂層的 `minimum_pre_commit_version` 至少為 `"4.4.0"`：沒有就加上，較低就調高，較高就保留。版本不夠時，pre-commit 會自己回報需要的最低版本，而不是只說不認得 `unsupported`。
+  - pre-commit：一條 `language: unsupported` 的 local hook。`unsupported` 是 pre-commit 4.4.0 加入的值（`system` 的新名稱），所以需要 pre-commit 4.4.0 以上；CLI 同時確保頂層的 `minimum_pre_commit_version` 至少為 `"4.4.0"`：沒有就加上，較低就調高，較高就保留。版本不夠時，pre-commit 會自己回報需要的最低版本，而不是只說不認得 `unsupported`。設定沒有頂層 `default_stages` 時，CLI 也加上 `default_stages: [pre-commit]`：pre-commit 對沒寫 `stages` 的 hook 預設在所有已安裝的 hook 型別執行，安裝 pre-push hook 型別後，專案原本只在 commit 執行的 hook 會在每次 push 也執行。已有 `default_stages`（任何值）時不動。
   - husky：`.husky/pre-commit` 中加一行
   - lefthook：加一個 job（YAML、TOML、JSON / JSONC 設定檔都支援）
   - pre-commit 與 lefthook 的項目要等框架的安裝指令（`pre-commit install --hook-type pre-commit --hook-type pre-push`、`lefthook install`）把 hook 寫進 hooks 目錄才會執行。`install` 結束時（預覽與套用都一樣）用與「已安裝」環境檢查相同的判斷確認；還沒寫入時印出這條指令作為下一步。`install` 不自己執行它，這則提示也不影響 exit code。
@@ -474,7 +481,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 - **pre-push 的完整測試由開發者開啟**：`install` 照常安裝 pre-push hook，但 hook 只在環境變數 `DEVGUARD_PRE_PUSH` 為 `full` 時，才執行 `check --full` 中的測試與覆蓋率；未設定或其他值時直接放行，什麼都不印。開關放在開發者的環境而不是專案宣告，所以不改變 §4 的格式，切換時也不需要重新執行 `install`。
 - **「已安裝」的環境檢查**
   1. 讀取 `core.hooksPath` 及其設定來源。
-  2. 若使用既有框架，確認其設定中有呼叫 CLI 的項目；使用 pre-commit 或 lefthook 框架時，另外確認 `pre-commit install --hook-type pre-commit --hook-type pre-push`／`lefthook install` 已執行（hooks 目錄中有該框架為 pre-commit、pre-push 產生的 hook）；使用 pre-commit 框架時，也確認設定的 `minimum_pre_commit_version` 至少為 `"4.4.0"`（缺少或較低都是錯誤，`devguard install` 會修正）。沒有使用框架時，確認 hook 檔存在、有 CLI 標記，且 checksum 正確；hook 檔不是 devguard 產生的時，確認它呼叫 devguard，而且呼叫出現在第一個結束腳本的頂層無條件指令（`exit`、執行其他程式的 `exec`、以 `.`／`source` 載入其他腳本）之前。`install` 不修改這種 hook，只印出要加在開頭的一行，並以 `1` 結束。
+  2. 若使用既有框架，確認其設定中有呼叫 CLI 的項目；使用 pre-commit 或 lefthook 框架時，另外確認 `pre-commit install --hook-type pre-commit --hook-type pre-push`／`lefthook install` 已執行（hooks 目錄中有該框架為 pre-commit、pre-push 產生的 hook）；使用 pre-commit 框架時，也確認設定的 `minimum_pre_commit_version` 至少為 `"4.4.0"`（缺少或較低都是錯誤，`devguard install` 會修正），且有 CLI 的 pre-push 項目時設定了頂層 `default_stages`（缺少是錯誤，不依 `DEVGUARD_PRE_PUSH` 降為提示，`devguard install` 會修正）。沒有使用框架時，確認 hook 檔存在、有 CLI 標記，且 checksum 正確；hook 檔不是 devguard 產生的時，確認它呼叫 devguard，而且呼叫出現在第一個結束腳本的頂層無條件指令（`exit`、執行其他程式的 `exec`、以 `.`／`source` 載入其他腳本）之前。`install` 不修改這種 hook，只印出要加在開頭的一行，並以 `1` 結束。
   3. `core.hooksPath` 指向 `/dev/null` 或不存在的目錄時，回報錯誤。
 
   步驟 2 中 pre-push 的問題（hook 不存在或被修改、框架設定缺項目、框架尚未寫入 pre-push hook），在沒有設定 `DEVGUARD_PRE_PUSH=full` 時只列為**提示**，因為這時 pre-push 本來就不跑任何檢查；設定之後才算錯誤。
@@ -488,7 +495,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 | 比對項目 | 不一致時 |
 |---|---|
-| 專案鎖定的工具版本是否落在預設標準的範圍內 | 錯誤 |
+| 專案鎖定的工具版本是否落在預設標準的範圍內。Python 的型別檢查器只檢查元件宣告的 `typecheck.tool` 那一個（#113，所有標準版本）：宣告 basedpyright 的專案即使 lockfile 中有 mypy，也不檢查 mypy 的範圍 | 錯誤 |
 | VS Code 是否使用專案的工具（Ruff 與 mypy 的 `fromEnvironment`、直譯器、`js/ts.tsdk.path`；舊的 `typescript.tsdk` 也接受） | 錯誤，可用 `fix` 修正 |
 | Checkstyle 擴充套件的版本與設定檔路徑，是否和建置設定相同 | 錯誤，可用 `fix` 修正 |
 | `.claude/` 與 `.vscode/` 中由 CLI 產生或管理的內容，是否和目前的標準相符 | 錯誤，可用 `fix` 修正 |
@@ -514,7 +521,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 | 類別 | 範例 | 做法 |
 |---|---|---|
 | CLI 全權產生 | `checkstyle.xml`、PMD ruleset、`.claude/rules/*`、`/standards-doctor` skill、git hook | 整份重新產生，檔頭標示「由 CLI 產生」。例外：檔案已存在、非空白、且沒有「由 CLI 產生」檔頭時，表示不是 devguard 產生的，一律不覆寫（`--yes` 也一樣），只印出要加入的內容：Checkstyle 設定與 PMD ruleset 印出缺少或要換掉的 module / rule，其餘印出完整的產生內容；`check` 也只提示手動修正。git hook 由 `install` / `fix` 以 hook 自己的標記判斷（§7.4） |
-| 結構化的共用檔 | `pyproject.toml` 的 `[tool.*]`、golangci 設定檔（`.golangci.json` / `.toml` / `.yaml` / `.yml`）、`tsconfig.json`、`.prettierrc`、`.npmrc`（只有帳密引用，不寫 `registry=`）、`.vscode/*`、`.claude/settings.json` | 只修改 CLI 管理的 key，並保留註解與順序（YAML 用 `yaml`，JSONC 用 `jsonc-parser`，TOML 用 `@decimalturn/toml-patch`；`@shopify/toml-patch` 需要在執行時載入 wasm，可能無法打包進 Bun exe）。TOML 的修改結果無法解析時不寫入該檔，改為印出要套用的修改 |
+| 結構化的共用檔 | `pyproject.toml` 的 `[tool.*]`、golangci 設定檔（`.golangci.json` / `.toml` / `.yaml` / `.yml`）、`tsconfig.json`、`.prettierrc`、`.npmrc`（只有帳密引用，不寫 `registry=`）、`.vscode/*`、`.claude/settings.json` | 只修改 CLI 管理的 key，並保留註解與順序（YAML 用 `yaml`，JSONC 用 `jsonc-parser`，TOML 用 `@decimalturn/toml-patch`；`@shopify/toml-patch` 需要在執行時載入 wasm，可能無法打包進 Bun exe）。YAML（golangci 設定檔，以及 `install` 寫入的 `.pre-commit-config.yaml`、lefthook 設定）中修改沒有碰到的行逐字保留：flow collection 的寫法（`[a]` 或 `[ a ]`）、行尾註解前的對齊空白、引號都不變；新增或修改的 flow collection 不加內側空白（#87）。TOML 的修改結果無法解析時不寫入該檔，改為印出要套用的修改 |
 | 建置檔與程式碼形式的設定檔 | `pom.xml`、`build.gradle`、`settings.gradle`、`vitest.config.ts`、`eslint.config.js` | 不自動修改，只印出要套用的片段或 diff |
 
 ### 9.3 互動方式

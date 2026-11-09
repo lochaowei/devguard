@@ -10,7 +10,7 @@ import {
   testToolFailed,
   type Measured,
 } from "./coverage.ts";
-import { pythonToolRequest } from "../tools/runner.ts";
+import { pythonToolRequest, toolErrorLines } from "../tools/runner.ts";
 import type { TestChecker, TestContext, TestTarget } from "./types.ts";
 
 /** pytest exit codes: 0 all passed, 1 some failed, 5 no tests collected; anything else is a usage or internal error. */
@@ -50,7 +50,7 @@ export const pythonTests: TestChecker = {
     const measured = json.code === 0 ? totals(await readReport(out)) : undefined;
     if (measured === undefined) {
       const fix = "確認已安裝 pytest-cov，並在元件目錄執行 uv run pytest --cov --cov-branch";
-      findings.push(reportMissing(target, "coverage json", fix, json.stderr || json.stdout));
+      findings.push(reportMissing(target, "coverage json", fix, toolErrorLines(json).join("\n")));
     } else {
       findings.push(...judgeCoverage(target, measured));
     }

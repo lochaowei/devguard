@@ -7,6 +7,7 @@ import {
   hooksPathConflict,
   frameworkHooksNotInstalled,
   PRE_COMMIT_MIN_VERSION,
+  pushRunsProjectHooks,
   readHooksPath,
   staleMinimumVersion,
   type FrameworkEntry,
@@ -93,14 +94,33 @@ function frameworkProblem(hook: GitHookName, entry: FrameworkEntry): Finding | u
  * The pre-commit config does not ask for the pre-commit version that knows devguard's `language: unsupported`
  * entries; an older pre-commit then rejects the config without saying why (SPEC §7.4).
  */
-async function preCommitVersionProblem(cwd: string, file: string): Promise<Finding | undefined> {
-  const stale = staleMinimumVersion((await readIfExists(join(cwd, file))) ?? "");
+function preCommitVersionProblem(file: string, text: string): Finding | undefined {
+  const stale = staleMinimumVersion(text);
   if (!stale) return undefined;
   const now = stale.found === undefined ? "沒有設定" : `是 ${stale.found}`;
   const message =
     `${file} 的 minimum_pre_commit_version ${now}；devguard 的項目用 language: unsupported，` +
     `需要 pre-commit ${PRE_COMMIT_MIN_VERSION} 以上，請設為 "${PRE_COMMIT_MIN_VERSION}"`;
   return { ...problem("pre-commit-min-version", message), file };
+}
+
+/**
+ * The pre-commit config calls devguard at pre-push without a top-level `default_stages`: the project's own hooks
+ * without `stages` then run on every push (SPEC §7.4, #95). Not a pre-push problem of devguard's, so never only a hint.
+ */
+function preCommitDefaultStagesProblem(file: string, text: string): Finding | undefined {
+  if (!pushRunsProjectHooks(text)) return undefined;
+  const message =
+    `${file} 沒有設定頂層 default_stages；安裝 pre-push hook 型別後，專案中沒寫 stages 的 hook 也會在每次 git push 時執行，` +
+    "請加上 default_stages: [pre-commit]";
+  return { ...problem("pre-commit-default-stages", message), file };
+}
+
+/** What the pre-commit config itself needs for devguard's entries to work as intended (SPEC §7.4). */
+async function preCommitConfigProblems(cwd: string, file: string): Promise<Finding[]> {
+  const text = (await readIfExists(join(cwd, file))) ?? "";
+  const found = [preCommitVersionProblem(file, text), preCommitDefaultStagesProblem(file, text)];
+  return found.filter((f) => f !== undefined);
 }
 
 /**
@@ -162,11 +182,7 @@ export function createGitHooksCheck(options: GitHooksCheckOptions = {}): Environ
       const framework = await detectFramework(cwd);
       const silenced = await hooksPathProblem(cwd, framework, exec);
       if (silenced) return [silenced];
-      const findings: Finding[] = [];
-      if (framework?.name === "pre-commit") {
-        const stale = await preCommitVersionProblem(cwd, framework.file);
-        if (stale) findings.push(stale);
-      }
+      const findings = framework?.name === "pre-commit" ? await preCommitConfigProblems(cwd, framework.file) : [];
       const probes = { entryFor, unwritten: await frameworkHooksNotInstalled(cwd, exec), exec };
       for (const hook of INSTALLED_HOOKS) {
         const found = await hookProblem(cwd, hook, probes);

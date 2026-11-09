@@ -1,0 +1,22 @@
+[INFO] Scanning for projects...
+[WARNING] 
+[WARNING] Some problems were encountered while building the effective model for org.pf4j.demo:pf4j-demo-app:jar:3.17.0-SNAPSHOT
+[WARNING] 'build.plugins.plugin.version' for org.sonatype.central:central-publishing-maven-plugin is missing. @ org.pf4j:pf4j-parent:3.17.0-SNAPSHOT, @ROOT@/pom.xml, line 254, column 21
+[WARNING] 
+[WARNING] It is highly recommended to fix these problems because they threaten the stability of your build.
+[WARNING] 
+[WARNING] For this reason, future Maven versions might no longer support building such malformed projects.
+[WARNING] 
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  0.874 s
+[INFO] Finished at: 2026-11-02T10:15:42+08:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] No plugin found for prefix 'spotless' in the current project and in the plugin groups [org.apache.maven.plugins, org.codehaus.mojo] available from the repositories [local (@HOME@/.m2/repository), central (https://repo.maven.apache.org/maven2)] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/NoPluginFoundForPrefixException

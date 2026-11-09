@@ -1,12 +1,14 @@
-import { valueInForce, type Resolution } from "../declaration/resolve.ts";
+import { valueInForce, type Resolution, type ResolvedComponent } from "../declaration/resolve.ts";
 import { parseConfigText } from "../fix/edit.ts";
 import type { Printed } from "../fix/plan.ts";
 import { repoReader } from "../shared/fs.ts";
 import { isRecord } from "../shared/guards.ts";
+import type { ItemDef } from "../standard/types.ts";
 import { searchDirs } from "./config-files.ts";
 
 /** The Python type checkers a standard may allow for `typecheck.tool` (SPEC §6.1). */
-export type TypeChecker = "mypy" | "pyright" | "basedpyright";
+export const TYPE_CHECKERS = ["mypy", "pyright", "basedpyright"] as const;
+export type TypeChecker = (typeof TYPE_CHECKERS)[number];
 
 /**
  * The pyright-based type checkers: they share pyright's settings format (`typeCheckingMode`, `pythonVersion`,
@@ -27,9 +29,14 @@ export interface TypeCheckerConfig {
   where: string;
   /** The type checkers that read it: pyrightconfig.json is read by pyright and basedpyright alike. */
   tools: readonly TypeChecker[];
+  /** It sets pyright's `typeCheckingMode = "off"`, so it checks no types (#114). */
+  off: boolean;
 }
 
-const PYPROJECT_TABLES: readonly TypeChecker[] = ["mypy", "pyright", "basedpyright"];
+/** Whether pyright-format settings turn type checking off: `typeCheckingMode = "off"` (#114). */
+export function typeCheckingOff(settings: unknown): boolean {
+  return isRecord(settings) && settings.typeCheckingMode === "off";
+}
 
 const OWN_FILES: readonly (readonly [string, readonly TypeChecker[]])[] = [
   ["mypy.ini", ["mypy"]],
@@ -46,22 +53,31 @@ function pyprojectTool(doc: unknown): Record<string, unknown> | undefined {
  * The type checker settings in the component directory `dir` (normalized, "" for the repo root): the `[tool.mypy]`,
  * `[tool.pyright]` and `[tool.basedpyright]` tables of its pyproject.toml, then mypy.ini / .mypy.ini and
  * pyrightconfig.json. `read` returns a repo-relative file's text, or undefined when it does not exist.
+ * pyright and basedpyright take a pyrightconfig.json over a pyproject.toml table in the same directory, so a table
+ * counts as off when that file turns type checking off, whatever the table says (#114).
  */
 export async function typeCheckerConfigs(
   dir: string,
   read: (file: string) => Promise<string | undefined>,
 ): Promise<TypeCheckerConfig[]> {
   const configs: TypeCheckerConfig[] = [];
+  const pyrightText = await read(`${dir}pyrightconfig.json`);
+  const pyrightJson = pyrightText === undefined ? undefined : parseConfigText("pyrightconfig.json", pyrightText);
+  const pyrightOff = (table: unknown) => typeCheckingOff(pyrightText === undefined ? table : pyrightJson);
   const pyproject = `${dir}pyproject.toml`;
   const text = await read(pyproject);
   const doc = text === undefined ? undefined : parseConfigText("pyproject.toml", text);
   const tool = pyprojectTool(doc) ?? {};
-  for (const checker of PYPROJECT_TABLES) {
-    if (isRecord(tool[checker])) configs.push({ file: pyproject, where: `[tool.${checker}]`, tools: [checker] });
+  for (const checker of TYPE_CHECKERS) {
+    const table = tool[checker];
+    if (!isRecord(table)) continue;
+    const off = isPyrightTool(checker) && pyrightOff(table);
+    configs.push({ file: pyproject, where: `[tool.${checker}]`, tools: [checker], off });
   }
   for (const [name, tools] of OWN_FILES) {
     const file = dir + name;
-    if ((await read(file)) !== undefined) configs.push({ file, where: name, tools });
+    if ((await read(file)) === undefined) continue;
+    configs.push({ file, where: name, tools, off: tools.some(isPyrightTool) && pyrightOff(undefined) });
   }
   return configs;
 }
@@ -167,6 +183,24 @@ function declareInstead(tool: TypeChecker, allowed: readonly string[]): string {
   return `typecheck.tool: ${tool}（目前宣告的標準不允許，需先以 devguard standard upgrade 升級）`;
 }
 
+/** The type checker a Python component declares (`typecheck.tool` in force for it, given the standard's `item`). */
+export function declaredTypeChecker(c: ResolvedComponent, item: ItemDef | undefined): string {
+  const inForce = valueInForce(item?.value, c.effective["typecheck.tool"]);
+  return typeof inForce === "string" ? inForce : "mypy";
+}
+
+const TYPE_CHECKER_RANGES: ReadonlySet<string> = new Set(TYPE_CHECKERS.map((tool) => `tools.${tool}`));
+
+/**
+ * Whether the version range `key` (`tools.<tool>`) applies to a component of `language` (#113): of the Python type
+ * checkers only the declared one's does, since a project on basedpyright may still lock a mypy the standard's range
+ * does not allow. Every other range applies.
+ */
+export function rangeApplies(key: string, c: ResolvedComponent, defs: Readonly<Record<string, ItemDef>>): boolean {
+  if (c.language !== "python" || !TYPE_CHECKER_RANGES.has(key)) return true;
+  return key === `tools.${declaredTypeChecker(c, defs["typecheck.tool"])}`;
+}
+
 /**
  * What `install` warns about (#68): each type checker setting of a Python component that the declared
  * `typecheck.tool` does not read, with how to declare the configured checker instead. The declaration is left as is.
@@ -176,8 +210,7 @@ export async function otherTypeCheckers(cwd: string, resolution: Resolution): Pr
   const allowed = item?.allowed ?? [];
   const printed: Printed[] = [];
   for (const c of resolution.components.filter((c) => c.language === "python")) {
-    const inForce = valueInForce(item?.value, c.effective["typecheck.tool"]);
-    const declared = typeof inForce === "string" ? inForce : "mypy";
+    const declared = declaredTypeChecker(c, item);
     for (const config of await typeCheckerConfigs(c.dir, repoReader(cwd))) {
       if (config.tools.some((t) => t === declared)) continue;
       const lines = [
