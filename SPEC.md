@@ -306,7 +306,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | 項目 | 預設值 | 落地方式 |
 |---|---|---|
 | `go.minVersion` | 1.26（`go.mod` 較高時以專案為準） | `go.mod` |
-| `lint.tool` | golangci-lint v2，**≥2.12** | golangci-lint 採用的設定檔（`version: "2"`）：從元件目錄往上到 repo 根目錄，最近一層有設定檔的目錄，同層依 `.golangci.json` > `.golangci.toml` > `.golangci.yaml` > `.golangci.yml` 取第一份。檢查與修正都針對這一份並沿用它的格式；同層有多份時提示其他的會被忽略；整條路徑都沒有時才建立 `.golangci.yml` |
+| `lint.tool` | golangci-lint v2，**≥2.12** | golangci-lint 採用的設定檔（`version: "2"`）：從元件目錄往上到 repo 根目錄，最近一層有設定檔的目錄，同層依 `.golangci.json` > `.golangci.toml` > `.golangci.yaml` > `.golangci.yml` 取第一份。檢查與修正都針對這一份並沿用它的格式；同層有多份時提示其他的會被忽略；整條路徑都沒有時才建立 `.golangci.yml`。不是 v2 格式時只回報 `settings/golangci-version`（先 `golangci-lint migrate` 再重新 check），不檢查其他設定、不修正（#86） |
 | `lint.rules` | v2 預設組加上 `gosec, revive, errorlint, bodyclose, misspell, cyclop, gocognit, gomodguard_v2, depguard` | `linters.enable`；depguard 一定要寫明確規則 |
 | `format.tools` | gofumpt + goimports（風格） | golangci-lint formatters；gopls `formatting.gofumpt` |
 | `complexity.cyclomatic` / `cognitive` | 10 / 15 | `cyclop.max-complexity`（預設 10）/ `gocognit.min-complexity`，**必須明確設為 15**（預設 30） |

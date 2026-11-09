@@ -93,6 +93,14 @@ default = true
     expect(out).toContain("max-complexity: 10");
   });
 
+  it("Go: leaves a golangci-lint v1 config as it is (#86)", async () => {
+    const golangci =
+      "linters:\n  enable-all: true\n  disable:\n    - lll\nlinters-settings:\n  cyclop:\n    max-complexity: 30\n";
+    const dir = repo({ ".devguard.yaml": decl("go"), ".golangci.yml": golangci, "go.mod": "module x\n\ngo 1.26\n" });
+    expect(await runFix({ cwd: dir, today: TODAY, io: YES })).toBe(0);
+    expect(read(dir, ".golangci.yml")).toBe(golangci);
+  });
+
   it("Go: edits the .golangci.toml golangci-lint uses instead of creating a .golangci.yml", async () => {
     const golangci = '# team lint\nversion = "2"\n\n[linters]\nenable = ["gosec"] # more below\n';
     const dir = repo({ ".devguard.yaml": decl("go"), ".golangci.toml": golangci, "go.mod": "module x\n\ngo 1.26\n" });
