@@ -89,6 +89,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 - 四種格式套用同樣的檢查與 rule id；finding 的 `file` 是採用的那一份，能取得行號時附上（TOML 目前沒有行號）。
 - `devguard fix` 沿用採用的那一份的格式修改它（TOML 就改 TOML、JSON 就改 JSON）。只有整條路徑上都沒有任何 golangci 設定檔時，才回報 `settings/golangci-missing` 並建立 `.golangci.yml`。
 - 語法錯誤依格式回報 `settings/golangci-yaml-syntax`、`settings/golangci-toml-syntax` 或 `settings/golangci-json-syntax`，不當成缺檔，也不自動修正。
+- 不是 v2 格式（沒有 `version`、`version: "1"` 或其他值）時，這份檔案**只**回報 `settings/golangci-version`，不檢查 linter、門檻、depguard、formatter，也沒有自動修正，所以 `fix` 不會改動 v1 設定檔（v1 的 `enable-all`、`linters-settings` 與 v2 的寫法不同，寫入 v2 的鍵只會得到一份 golangci-lint 無法載入的檔案）。先執行 `golangci-lint migrate`，再重新執行 `devguard check`。`go.mod` 照常檢查。
 - 同一層有不只一份時，回報 `hint` `settings/golangci-multiple`，說明 golangci-lint 採用哪一份、其他的會被忽略。
 
 ### 執行方式
