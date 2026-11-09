@@ -119,7 +119,27 @@ export function readYarnLock(text: string): Map<string, string> {
   return versions;
 }
 
-/** The lockfile a TypeScript component's packages are installed from: npm, pnpm or yarn, up to the workspace root. */
+/** A Bun package id: `name@1.2.3` or `@scope/name@1.2.3`; `name@workspace:…` and other non-registry ids do not match. */
+const BUN_ID = /^((?:@[^/@]+\/)?[^/@]+)@(\d\S*)$/;
+
+/**
+ * Hoisted packages from Bun's text `bun.lock` (JSONC with trailing commas, checked on Bun 1.4.4): each `packages`
+ * entry is `[id, …]`. Its key is the package name for the copy the project runs, `parent/name` for one nested under
+ * another package, which is skipped.
+ */
+export function readBunLock(text: string): Map<string, string> {
+  const doc = parseConfigText("bun.lock.jsonc", text);
+  const packages = isRecord(doc) && isRecord(doc.packages) ? doc.packages : {};
+  return new Map(
+    Object.entries(packages).flatMap(([key, entry]): [string, string][] => {
+      const id: unknown = Array.isArray(entry) ? entry[0] : undefined;
+      const m = typeof id === "string" ? BUN_ID.exec(id) : null;
+      return m?.[1] === key && m[2] ? [[key, m[2]]] : [];
+    }),
+  );
+}
+
+/** The lockfile a TypeScript component's packages are installed from: npm, pnpm, yarn or Bun, up to the workspace root. */
 function typescript(dir: string, read: ReadRepoFile): Pinned | undefined {
   for (const base of upwards(dir)) {
     const sub = dir.slice(base.length);
@@ -132,6 +152,8 @@ function typescript(dir: string, read: ReadRepoFile): Pinned | undefined {
     if (pnpm !== undefined) return { file: base + "pnpm-lock.yaml", versions: readPnpmLock(pnpm, sub) };
     const yarn = read(base + "yarn.lock");
     if (yarn !== undefined) return { file: base + "yarn.lock", versions: readYarnLock(yarn) };
+    const bun = read(base + "bun.lock");
+    if (bun !== undefined) return { file: base + "bun.lock", versions: readBunLock(bun) };
   }
   return undefined;
 }

@@ -161,6 +161,39 @@ describe("deps layer: TypeScript lockfile", () => {
     const mixed = await check({ declaration: pnpm, files: { "package-lock.json": "{}", "bun.lock": "" } });
     expect(mixed.findings[0]?.message).toBe("沒有提交 pnpm-lock.yaml");
   });
+
+  const team14 = (overrides = "") => decl("typescript", "web/", overrides).replace("team@1.0.0", "team@1.4.0");
+  const bun = "      deps.manager: bun\n";
+
+  it("accepts bun.lock, up to the workspace root, for deps.manager: bun on team@1.4.0 (#138)", async () => {
+    expect((await check({ declaration: team14(bun), files: { "web/bun.lock": "{}" } })).findings).toEqual([]);
+    expect((await check({ declaration: team14(bun), files: { "bun.lock": "{}" } })).findings).toEqual([]);
+    const npmOnly = await check({ declaration: team14(bun), files: { "package-lock.json": "{}" } });
+    expect(summary(npmOnly.findings)).toEqual(["error:deps/lockfile-missing:web/ (TypeScript):web/bun.lock"]);
+  });
+
+  it("does not count the binary bun.lockb, and says how to convert it (#138)", async () => {
+    const { findings } = await check({ declaration: team14(bun), files: { "web/bun.lockb": "\u0000" } });
+    expect(summary(findings)).toEqual(["error:deps/lockfile-missing:web/ (TypeScript):web/bun.lock"]);
+    expect(findings[0]?.message).toContain("web/bun.lockb 是 Bun 1.2 之前的二進位格式");
+    expect(findings[0]?.message).toContain("bun install --save-text-lockfile");
+  });
+
+  it("says to set deps.manager: bun when the standard allows it and only bun.lock is there (#138)", async () => {
+    const { findings } = await check({ declaration: team14(), files: { "web/bun.lock": "{}" } });
+    expect(summary(findings)).toEqual(["error:deps/lockfile-missing:web/ (TypeScript):web/package-lock.json"]);
+    expect(findings[0]?.message).toBe(
+      "沒有提交 web/package-lock.json（偵測到 Bun（web/bun.lock）：把 deps.manager 設成 bun）",
+    );
+  });
+
+  it("keeps team@1.3.0 as it was: deps.manager: bun still needs package-lock.json (#138)", async () => {
+    const declaration = team14(bun).replace("team@1.4.0", "team@1.3.0");
+    const { findings } = await check({ declaration, files: { "web/bun.lock": "{}" } });
+    const lockfile = findings.filter((f) => f.rule === "deps/lockfile-missing");
+    expect(lockfile.map((f) => f.file)).toEqual(["web/package-lock.json"]);
+    expect(lockfile[0]?.message).toContain("Bun 不是允許的套件管理工具（允許 npm／pnpm／yarn）");
+  });
 });
 
 const GO_MOD = "module example.com/app\n\ngo 1.26\n\nrequire (\n\tgithub.com/google/uuid v1.6.0\n)\n";

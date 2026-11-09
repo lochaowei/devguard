@@ -239,6 +239,11 @@ const CHOICE_RULES: Readonly<Record<Language, (p: FileProbe) => [boolean, string
     [p.nearest(JEST_CONFIGS, VITEST_CONFIGS), "test.tool", "jest"],
     [p.nearest(["pnpm-lock.yaml"], ["package-lock.json", "npm-shrinkwrap.json"]), "deps.manager", "pnpm"],
     [p.nearest(["yarn.lock"], ["package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml"]), "deps.manager", "yarn"],
+    [
+      p.nearest(["bun.lock"], ["package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock"]),
+      "deps.manager",
+      "bun",
+    ],
   ],
   java: (p) => [[p.javaBuild?.tool === "gradle", "build.tool", "gradle"]],
 };

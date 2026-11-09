@@ -3,7 +3,14 @@ import { isDependencyFile } from "../src/deps/manifests.ts";
 
 describe("dependency files (pre-commit runs the deps rules only when one is staged, SPEC §7.1)", () => {
   it("recognises manifests and lockfiles in any directory", () => {
-    for (const f of ["package.json", "web/pnpm-lock.yaml", "api/requirements-dev.txt", "go.sum", "svc/pom.xml"]) {
+    for (const f of [
+      "package.json",
+      "web/pnpm-lock.yaml",
+      "api/requirements-dev.txt",
+      "go.sum",
+      "svc/pom.xml",
+      "web/bun.lock",
+    ]) {
       expect(isDependencyFile(f)).toBe(true);
     }
   });

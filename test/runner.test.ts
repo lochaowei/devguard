@@ -309,6 +309,8 @@ describe("tool runner: TypeScript", () => {
     expect((await missing(fakeRunner(files).runner.run(web))).install).toBe("cd web && pnpm install");
     const bare = req({ language: "typescript", tool: "eslint", dir: "web/" });
     expect((await missing(fakeRunner({}).runner.run(bare))).install).toBe("cd web && npm install");
+    const bun = req({ language: "typescript", tool: "eslint", dir: "web/", manager: "bun" });
+    expect((await missing(fakeRunner(files).runner.run(bun))).install).toBe("cd web && bun install");
   });
 
   it("runs node_modules/.bin/<tool> elsewhere", async () => {

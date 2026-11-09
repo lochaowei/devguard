@@ -1,12 +1,15 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runCheck } from "../src/check.ts";
 import { draftDeclaration } from "../src/draft.ts";
 import { declarationLayer } from "../src/layers/declaration.ts";
+import { createDepsLayer } from "../src/layers/deps.ts";
 import { toolVersionsLayer } from "../src/layers/tool-versions.ts";
 import { rules, TODAY } from "./helpers.ts";
 import { noTools, read, repo, upgrade } from "./standard-helpers.ts";
 
-// team@1.4.0 as this CLI bundles it (#113): mypy 2.x is in range.
+// team@1.4.0 as this CLI bundles it: mypy 2.x is in range (#113); Bun is an allowed TypeScript deps.manager (#138).
 
 const uvLock = (packages: Record<string, string>) =>
   "version = 1\n" +
@@ -88,5 +91,52 @@ describe("only the declared type checker's range is checked, in every standard (
     expect(await versionFindings(declaration, uvLock({ basedpyright: "1.0.0" }))).toEqual([
       "error:tool-version/out-of-range",
     ]);
+  });
+});
+
+/** The start of elysia's real bun.lock (Bun is its only package manager); the package entries are trimmed and their hashes shortened. */
+const BUN_LOCK = readFileSync(join(import.meta.dirname, "fixtures/typescript/bun.lock"), "utf8");
+
+const bunProject = (standard: string) =>
+  repo({
+    ".devguard.yaml":
+      `standard: ${standard}\ncomponents:\n  - path: ./\n    language: typescript\n` +
+      "    overrides:\n      deps.manager: bun\n",
+    "package.json": '{ "name": "elysia" }',
+    "bun.lock": BUN_LOCK,
+  });
+
+const bunFindings = async (standard: string) =>
+  (
+    await runCheck({ cwd: bunProject(standard), today: TODAY, tools: noTools }, [
+      declarationLayer,
+      createDepsLayer({ trackedFiles: () => Promise.resolve(undefined) }),
+      toolVersionsLayer,
+    ])
+  ).findings;
+
+describe("team@1.4.0 allows Bun as the TypeScript deps.manager (#138)", () => {
+  it("counts bun.lock as the lockfile and checks the tool versions it locks", async () => {
+    const findings = await bunFindings("team@1.4.0");
+    // elysia locks ESLint 9.39.1 and TypeScript 5.9.3; team@1.4.0 asks for ESLint 10 and TypeScript 6.
+    expect(rules(findings)).toEqual(["error:tool-version/out-of-range", "error:tool-version/out-of-range"]);
+    expect(findings.map((f) => f.file)).toEqual(["bun.lock", "bun.lock"]);
+    const messages = findings.map((f) => f.message);
+    expect(messages[0]).toMatch(/eslint.*9\.39\.1/);
+    expect(messages[1]).toMatch(/typescript.*5\.9\.3/);
+  });
+
+  it("leaves team@1.3.0 as it was: bun is not an allowed deps.manager", async () => {
+    const findings = await bunFindings("team@1.3.0");
+    const declared = findings.filter((f) => f.file === ".devguard.yaml").map((f) => f.message);
+    expect(declared.some((m) => m.includes("bun"))).toBe(true);
+    expect(rules(findings)).toContain("error:deps/lockfile-missing");
+  });
+
+  it("draft writes deps.manager: bun for a project with only bun.lock", async () => {
+    const files = { "package.json": '{ "name": "elysia" }', "bun.lock": BUN_LOCK, "src/index.ts": "" };
+    const { text } = await draftDeclaration({ cwd: repo(files), today: TODAY, files: Object.keys(files) });
+    expect(text).toContain("standard: team@1.4.0");
+    expect(text).toContain("deps.manager: bun");
   });
 });
