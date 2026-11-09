@@ -263,6 +263,36 @@ default = true
     expect(after.map((f) => f.rule)).toContain("settings/java-plugin-missing");
   });
 
+  it("Java: generates checkstyle.xml from google_checks.xml minus palantir's layout modules (#131)", async () => {
+    const dir = repo({ ".devguard.yaml": decl("java"), "pom.xml": "<project/>\n", mvnw: "", "mvnw.cmd": "" });
+    await runFix({ cwd: dir, today: TODAY, io: YES });
+    const xml = read(dir, "checkstyle.xml");
+    const modules = [...xml.matchAll(/<module name="([^"]+)"/g)].map((m) => m[1]);
+    expect(modules).toEqual(
+      expect.arrayContaining(["MemberName", "AvoidStarImport", "JavadocMethod", "SummaryJavadoc"]),
+    );
+    // Properties of the declared standard, after the google modules.
+    expect(xml).toContain('<module name="CyclomaticComplexity">\n      <property name="max" value="10"/>');
+    expect(xml).toContain('<property name="illegalPkgs" value="sun"/>');
+    expect(modules.slice(-2)).toEqual(["CyclomaticComplexity", "IllegalImport"]);
+    for (const layout of [
+      "LineLength",
+      "Indentation",
+      "OperatorWrap",
+      "SeparatorWrap",
+      "WhitespaceAround",
+      "WhitespaceAfter",
+      "CustomImportOrder",
+    ]) {
+      expect(modules).not.toContain(layout);
+    }
+    expect(xml).toContain("由 CLI 產生");
+    expect(xml).toContain("checkstyle-10.21.0/src/main/resources/google_checks.xml");
+    expect(xml).toContain("LGPL-2.1");
+    expect(xml).toContain("${org.checkstyle.google.severity}");
+    expect((await check(dir)).filter((f) => f.file === "checkstyle.xml")).toEqual([]);
+  });
+
   it("Java: never overwrites a checkstyle.xml or PMD ruleset devguard did not generate, prints what to add (#100)", async () => {
     const checkstyle = [
       '<?xml version="1.0"?>',
