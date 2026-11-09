@@ -42,7 +42,8 @@ function shown(cwd: string, path: string): string {
 
 /**
  * The hook files to write: a missing or modified devguard hook is (re)generated; a hook devguard did not write is
- * left alone and the line to add is printed instead, unless it already calls devguard where the call runs.
+ * left alone and the line to add is printed instead, unless it already calls devguard where the call runs or may run
+ * (after a loaded script other than husky.sh, which doctor lists only as a hint, #163).
  */
 export async function planHooks(
   cwd: string,
@@ -56,7 +57,8 @@ export async function planHooks(
     const after = renderHookFile(hook, options);
     const file = shown(cwd, path);
     if (before !== "" && inspectHookFile(before).kind === "foreign") {
-      if (devguardCall(before, hook).kind === "runs") continue;
+      const call = devguardCall(before, hook).kind;
+      if (call === "runs" || call === "uncertain") continue;
       plan.printed.push({
         file,
         category: "hook",

@@ -17,6 +17,18 @@ export const lefthookWrote = (hook: GitHookName): string =>
  */
 export const HUSKY_V4_HOOK = readFileSync(new URL("./fixtures/husky-v4/pre-commit", import.meta.url), "utf8");
 
+/**
+ * The hook husky 4.0.0–4.0.10 wrote (`getScript.ts`, 4.0.10 with npm), paths made generic: the whole script inline,
+ * ending in a `case` whose `run_command` exits with husky's status, so nothing after it runs (#163).
+ */
+export const HUSKY_V40_HOOK = readFileSync(new URL("./fixtures/husky-v4.0/pre-commit", import.meta.url), "utf8");
+
+/**
+ * The hook husky 1–3 wrote (`getScript.ts`, 3.1.0 on Linux), paths made generic: it ends with an `if` that runs husky
+ * and does not exit, so a line added at the end runs (#163).
+ */
+export const HUSKY_V3_HOOK = readFileSync(new URL("./fixtures/husky-v3/pre-commit", import.meta.url), "utf8");
+
 /** `text` with `line` put right after its first line (the `#!` line). */
 export const afterShebang = (text: string, line: string): string => text.replace(/\n/, `\n${line}\n`);
 
