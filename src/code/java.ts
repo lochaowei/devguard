@@ -1,5 +1,6 @@
 import type { Finding, Level } from "../report/finding.ts";
 import { descendants, parseXmlText, type XmlEl } from "../xml/parse.ts";
+import { javaBuildTool, type BuildTool } from "../settings/java/build.ts";
 import { mavenReportDirs } from "../settings/java/modules.ts";
 import { codeFinding, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
@@ -81,11 +82,12 @@ async function readReport(
   return parse(target, ctx, parsed.root);
 }
 
-type Build = "maven" | "gradle";
+type Build = BuildTool;
 
-/** Maven when the component has a pom.xml, otherwise Gradle; the tool runner then picks the matching wrapper. */
-async function buildOf(target: CodeTarget, ctx: CodeCheckContext): Promise<Build> {
-  return (await ctx.readText(`${target.dir}pom.xml`)) === undefined ? "gradle" : "maven";
+/** The component's build tool (`javaBuildTool`); the tool runner then runs the matching wrapper. */
+function buildOf(target: CodeTarget, ctx: CodeCheckContext): Promise<Build> {
+  const declared = target.overrides?.has("build.tool") === true ? target.effective["build.tool"] : undefined;
+  return javaBuildTool(target.dir, declared, async (p) => (await ctx.readText(p)) !== undefined);
 }
 
 const GRADLE_REPORTS: readonly [string, string, ReportParser][] = [

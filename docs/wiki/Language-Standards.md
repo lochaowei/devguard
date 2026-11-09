@@ -206,7 +206,8 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 
 ### 執行方式
 
-- **工具執行器**：元件目錄或上層目錄的 `./mvnw`（`mvnw.cmd`）或 `./gradlew`（`gradlew.bat`）。
+- **建置工具**：宣告的 `build.tool` 優先；沒有宣告時，只有 `pom.xml` 是 Maven，只有 `build.gradle(.kts)`／`settings.gradle(.kts)` 是 Gradle；兩者都有時，只提交了 `gradlew` 是 Gradle，其餘是 Maven。設定、程式碼、測試與依賴檢查都用同一個判斷。
+- **工具執行器**：元件目錄或上層目錄中**該建置工具**的 wrapper，Maven 是 `./mvnw`（`mvnw.cmd`），Gradle 是 `./gradlew`（`gradlew.bat`）。找不到時回報缺少 wrapper（安裝提示 `mvn -N wrapper:wrapper` 或 `gradle wrapper`），不會改用另一種建置工具的 wrapper。
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
   - Maven plugins：`maven-checkstyle-plugin`（`>=3.6,<4`）、`maven-pmd-plugin`（`>=3.26,<4`）、`spotless-maven-plugin`（`>=2.44,<3`；`team@1.1.0`：`>=2.44,<4`）、`jacoco-maven-plugin`（`>=0.8.12,<0.9`）、`maven-enforcer-plugin`（`>=3.5,<4`）
   - Gradle plugin 與 `toolVersion`：`spotless-gradle-plugin` / `com.diffplug.spotless`（`>=7,<8`；`team@1.1.0`：`>=7,<9`）、`checkstyle`（`>=10.21,<11`；`team@1.1.0`：`>=10.21,<15`）、`pmd`（`>=7,<8`）、`jacoco`（`>=0.8.12,<0.9`）

@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { ResolvedComponent } from "../declaration/resolve.ts";
 import { directDependencies, isBanned } from "../deps/manifests.ts";
+import { componentBuildTool } from "../settings/java/build.ts";
 import type { Finding, Level } from "../report/finding.ts";
 import { listTrackedFiles } from "../repo/files.ts";
 import type { ToolRunner } from "../tools/runner.ts";
@@ -124,9 +125,7 @@ async function javaLockfile(s: Scope, emit: Emit): Promise<void> {
   const { dir } = s.component;
   const pom = `${dir}pom.xml`;
   const text = await s.read(pom);
-  const hasGradle = s.exists(`${dir}build.gradle`) || s.exists(`${dir}build.gradle.kts`);
-  const useGradle = text === undefined && (hasGradle || effective(s.component, "build.tool") === "gradle");
-  if (useGradle) {
+  if ((await componentBuildTool(s.component, s.exists)) === "gradle") {
     requireCommitted(
       s,
       emit,

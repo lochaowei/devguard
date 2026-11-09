@@ -1,13 +1,14 @@
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { stringify } from "yaml";
+import { Document, isNode, isSeq } from "yaml";
 import { runCheck } from "./check.ts";
 import { compareToDefault } from "./declaration/compare.ts";
 import { withoutIgnored } from "./declaration/ignore.ts";
 import { displayDir, normalizePath } from "./declaration/path.ts";
 import { resolveDeclaration, type Resolution } from "./declaration/resolve.ts";
 import { DECLARATION_FILE } from "./declaration/types.ts";
+import { inferBuildTool, type InferredBuildTool } from "./settings/java/build.ts";
 import { pythonSettingsLayer } from "./layers/settings-python.ts";
 import { goSettingsLayer } from "./layers/settings-go.ts";
 import { javaSettingsLayer } from "./layers/settings-java.ts";
@@ -97,12 +98,15 @@ interface FileProbe {
   nearest: (win: readonly string[], lose?: readonly string[]) => boolean;
   /** The type checkers only the component's own settings are for (a `[tool.basedpyright]` table, a mypy.ini). */
   typeCheckers: ReadonlySet<TypeChecker>;
+  /** A Java component's build tool, as its build files and wrappers point to it (`inferBuildTool`). */
+  javaBuild?: InferredBuildTool;
 }
 
 /** What the draft knows of the repo's files: which exist, and each Python component's type checker settings. */
 interface DraftFiles {
   present: ReadonlySet<string>;
   typeCheckers: ReadonlyMap<string, ReadonlySet<TypeChecker>>;
+  javaBuilds: ReadonlyMap<string, InferredBuildTool>;
 }
 
 const CHOICE_RULES: Readonly<Record<Language, (p: FileProbe) => [boolean, string, string][]>> = {
@@ -119,7 +123,7 @@ const CHOICE_RULES: Readonly<Record<Language, (p: FileProbe) => [boolean, string
     [p.nearest(["pnpm-lock.yaml"], ["package-lock.json", "npm-shrinkwrap.json"]), "deps.manager", "pnpm"],
     [p.nearest(["yarn.lock"], ["package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml"]), "deps.manager", "yarn"],
   ],
-  java: (p) => [[p.nearest(["build.gradle", "build.gradle.kts"], ["pom.xml"]), "build.tool", "gradle"]],
+  java: (p) => [[p.javaBuild?.tool === "gradle", "build.tool", "gradle"]],
 };
 
 function nearestChoice(
@@ -140,6 +144,7 @@ function inferToolChoices(c: DraftComponent, files: DraftFiles): Record<string, 
   const probe: FileProbe = {
     nearest: (win, lose) => nearestChoice(c.dir, files.present, win, lose),
     typeCheckers: files.typeCheckers.get(c.dir) ?? new Set(),
+    javaBuild: files.javaBuilds.get(c.dir),
   };
   return Object.fromEntries(
     CHOICE_RULES[c.language](probe)
@@ -203,6 +208,33 @@ async function pythonTypeCheckers(
   return found;
 }
 
+/** Per Java component directory, the build tool its files point to (`inferBuildTool`). */
+async function javaBuilds(
+  components: readonly DraftComponent[],
+  present: ReadonlySet<string>,
+): Promise<Map<string, InferredBuildTool>> {
+  const found = new Map<string, InferredBuildTool>();
+  for (const c of components.filter((c) => c.language === "java")) {
+    found.set(c.dir, await inferBuildTool(c.dir, (p) => present.has(p)));
+  }
+  return found;
+}
+
+const AMBIGUOUS_BUILD = " 同時有 pom.xml 與 build.gradle，預設為 maven，請確認 build.tool";
+
+/** The draft's YAML, with a note on each component whose build tool the files leave open (#96). */
+function draftYaml(doc: { components: unknown[] }, ambiguous: ReadonlySet<number>): string {
+  const yaml = new Document(doc);
+  const items = yaml.get("components");
+  if (isSeq(items)) {
+    for (const i of ambiguous) {
+      const item = items.items[i];
+      if (isNode(item)) item.commentBefore = AMBIGUOUS_BUILD;
+    }
+  }
+  return yaml.toString();
+}
+
 /** A draft `.devguard.yaml` for a project that has none, from the components and tool settings found (SPEC §4.3). */
 export async function draftDeclaration(options: DraftOptions): Promise<Draft> {
   const { cwd, today } = options;
@@ -212,7 +244,11 @@ export async function draftDeclaration(options: DraftOptions): Promise<Draft> {
   if (!standard) throw new Error("no bundled standard");
   const present = new Set(listed.map(normalizePath));
   const components = inferComponents(listed);
-  const files = { present, typeCheckers: await pythonTypeCheckers(cwd, components, present) };
+  const files: DraftFiles = {
+    present,
+    typeCheckers: await pythonTypeCheckers(cwd, components, present),
+    javaBuilds: await javaBuilds(components, present),
+  };
   const resolution = defaultResolution(components, standard, today, files);
   const seed: CheckLayer = { id: "draft", run: () => Promise.resolve({ findings: [], resolution }) };
   const { findings } = await runCheck({ cwd, today, listFiles: () => Promise.resolve([...listed]) }, [
@@ -238,7 +274,8 @@ export async function draftDeclaration(options: DraftOptions): Promise<Draft> {
     }),
     ...(ignore.length > 0 ? { ignore: [...ignore] } : {}),
   };
-  return { text: HEADER + stringify(doc), components };
+  const ambiguous = resolution.components.flatMap((c, i) => (files.javaBuilds.get(c.dir)?.ambiguous ? [i] : []));
+  return { text: HEADER + draftYaml(doc, new Set(ambiguous)), components };
 }
 
 const HEADER = `# 由 devguard draft 依既有的工具設定產生的草稿（SPEC §4.3）。

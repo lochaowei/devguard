@@ -50,7 +50,9 @@ $ devguard draft
    | TypeScript | `lint.tool: biome` | 有 `biome.json(c)`（比 `eslint.config.*` 近） |
    | TypeScript | `test.tool: jest` | 有 `jest.config.*`（比 `vitest.config.*` 近） |
    | TypeScript | `deps.manager: pnpm` / `yarn` | 有 `pnpm-lock.yaml` / `yarn.lock`（比 `package-lock.json` 近） |
-   | Java | `build.tool: gradle` | 有 `build.gradle(.kts)`（比 `pom.xml` 近） |
+   | Java | `build.tool: gradle` | 元件目錄只有 Gradle 建置檔（`build.gradle(.kts)`、`settings.gradle(.kts)`）沒有 `pom.xml`；兩者都有時，只提交了 `gradlew`（元件目錄或上層）而沒有 `mvnw` |
+
+   Java 元件同時有 `pom.xml` 與 Gradle 建置檔，而 wrapper 無法區分（兩種都有或都沒有）時，預設為 maven，並在草稿的該元件上方加註解 `# 同時有 pom.xml 與 build.gradle，預設為 maven，請確認 build.tool`。
 
 4. **讀取既有設定的值**：重用各語言設定檢查層的讀取邏輯，與預設標準比較：
    - 與預設相同：省略。

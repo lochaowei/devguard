@@ -1,6 +1,7 @@
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Finding } from "../report/finding.ts";
+import { javaBuildTool } from "../settings/java/build.ts";
 import { mavenReportDirs } from "../settings/java/modules.ts";
 import { parseXmlText } from "../xml/parse.ts";
 import {
@@ -56,12 +57,11 @@ const GRADLE: Build = {
   },
 };
 
-/** Maven when the component has a pom.xml, Gradle when it has a build script, otherwise what the declaration says. */
+/** The component's build tool (`javaBuildTool`). */
 async function buildOf(target: TestTarget, ctx: TestContext): Promise<Build> {
-  const has = async (f: string) => (await readReport(join(ctx.cwd, target.dir, f))) !== undefined;
-  if (await has("pom.xml")) return MAVEN;
-  if ((await has("build.gradle")) || (await has("build.gradle.kts"))) return GRADLE;
-  return target.effective["build.tool"] === "gradle" ? GRADLE : MAVEN;
+  const declared = target.overrides.has("build.tool") ? target.effective["build.tool"] : undefined;
+  const has = async (p: string) => (await readReport(join(ctx.cwd, p))) !== undefined;
+  return (await javaBuildTool(target.dir, declared, has)) === "gradle" ? GRADLE : MAVEN;
 }
 
 const COUNTERS: Readonly<Record<string, CoverageMetric>> = { LINE: "lines", BRANCH: "branches" };

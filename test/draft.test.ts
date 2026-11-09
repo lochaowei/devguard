@@ -178,6 +178,29 @@ describe("draftDeclaration: other languages", () => {
     });
   });
 
+  describe("Java build tool with both pom.xml and build.gradle (#96)", () => {
+    const BOTH = { "pom.xml": "<project/>", "build.gradle": "", "src/main/java/App.java": "" };
+    const NOTE = "同時有 pom.xml 與 build.gradle，預設為 maven，請確認 build.tool";
+    const draftText = async (files: Record<string, string>) =>
+      (await draftDeclaration({ cwd: project(files), today: TODAY, files: Object.keys(files) })).text;
+
+    it("picks the build tool whose wrapper is the only one committed", async () => {
+      // stleary/JSON-java
+      const gradle = await draft({ ...BOTH, gradlew: "", "gradlew.bat": "" });
+      expect(gradle.components[0]?.overrides).toEqual({ "build.tool": "gradle" });
+      const maven = await draft({ ...BOTH, mvnw: "", "mvnw.cmd": "" });
+      expect(maven.components[0]?.overrides).toBeUndefined();
+      expect(await draftText({ ...BOTH, gradlew: "" })).not.toContain(NOTE);
+    });
+
+    it("leaves a note to confirm maven when the wrappers do not tell", async () => {
+      const none = await draftText(BOTH);
+      expect(none).toContain(`# ${NOTE}`);
+      expect((parse(none) as DraftYaml).components[0]?.overrides).toBeUndefined();
+      expect(await draftText({ ...BOTH, gradlew: "", mvnw: "" })).toContain(`# ${NOTE}`);
+    });
+  });
+
   it("infers non-default tool choices from Gradle, pnpm, yarn, poetry, Biome, Jest, and Pyright files", async () => {
     const d = await draft({
       "gradle-app/build.gradle.kts": "",
