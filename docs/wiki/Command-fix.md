@@ -93,6 +93,8 @@ checkstyle.xml：這份檔案不是 devguard 產生的，不會覆寫；請自�
     </module>
 ```
 
+**建立 `tsconfig.json` 時排除子元件：** TypeScript 元件沒有 `tsconfig.json`、底下又有其他 TypeScript 元件（例如宣告了 monorepo 根目錄 `./` 與 `packages/*`）時，`fix` 建立的 `tsconfig.json` 加上 `exclude`，列出子元件的目錄與 `node_modules`，讓 `tsc` 不把子元件與依賴的檔案算進這個元件（#125）。沒有子元件時不寫 `exclude`。
+
 檔案不存在、空白，或帶有 `由 CLI 產生` 檔頭時，照常整份重新產生。要讓 devguard 接手一份自己寫的檔案，請刪除它再執行 `fix`。
 
 `check` 的報告會說明每筆問題屬於哪一種：`可用 fix 修正：devguard fix（…）` 表示 `fix` 會自動寫入；`（devguard fix 會印出要套用的片段，不會自動修改）` 表示屬於 `snippet` 或 `user`，或是不是 devguard 產生的 `generated` 檔案。

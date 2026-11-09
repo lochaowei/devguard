@@ -119,8 +119,16 @@ async function loadNearest(root: string, subDir: string): Promise<Found | undefi
 /** The directory of the TypeScript component a repo-relative file belongs to; undefined when none holds it. */
 export type OwnerOf = (file: string) => string | undefined;
 
-/** `typecheck.strict` and `typecheck.options` against tsconfig.json (SPEC §6.3). */
-export async function checkTsconfig(root: string, judge: SettingsJudge, ownerOf: OwnerOf): Promise<void> {
+/**
+ * `typecheck.strict` and `typecheck.options` against tsconfig.json (SPEC §6.3). `inner` lists the repo-relative
+ * directories of the TypeScript components inside this one, which a tsconfig.json `fix` creates leaves out (#125).
+ */
+export async function checkTsconfig(
+  root: string,
+  judge: SettingsJudge,
+  ownerOf: OwnerOf,
+  inner: readonly string[] = [],
+): Promise<void> {
   const found = await loadNearest(root, judge.dir);
   const wanted = judge.declared("typecheck.options");
   const extraOptions = Array.isArray(wanted) ? wanted.filter((o): o is string => typeof o === "string") : [];
@@ -130,6 +138,7 @@ export async function checkTsconfig(root: string, judge: SettingsJudge, ownerOf:
     const repairs = [
       ...(strict === undefined ? [] : setAt(file, ["compilerOptions", "strict"])(strict)),
       ...extraOptions.flatMap((name) => setAt(file, ["compilerOptions", name])(true)),
+      ...(inner.length > 0 ? setAt(file, ["exclude"])(excludeFor(judge.dir, inner)) : []),
     ];
     judge.missingFile(file, " tsconfig.json", repairs);
     return;
@@ -137,6 +146,15 @@ export async function checkTsconfig(root: string, judge: SettingsJudge, ownerOf:
   // A reference in another component's directory is that component's to judge; one in no component's is this one's.
   const owned = (file: string) => [undefined, judge.dir].includes(ownerOf(file));
   await judgeEffective(judge, found, extraOptions, { owned, seen: new Set([found.file]) });
+}
+
+/**
+ * The `exclude` of a tsconfig.json created in `dir`: the outermost inner component directories, relative to `dir`, and
+ * node_modules, which TypeScript leaves out by default only while `exclude` is not set.
+ */
+function excludeFor(dir: string, inner: readonly string[]): string[] {
+  const outermost = inner.filter((d) => !inner.some((o) => o !== d && d.startsWith(o)));
+  return [...outermost.map((d) => d.slice(dir.length).replace(/\/$/, "")).sort(), "node_modules"];
 }
 
 /**
