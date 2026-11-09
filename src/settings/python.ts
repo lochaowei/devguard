@@ -7,7 +7,7 @@ import { judgeConfigValue, setAt } from "./judge.ts";
 import type { ItemDef } from "../standard/types.ts";
 import { isRecord } from "../shared/guards.ts";
 import { coverageGateOff } from "../testing/coverage.ts";
-import { isPyrightTool, type PyrightTool } from "./type-checkers.ts";
+import { isPyrightTool, typeCheckingOff, type PyrightTool } from "./type-checkers.ts";
 
 type Table = Record<string, unknown>;
 
@@ -321,6 +321,22 @@ function checkPythonVersion(
 }
 
 /**
+ * The declared pyright-based checker's settings say `typeCheckingMode = "off"`: it checks nothing at all, which is no
+ * type checking rather than a looser strictness (#114). `fix` sets "strict", or pyright's default "standard" when the
+ * declaration relaxes `typecheck.strict`.
+ */
+function reportTypecheckOff(r: Report, pyright: PyrightTool, found: ToolSection): void {
+  const mode = r.want("typecheck.strict") === false ? "standard" : "strict";
+  const report = r.forFile(found.file);
+  report.fixable(
+    "typecheck-off",
+    `${pyright} 的 typeCheckingMode 是 "off"：型別檢查實際被關閉`,
+    `設定 typeCheckingMode = ${fmt(mode)}`,
+    [report.set([...found.prefix, "typeCheckingMode"], mode)],
+  );
+}
+
+/**
  * mypy's `strict = true`, or pyright's / basedpyright's `typeCheckingMode = "strict"`, whichever the declaration picks.
  * `found` is the chosen tool's settings, which for the pyright-based ones may be pyrightconfig.json instead of
  * [tool.pyright] / [tool.basedpyright].
@@ -455,7 +471,9 @@ export function checkPyproject(
   const pyright = pyrightTool(r);
   const pyrightName = pyright ?? "pyright";
   checkPythonVersion(r, doc, ruff, sections[pyrightName], pyrightName);
-  checkTypecheck(r, doc, pyright, sections[pyright ?? "mypy"]);
+  const typecheck = sections[pyright ?? "mypy"];
+  if (pyright && typecheck && typeCheckingOff(typecheck.table)) reportTypecheckOff(r, pyright, typecheck);
+  else checkTypecheck(r, doc, pyright, typecheck);
   checkCoverage(r, doc);
   return r.findings;
 }

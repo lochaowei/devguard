@@ -52,8 +52,8 @@ $ devguard draft
    | 語言 | 項目 | 判斷 |
    |---|---|---|
    | Python | `deps.manager: poetry` | 有 `poetry.lock`（比 `uv.lock` 近） |
-   | Python | `typecheck.tool: pyright` | 有 `pyrightconfig.json` |
-   | Python | `typecheck.tool: basedpyright` | 元件的 `pyproject.toml` 有 `[tool.basedpyright]`（優先於 `pyrightconfig.json`） |
+   | Python | `typecheck.tool: pyright` | 有 `pyrightconfig.json`，且它不是 `typeCheckingMode = "off"` |
+   | Python | `typecheck.tool: basedpyright` | 元件的 `pyproject.toml` 有 `[tool.basedpyright]`，且它不是 `typeCheckingMode = "off"`（優先於 `pyrightconfig.json`） |
    | TypeScript | `lint.tool: biome` | 有 `biome.json(c)`（比 `eslint.config.*` 近） |
    | TypeScript | `test.tool: jest` | 有 `jest.config.*`（比 `vitest.config.*` 近） |
    | TypeScript | `deps.manager: pnpm` / `yarn` | 有 `pnpm-lock.yaml` / `yarn.lock`（比 `package-lock.json` 近） |

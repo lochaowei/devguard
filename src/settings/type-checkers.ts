@@ -29,6 +29,13 @@ export interface TypeCheckerConfig {
   where: string;
   /** The type checkers that read it: pyrightconfig.json is read by pyright and basedpyright alike. */
   tools: readonly TypeChecker[];
+  /** It sets pyright's `typeCheckingMode = "off"`, so it checks no types (#114). */
+  off: boolean;
+}
+
+/** Whether pyright-format settings turn type checking off: `typeCheckingMode = "off"` (#114). */
+export function typeCheckingOff(settings: unknown): boolean {
+  return isRecord(settings) && settings.typeCheckingMode === "off";
 }
 
 const OWN_FILES: readonly (readonly [string, readonly TypeChecker[]])[] = [
@@ -57,11 +64,17 @@ export async function typeCheckerConfigs(
   const doc = text === undefined ? undefined : parseConfigText("pyproject.toml", text);
   const tool = pyprojectTool(doc) ?? {};
   for (const checker of TYPE_CHECKERS) {
-    if (isRecord(tool[checker])) configs.push({ file: pyproject, where: `[tool.${checker}]`, tools: [checker] });
+    const table = tool[checker];
+    if (!isRecord(table)) continue;
+    const off = checker !== "mypy" && typeCheckingOff(table);
+    configs.push({ file: pyproject, where: `[tool.${checker}]`, tools: [checker], off });
   }
   for (const [name, tools] of OWN_FILES) {
     const file = dir + name;
-    if ((await read(file)) !== undefined) configs.push({ file, where: name, tools });
+    const text = await read(file);
+    if (text === undefined) continue;
+    const off = name === "pyrightconfig.json" && typeCheckingOff(parseConfigText(name, text));
+    configs.push({ file, where: name, tools, off });
   }
   return configs;
 }
