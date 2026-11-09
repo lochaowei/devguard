@@ -138,6 +138,57 @@ describe("Java tests", () => {
     expect(calls.map((c) => (c.args ?? []).join(" "))).toEqual(["test jacocoTestReport --continue"]);
   });
 
+  describe("multi-project Gradle build (#101)", () => {
+    // auth0/java-jwt: settings.gradle includes ':java-jwt' whose projectDir is lib/, and only lib/ applies jacoco.
+    const JWT = {
+      "core/settings.gradle": "include ':java-jwt'\nproject(':java-jwt').projectDir = file('lib')\n",
+      "core/build.gradle": "plugins { id 'java' }",
+      "core/lib/build.gradle": "plugins { id 'java'; id 'jacoco' }",
+    };
+    const reportOf = (project: string) => `core/${project}/build/reports/jacoco/test/jacocoTestReport.xml`;
+
+    it("reads the report of a subproject whose projectDir was moved", async () => {
+      const { dir, check } = setup(JWT);
+      const { tools, calls } = javaTools(() => dir, reportOf("lib"), jacocoXml([10, 90], [1, 9]));
+      expect((await check(tools)).findings).toEqual([]);
+      expect(calls.map((c) => (c.args ?? []).join(" "))).toEqual(["test jacocoTestReport --continue"]);
+    });
+
+    it("adds up the coverage of the subprojects", async () => {
+      const files = {
+        "core/settings.gradle": "include ':a', ':b'",
+        "core/a/build.gradle": "plugins { id 'jacoco' }",
+        "core/b/build.gradle": "plugins { id 'jacoco' }",
+      };
+      const { dir, check } = setup(files);
+      const tools = fakeTools(() => {
+        for (const [project, xml] of [
+          ["a", jacocoXml([10, 90], [0, 10])],
+          ["b", jacocoXml([30, 70], [10, 30])],
+        ] as const) {
+          const path = join(dir, reportOf(project));
+          mkdirSync(dirname(path), { recursive: true });
+          writeFileSync(path, xml);
+        }
+        return ok("BUILD SUCCESSFUL");
+      });
+      // Lines 160/200 and branches 40/50 are both 80%; either project alone would differ.
+      expect((await check(tools.tools)).findings).toEqual([]);
+    });
+
+    it("reports coverage/no-report when no project wrote a report", async () => {
+      const { check } = setup(JWT);
+      const r = await check(fakeTools(() => ok("BUILD SUCCESSFUL")).tools);
+      expect(rules(r.findings)).toEqual(["error:coverage/no-report"]);
+    });
+
+    it("does not read a report left by an earlier build", async () => {
+      const { check } = setup({ ...JWT, [reportOf("lib")]: jacocoXml([0, 100], [0, 10]) });
+      const r = await check(fakeTools(() => ok("BUILD SUCCESSFUL")).tools);
+      expect(rules(r.findings)).toEqual(["error:coverage/no-report"]);
+    });
+  });
+
   it("reports failing Gradle tests by name", async () => {
     const { dir, check } = setup(GRADLE);
     const out =
