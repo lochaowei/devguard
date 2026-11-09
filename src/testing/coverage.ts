@@ -1,5 +1,6 @@
 import type { Finding } from "../report/finding.ts";
-import { toolErrorLines, toolOutputLines, type ToolResult } from "../tools/runner.ts";
+import { failureCause } from "../tools/failure-cause.ts";
+import { toolOutputLines, type ToolResult } from "../tools/runner.ts";
 import type { TestTarget } from "./types.ts";
 import { readIfExists } from "../shared/fs.ts";
 
@@ -41,7 +42,7 @@ export function testsFailed(target: TestTarget, command: string, failed: readonl
 
 /** The test run did not produce a usable result (crash, bad configuration, missing plugin). */
 export function testToolFailed(target: TestTarget, tool: string, result: ToolResult): Finding {
-  const output = toolErrorLines(result).slice(-5).join("\n");
+  const output = failureCause(result, "last").join("\n");
   return testFinding(
     target,
     "test/tool-failed",
