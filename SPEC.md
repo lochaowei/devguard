@@ -73,7 +73,7 @@
   - 開發者下載對應平台的執行檔，改名為 `devguard`（Windows 為 `devguard.exe`；Linux 與 macOS 要 `chmod +x`）並放進 PATH；更新時用新版取代。macOS 從瀏覽器下載的檔案要先移除 quarantine 屬性（`xattr -d com.apple.quarantine devguard`），否則 Gatekeeper 會擋下。CLI 找不到或版本過舊時，訊息會指向 release 頁面與這台機器對應的執行檔；寫進 git hook 的提示則不分平台，因為注入 husky、lefthook 的那一行由所有開發者共用。
   - 放在 PATH 上的是真正的執行檔，Claude Code 的 exec form hook 可以直接呼叫。
   - 原本規劃的內部 Scoop bucket 與 Nexus raw repository 已取消（#28）。
-- **golangci-lint** 仍是 §5.2 的例外：使用預設標準指定版本的 binary，由開發者放到 PATH，CLI 從 PATH 呼叫並核對版本。
+- **golangci-lint** 仍是 §5.2 的例外：使用預設標準指定版本的 binary，由開發者放到 PATH，CLI 從 PATH 呼叫並核對版本。找不到時（`check` exit 2、`doctor` 的 `environment/tool-missing`、hook），提示寫出元件生效的 `tools.golangci-lint` 範圍（含 override）與下載位置（https://github.com/golangci/golangci-lint/releases）。
 - **預設標準內建在 CLI 中**（見 §5.5），所以 CLI 不需要連網就能解析專案宣告。
 
 來源：[CLI 實作語言與 Windows 分發選項研究](.scratch/coding-standards-guard/research/01-cli-runtime-options.md)、[CLI 實作語言與分發方式決策](.scratch/coding-standards-guard/issues/05-cli-runtime-decision.md)、[內部鏡像設定檢查](.scratch/coding-standards-guard/issues/16-internal-mirror-config.md)
