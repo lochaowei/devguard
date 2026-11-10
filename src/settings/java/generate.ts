@@ -13,7 +13,7 @@ function declared(t: JavaTarget, key: string): unknown {
 export const reportLevelFor = (limit: number): number => limit + 1;
 
 /** The report level that enforces the declared limit of `key`. */
-function level(t: JavaTarget, key: string): string {
+export function reportLevel(t: JavaTarget, key: string): string {
   const limit = declared(t, key);
   return String(typeof limit === "number" ? reportLevelFor(limit) : limit);
 }
@@ -25,7 +25,7 @@ export function pmdCognitiveRule(t: JavaTarget): string[] {
   return [
     '<rule ref="category/java/design.xml/CognitiveComplexity">',
     "  <properties>",
-    `    <property name="reportLevel" value="${level(t, "complexity.cognitive")}"/>`,
+    `    <property name="reportLevel" value="${reportLevel(t, "complexity.cognitive")}"/>`,
     "  </properties>",
     "</rule>",
   ];
@@ -36,7 +36,7 @@ export function pmdCyclomaticRule(t: JavaTarget): string[] {
   return [
     '<rule ref="category/java/design.xml/CyclomaticComplexity">',
     "  <properties>",
-    `    <property name="methodReportLevel" value="${level(t, "complexity.cyclomatic")}"/>`,
+    `    <property name="methodReportLevel" value="${reportLevel(t, "complexity.cyclomatic")}"/>`,
     "  </properties>",
     "</rule>",
   ];

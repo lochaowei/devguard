@@ -228,18 +228,26 @@ describe("PMD settings", () => {
     expect(looser[0]?.message).toContain("16");
   });
 
-  it("accepts reportLevel written as a value element, and PMD's default when it is left out", async () => {
+  it("accepts reportLevel written as a value element; leaving it out must be fixed (PMD's default 15 reports at the limit)", async () => {
     const nested = '<properties><property name="reportLevel"><value>16</value></property></properties>';
     expect(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(nested) + CYCLOMATIC + BANNED) })).toEqual([]);
-    expect(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive() + CYCLOMATIC + BANNED) })).toEqual([]);
+    const byDefault = await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive() + CYCLOMATIC + BANNED) });
+    expect(rules(byDefault)).toEqual(["error:settings/pmd-property-missing"]);
+    expect(byDefault[0]?.message).toContain("16");
+    expect(byDefault[0]?.fix).toContain("devguard fix");
   });
 
   it("counts the whole design category unless CognitiveComplexity is excluded", async () => {
     const whole = '<rule ref="category/java/design.xml"/>';
-    expect(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(whole + BANNED) })).toEqual([]);
+    // Both rules at PMD's defaults: the levels must be written down.
+    expect(rules(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(whole + BANNED) }))).toEqual([
+      "error:settings/pmd-property-missing",
+      "error:settings/pmd-property-missing",
+    ]);
     const excluded = '<rule ref="category/java/design.xml"><exclude name="CognitiveComplexity"/></rule>';
     const findings = await check({ ...GOOD, "pmd-ruleset.xml": ruleset(excluded + BANNED) });
-    expect(rules(findings)).toEqual(["error:settings/pmd-rule-missing"]);
+    // CyclomaticComplexity still comes from the category, at PMD's default.
+    expect(rules(findings)).toEqual(["error:settings/pmd-rule-missing", "error:settings/pmd-property-missing"]);
     expect(findings[0]?.message).toContain("CognitiveComplexity");
   });
 
@@ -280,12 +288,17 @@ describe("PMD settings", () => {
       expect(rules(await check(withCyclomatic(cyclomatic(methodLevel("12")))))).toEqual(["error:settings/looser"]);
     });
 
-    it("accepts a value element, and PMD's default when it is left out", async () => {
+    it("accepts a value element; leaving methodReportLevel out must be fixed (PMD's default 10 reports at the limit)", async () => {
       const nested = '<properties><property name="methodReportLevel"><value>11</value></property></properties>';
       expect(await check(withCyclomatic(cyclomatic(nested)))).toEqual([]);
-      expect(await check(withCyclomatic(cyclomatic()))).toEqual([]);
+      const byDefault = await check(withCyclomatic(cyclomatic()));
+      expect(rules(byDefault)).toEqual(["error:settings/pmd-property-missing"]);
+      expect(byDefault[0]?.message).toContain("11");
+      expect(byDefault[0]?.fix).toContain("devguard fix");
       const decl = JAVA_ROOT + "    overrides: {complexity.cyclomatic: 8}\n";
-      expect(rules(await check(withCyclomatic(cyclomatic()), decl))).toEqual(["error:settings/looser"]);
+      const overridden = await check(withCyclomatic(cyclomatic()), decl);
+      expect(rules(overridden)).toEqual(["error:settings/pmd-property-missing"]);
+      expect(overridden[0]?.message).toContain("9");
     });
 
     it("hints instead of guessing when methodReportLevel is a property reference", async () => {
