@@ -212,12 +212,20 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 | `build.tool` | `"maven"` | 允許替代：`gradle`；必須提交 `./mvnw` 或 `./gradlew` wrapper |
 | `format.tool` | `"palantir-java-format"` | 透過 Spotless 執行 |
 | `lint.tool` / `lint.rules` | `"pmd"` / `["pmd-quickstart"]` | CLI 產生並檢查 `pmd-ruleset.xml` |
-| `complexity.cyclomatic` / `cognitive` | `10` / `15` | PMD `CyclomaticComplexity`（`methodReportLevel`）/ `CognitiveComplexity`（`reportLevel`） |
+| `complexity.cyclomatic` / `cognitive` | `10` / `15` | PMD `CyclomaticComplexity`（`methodReportLevel`，寫入上限 +1：PMD 在複雜度達到該值時就回報；沒設定該 property 時 PMD 用內建的 10 / 15，回報 `settings/pmd-property-missing`，`fix` 補上）/ `CognitiveComplexity`（`reportLevel`，同樣寫入上限 +1） |
 | `test.tool` | `"junit5"` | JUnit 5 |
 | `coverage.lines` | `80` | JaCoCo `LINE` 與 `BRANCH` 皆須達 80%；使用 Lombok 時須設定 `lombok.addLombokGeneratedAnnotation = true` |
 | `deps.lockfile` | `true` | Maven：`maven-enforcer-plugin` 的 `banDynamicVersions` + `dependencyConvergence`；Gradle：`gradle.lockfile` |
 | `deps.banned` | `["log4j:log4j", "junit:junit"]` | 直接依賴禁用套件 |
 | `deps.bannedApis` | `["sun.*"]` | PMD `BannedApis` 規則：`a.b.*` 比對該 package 與其底下的 import，類別名稱比對該類別；沒有禁用任何 API 時不要求這條規則 |
+
+### PMD 複雜度門檻
+
+- `complexity.cyclomatic`（`10`）與 `complexity.cognitive`（`15`）是**允許的最大值**：複雜度剛好等於該值的方法是合格的。
+- PMD 在複雜度**達到** report level 時就回報（不是超過才回報）。所以 devguard 寫入的是上限 +1：`CyclomaticComplexity` 的 `methodReportLevel` = `11`、`CognitiveComplexity` 的 `reportLevel` = `16`。宣告覆寫了上限時，寫入覆寫值 +1。
+- 檢查 ruleset 時，`check` 把讀到的 report level 減 1 再與宣告比對：`11` / `16` 符合；`10` / `15` 比宣告嚴格，只是提示；`12` / `17` 比宣告寬鬆，算錯誤。
+- ruleset 沒有設定 property 時，PMD 用內建的 `10` / `15`，會回報剛好等於上限的方法。`check` 回報錯誤 `settings/pmd-property-missing`，要求明確設為 `11` / `16`；`devguard fix` 會補上。
+- 既有的 `pmd-ruleset.xml` **不會自動遷移**。執行 [`devguard fix`](Command-fix.md) 會重新產生成 `11` / `16`；檔案不是 devguard 產生的，則只印出要加入的 `<rule>`。
 
 ### 執行方式
 

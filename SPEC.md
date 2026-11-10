@@ -350,11 +350,13 @@ solution-style 的 `tsconfig.json`（`"files": []`、沒有 `include`、有 `ref
 | `java.minVersion` | 17（新專案建議 21 以上） | `maven.compiler.release` / Gradle toolchain |
 | `build.tool` | Maven 或 Gradle，必須提交 wrapper | CLI 一律透過 wrapper 呼叫，只執行該建置工具的 wrapper（`mvnw` 或 `gradlew`，元件目錄或上層），不會改用另一種。建置工具的判斷（設定、程式碼、測試、依賴各層共用）：宣告的 `build.tool` 優先；沒有宣告時，只有 `pom.xml` 是 maven，只有 Gradle 建置檔（`build.gradle(.kts)`、`settings.gradle(.kts)`）是 gradle；兩者都有時依提交的 wrapper，只有 `gradlew` 是 gradle，其餘（只有 `mvnw`、兩者都有或都沒有）是 maven |
 | `format.tool` | Spotless 搭配 palantir-java-format（4 空白、120 欄，風格） | `spotless:check` / `spotless:apply` |
-| `lint.tool` / `lint.rules` | PMD quickstart | PMD ruleset（由 CLI 產生）。PMD quickstart 中的複雜度規則預設是註解掉的，產生時必須自行加入 PMD 的 `CognitiveComplexity`（`reportLevel` 15）與 `CyclomaticComplexity`（`methodReportLevel` 10），以及禁用 API 的規則。PMD 沒有內建的禁用 import 規則，所以產生一條名為 `BannedApis` 的 XPath 規則（`//ImportDeclaration[…]`）：`a.b.*` 比對該 package 與其底下的 import，類別名稱比對該類別（與其巢狀類別）。標準沒有禁用任何 API 時不產生也不要求這條規則。 |
-| `complexity.cyclomatic` / `cognitive` | 10 / 15 | PMD `CyclomaticComplexity`（`methodReportLevel`）/ `CognitiveComplexity`（`reportLevel`）；與宣告的值比對，沿用 PMD 的語意（達到門檻即回報） |
+| `lint.tool` / `lint.rules` | PMD quickstart | PMD ruleset（由 CLI 產生）。PMD quickstart 中的複雜度規則預設是註解掉的，產生時必須自行加入 PMD 的 `CognitiveComplexity`（`reportLevel` 16）與 `CyclomaticComplexity`（`methodReportLevel` 11），以及禁用 API 的規則。PMD 沒有內建的禁用 import 規則，所以產生一條名為 `BannedApis` 的 XPath 規則（`//ImportDeclaration[…]`）：`a.b.*` 比對該 package 與其底下的 import，類別名稱比對該類別（與其巢狀類別）。標準沒有禁用任何 API 時不產生也不要求這條規則。 |
+| `complexity.cyclomatic` / `cognitive` | 10 / 15 | PMD `CyclomaticComplexity`（`methodReportLevel`）/ `CognitiveComplexity`（`reportLevel`）；與宣告的值比對，PMD 在複雜度達到該值時就回報，所以寫入的值是上限 +1（10 → `methodReportLevel` 11、15 → `reportLevel` 16），檢查時先減 1 再比對。規則沒有設定該 property 時 PMD 用內建的 10 / 15（會回報剛好等於上限的方法），回報 `settings/pmd-property-missing`（錯誤），`devguard fix` 補上明確的值 |
 | `test.tool` | JUnit 5 | — |
 | `coverage.lines` | JaCoCo BUNDLE 層級，LINE 與 BRANCH 都要 0.80；排除 Lombok 產生的程式碼 | `jacoco:check`；在 `lombok.config` 設定 `lombok.addLombokGeneratedAnnotation = true` |
 | `deps.lockfile` | Maven：Enforcer 的 `banDynamicVersions`（一條規則同時禁止版本範圍、LATEST / RELEASE 與 SNAPSHOT）加上 `dependencyConvergence`；Gradle：dependency locking 加上 `gradle.lockfile` | — |
+
+PMD 複雜度門檻（#195）：標準的 `complexity.cyclomatic`（10）與 `complexity.cognitive`（15）是**允許的最大值**，複雜度等於該值的方法是合格的。PMD 的 `CyclomaticComplexity`（`methodReportLevel`）與 `CognitiveComplexity`（`reportLevel`）則在複雜度**達到** report level 時就回報，所以 devguard 產生的 ruleset 寫入上限 +1：`methodReportLevel` 11、`reportLevel` 16；`check` 讀到 ruleset 的值時先減 1 再與宣告比對（11 / 16 符合；10 / 15 較嚴格，提示；12 / 17 較寬鬆，錯誤）。規則沒有設定這個 property 時，PMD 用內建的 10 / 15，會回報剛好等於上限的方法，`check` 回報 `settings/pmd-property-missing`（錯誤），`devguard fix` 補上 11 / 16（宣告覆寫了上限時是覆寫值 +1）。既有的 ruleset 不會自動遷移：執行 `devguard fix` 會重新產生（devguard 產生的檔案整份重新產生；自己寫的檔案只印出要加入的 `<rule>`，見 §9.2）。
 
 Maven 多模組建置（`pom.xml` 有 `<modules>`）的 lint 指令在 `pmd:check` 之前加上 `test-compile` phase：只執行 plugin goal 時，reactor 解析不到尚未建置的兄弟模組（本機 `~/.m2` 沒有它們的 SNAPSHOT 時整個指令失敗），PMD 的型別解析也因此有 classpath。所以多模組的 lint 會先編譯，比較慢；編譯失敗時回報 `code/tool-failed`，訊息是建置輸出中的錯誤行。報告從各模組的 `target/` 讀取。單一模組的 Maven、Spotless 與 Gradle 不加 phase。
 

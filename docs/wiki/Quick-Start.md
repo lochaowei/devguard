@@ -320,7 +320,7 @@ components:
 
 #### 設定檔產生與建置檔設定片段
 1. 執行 `devguard install` 會**自動產生或修補**：
-   - `pmd-ruleset.xml`（`generated`）：由 CLI 全權產生，引用 `rulesets/java/quickstart.xml` 並設定 `CognitiveComplexity`（`reportLevel = 15`）、`CyclomaticComplexity`（`methodReportLevel = 10`）與禁用 `sun.*` 的 `BannedApis` 規則
+   - `pmd-ruleset.xml`（`generated`）：由 CLI 全權產生，引用 `rulesets/java/quickstart.xml` 並設定 `CognitiveComplexity`（`reportLevel = 16`）、`CyclomaticComplexity`（`methodReportLevel = 11`；standard 的 15 / 10 是允許的最大值，PMD 達到 report level 就回報，所以寫入上限 +1）與禁用 `sun.*` 的 `BannedApis` 規則
    - `lombok.config`（`managed`，當專案使用 Lombok 時）：自動加上 `lombok.addLombokGeneratedAnnotation = true`，讓 JaCoCo 排除 Lombok 產生的程式碼
    - `.vscode/`（`managed`）：關閉 `[java].editor.formatOnSave`（避免 IDE 格式化與 Spotless Palantir 衝突），並在 `tasks.json` 加入 `standards: format (Spotless)`
 2. **手動加入建置檔（`snippet`）**：`pom.xml` 與 `build.gradle(.kts)` 為建置檔，CLI 不會自動修改，只會印出提示片段。以 Maven `pom.xml` 為例，需設定：
