@@ -296,8 +296,8 @@ extend-select = [
     const after = await fixesEverything(dir);
     const ruleset = read(dir, "pmd-ruleset.xml");
     expect(ruleset).toContain("由 CLI 產生");
-    expect(ruleset).toContain('<property name="reportLevel" value="15"/>');
-    expect(ruleset).toContain('<property name="methodReportLevel" value="10"/>');
+    expect(ruleset).toContain('<property name="reportLevel" value="16"/>');
+    expect(ruleset).toContain('<property name="methodReportLevel" value="11"/>');
     // The banned APIs (#193): `sun.*` matches the package itself and anything under it.
     expect(ruleset).toContain('<rule name="BannedApis" language="java"');
     expect(ruleset).toContain("//ImportDeclaration[@ImportedName = 'sun' or starts-with(@ImportedName, 'sun.')]");

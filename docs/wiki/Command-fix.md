@@ -79,7 +79,7 @@ devguard fix --code [檔案…] [--yes] [--cwd <dir>]
 
 `generated` 類的檔案已經存在、內容不是空白、卻沒有 `由 CLI 產生` 檔頭時，表示是專案自己寫的。`fix` 不會覆寫它，加上 `--yes` 也一樣，只印出要加入的內容，其他檔案照常處理：
 
-- PMD ruleset：印出缺少或要換掉的 `<rule>`：`CognitiveComplexity`、`CyclomaticComplexity` 與（標準有禁用 API 時）`BannedApis`，內含宣告的值。
+- PMD ruleset：印出缺少或要換掉的 `<rule>`：`CognitiveComplexity`、`CyclomaticComplexity` 與（標準有禁用 API 時）`BannedApis`，內含宣告的值（report level 為標準上限 +1：`reportLevel` 16、`methodReportLevel` 11）。ruleset 沒設定這兩個 property 時 PMD 用內建的 10 / 15，`check` 會回報，`fix` 補上；既有的 ruleset 不會自動遷移，`fix` 會重新產生，見 [Language-Standards](Language-Standards.md#pmd-複雜度門檻)。
 - `.claude/rules/*`、`/standards-doctor` skill：印出完整的產生內容，請自行比對。
 
 ```text
@@ -88,13 +88,13 @@ pmd-ruleset.xml：這份檔案不是 devguard 產生的，不會覆寫；請自�
     加在 ruleset 底下：
     <rule ref="category/java/design.xml/CognitiveComplexity">
       <properties>
-        <property name="reportLevel" value="15"/>
+        <property name="reportLevel" value="16"/>
       </properties>
     </rule>
     加在 ruleset 底下：
     <rule ref="category/java/design.xml/CyclomaticComplexity">
       <properties>
-        <property name="methodReportLevel" value="10"/>
+        <property name="methodReportLevel" value="11"/>
       </properties>
     </rule>
     （BannedApis 規則同樣印出，此處省略）

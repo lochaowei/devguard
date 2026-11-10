@@ -19,7 +19,7 @@
 
 較舊的版本仍保留這些項目，但 devguard 不再依它們做任何檢查：不論宣告哪個版本，寫著它們只會得到 `declaration/retired-item` 提示；執行 `devguard standard upgrade` 到 `team@1.3.0` 或更新的版本會把它們從宣告中刪除。
 
-Checkstyle 已從 Java 檢查移除（#193），所有版本都沒有 `tools.checkstyle`、`tools.maven-checkstyle-plugin`，Java 的 `lint.tool` 只剩 `pmd`、`lint.rules` 只剩 `pmd-quickstart`。舊宣告若還寫著這些項目，或 `lint.tool: checkstyle+pmd`、含 `google_checks` 的 `lint.rules`，同樣只得到 `declaration/retired-item` 提示，請刪除該項。
+Checkstyle 已從 Java 檢查移除（#193），所有版本都沒有 `tools.checkstyle`、`tools.maven-checkstyle-plugin`，Java 的 `lint.tool` 只剩 `pmd`、`lint.rules` 只剩 `pmd-quickstart`。舊宣告若還寫著這些項目，或 `lint.tool: checkstyle+pmd`、含 `google_checks` 的 `lint.rules`，同樣只得到 `declaration/retired-item` 提示；`devguard standard upgrade --apply` 會把 `lint.tool`、`lint.rules` 的舊值刪除（回到預設值 `pmd` / `pmd-quickstart`）。
 
 `team@1.4.0`（定義於 [`src/standard/team-1.4.0.ts`](../../src/standard/team-1.4.0.ts)）是 CLI 內建的最新版本，`devguard draft` 寫入、`doctor` 建議升級到的都是它。它沿用 `team@1.3.0` 的所有項目，只放寬一個版本範圍並多允許一個套件管理工具（minor，見 [SPEC §6](../../SPEC.md)，#113、#138）：
 
@@ -212,12 +212,20 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 | `build.tool` | `"maven"` | 允許替代：`gradle`；必須提交 `./mvnw` 或 `./gradlew` wrapper |
 | `format.tool` | `"palantir-java-format"` | 透過 Spotless 執行 |
 | `lint.tool` / `lint.rules` | `"pmd"` / `["pmd-quickstart"]` | CLI 產生並檢查 `pmd-ruleset.xml` |
-| `complexity.cyclomatic` / `cognitive` | `10` / `15` | PMD `CyclomaticComplexity`（`methodReportLevel`）/ `CognitiveComplexity`（`reportLevel`） |
+| `complexity.cyclomatic` / `cognitive` | `10` / `15` | PMD `CyclomaticComplexity`（`methodReportLevel`，寫入上限 +1：PMD 在複雜度達到該值時就回報；沒設定該 property 時 PMD 用內建的 10 / 15，回報 `settings/pmd-property-missing`，`fix` 補上）/ `CognitiveComplexity`（`reportLevel`，同樣寫入上限 +1） |
 | `test.tool` | `"junit5"` | JUnit 5 |
 | `coverage.lines` | `80` | JaCoCo `LINE` 與 `BRANCH` 皆須達 80%；使用 Lombok 時須設定 `lombok.addLombokGeneratedAnnotation = true` |
 | `deps.lockfile` | `true` | Maven：`maven-enforcer-plugin` 的 `banDynamicVersions` + `dependencyConvergence`；Gradle：`gradle.lockfile` |
 | `deps.banned` | `["log4j:log4j", "junit:junit"]` | 直接依賴禁用套件 |
 | `deps.bannedApis` | `["sun.*"]` | PMD `BannedApis` 規則：`a.b.*` 比對該 package 與其底下的 import，類別名稱比對該類別；沒有禁用任何 API 時不要求這條規則。已知限制：萬用字元 import 不會被當成引入其中被禁用的類別（禁用 `java.util.Date` 時，`import java.util.*;` 不會被標出） |
+
+### PMD 複雜度門檻
+
+- `complexity.cyclomatic`（`10`）與 `complexity.cognitive`（`15`）是**允許的最大值**：複雜度剛好等於該值的方法是合格的。
+- PMD 在複雜度**達到** report level 時就回報（不是超過才回報）。所以 devguard 寫入的是上限 +1：`CyclomaticComplexity` 的 `methodReportLevel` = `11`、`CognitiveComplexity` 的 `reportLevel` = `16`。宣告覆寫了上限時，寫入覆寫值 +1。
+- 檢查 ruleset 時，`check` 把讀到的 report level 減 1 再與宣告比對：`11` / `16` 符合；`10` / `15` 比宣告嚴格，只是提示；`12` / `17` 比宣告寬鬆，算錯誤。
+- ruleset 沒有設定 property 時，PMD 用內建的 `10` / `15`，會回報剛好等於上限的方法。`check` 回報錯誤 `settings/pmd-property-missing`，要求明確設為 `11` / `16`；`devguard fix` 會補上。
+- 既有的 `pmd-ruleset.xml` **不會自動遷移**。執行 [`devguard fix`](Command-fix.md) 會重新產生成 `11` / `16`；檔案不是 devguard 產生的，則只印出要加入的 `<rule>`。
 
 ### 執行方式
 

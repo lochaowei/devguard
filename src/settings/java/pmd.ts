@@ -11,7 +11,14 @@ import {
   type JavaTarget,
   type OwnConfig,
 } from "./common.ts";
-import { BANNED_APIS_RULE, bannedApis, pmdBannedApisRule, pmdCognitiveRule, pmdCyclomaticRule } from "./generate.ts";
+import {
+  BANNED_APIS_RULE,
+  bannedApis,
+  pmdBannedApisRule,
+  pmdCognitiveRule,
+  pmdCyclomaticRule,
+  reportLevel,
+} from "./generate.ts";
 
 /** Where the PMD ruleset is looked for, relative to the component. */
 export const PMD_FILES = ["pmd-ruleset.xml", "pmd.xml", "config/pmd/ruleset.xml", "config/pmd/pmd.xml"] as const;
@@ -25,7 +32,7 @@ interface ComplexityRule {
   key: string;
   /** The rule property that holds the limit. */
   property: string;
-  /** PMD's own default for that property. */
+  /** PMD's own default for that property: a report level, not a limit. */
   fallback: string;
   lines: (t: JavaTarget) => string[];
 }
@@ -78,15 +85,38 @@ function ruleMissing(t: JavaTarget, file: string, text: string, name: string, ke
   });
 }
 
+/**
+ * The rule leaves its report level out, so PMD uses its own default (10 / 15) and reports a method at exactly the
+ * limit. The level has to be written down, as the limit plus one, for `devguard fix` to be able to supply it.
+ */
+function propertyMissing(
+  t: JavaTarget,
+  file: string,
+  text: string,
+  rule: XmlEl,
+  spec: ComplexityRule,
+  lines: string[],
+): Finding {
+  const message = `${file}：PMD 的 ${spec.name} 沒有設定 ${spec.property}（PMD 預設 ${spec.fallback} 會回報剛好等於上限的方法），請明確設為 ${reportLevel(t, spec.key)}（${spec.key} 的上限 +1）`;
+  return finding(t, "error", "settings/pmd-property-missing", message, {
+    file,
+    line: rule.line,
+    ...generated(t, file, own(text, spec.name, lines, true)),
+  });
+}
+
 function checkComplexity(t: JavaTarget, file: string, text: string, root: XmlEl, spec: ComplexityRule): Finding[] {
   const lines = spec.lines(t);
   const rule = findRule(root, spec.name);
   if (!rule) return [ruleMissing(t, file, text, spec.name, spec.key, lines)];
   const level = property(rule, spec.property);
-  const raw = level ? valueOf(level) : spec.fallback;
+  if (!level) return [propertyMissing(t, file, text, rule, spec, lines)];
+  // PMD reports at or above the level; the standard's limit is the largest value allowed.
+  const written = valueOf(level).trim();
+  const raw = /^\d+$/.test(written) ? String(Math.max(0, Number(written) - 1)) : written;
   return judgeNumber(t, spec.key, raw, {
     file,
-    line: (level ?? rule).line,
+    line: level.line,
     setting: `${spec.name} ${spec.property}`,
     own: own(text, spec.name, lines, true),
   });

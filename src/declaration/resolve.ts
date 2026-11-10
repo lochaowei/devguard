@@ -62,7 +62,7 @@ interface Unwrapped {
   until?: unknown;
 }
 
-function unwrap(raw: unknown): Unwrapped {
+export function unwrap(raw: unknown): Unwrapped {
   if (isRecord(raw) && "value" in raw) {
     return { value: raw.value, reason: raw.reason, until: raw.until };
   }
