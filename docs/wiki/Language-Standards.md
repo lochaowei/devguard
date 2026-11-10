@@ -212,7 +212,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 | `build.tool` | `"maven"` | 允許替代：`gradle`；必須提交 `./mvnw` 或 `./gradlew` wrapper |
 | `format.tool` | `"palantir-java-format"` | 透過 Spotless 執行 |
 | `lint.tool` / `lint.rules` | `"pmd"` / `["pmd-quickstart"]` | CLI 產生並檢查 `pmd-ruleset.xml` |
-| `complexity.cyclomatic` / `cognitive` | `10` / `15` | PMD `CyclomaticComplexity`（`methodReportLevel`）/ `CognitiveComplexity`（`reportLevel`） |
+| `complexity.cyclomatic` / `cognitive` | `10` / `15` | PMD `CyclomaticComplexity`（`methodReportLevel`，寫入上限 +1：PMD 在複雜度達到該值時就回報）/ `CognitiveComplexity`（`reportLevel`，同樣寫入上限 +1） |
 | `test.tool` | `"junit5"` | JUnit 5 |
 | `coverage.lines` | `80` | JaCoCo `LINE` 與 `BRANCH` 皆須達 80%；使用 Lombok 時須設定 `lombok.addLombokGeneratedAnnotation = true` |
 | `deps.lockfile` | `true` | Maven：`maven-enforcer-plugin` 的 `banDynamicVersions` + `dependencyConvergence`；Gradle：`gradle.lockfile` |

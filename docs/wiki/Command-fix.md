@@ -88,13 +88,13 @@ pmd-ruleset.xml：這份檔案不是 devguard 產生的，不會覆寫；請自�
     加在 ruleset 底下：
     <rule ref="category/java/design.xml/CognitiveComplexity">
       <properties>
-        <property name="reportLevel" value="15"/>
+        <property name="reportLevel" value="16"/>
       </properties>
     </rule>
     加在 ruleset 底下：
     <rule ref="category/java/design.xml/CyclomaticComplexity">
       <properties>
-        <property name="methodReportLevel" value="10"/>
+        <property name="methodReportLevel" value="11"/>
       </properties>
     </rule>
     （BannedApis 規則同樣印出，此處省略）

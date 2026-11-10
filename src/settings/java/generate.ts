@@ -5,6 +5,19 @@ function declared(t: JavaTarget, key: string): unknown {
   return t.component.effective[key]?.value ?? t.defs[key]?.value;
 }
 
+/**
+ * PMD reports a method whose complexity is *at or above* its report level (`>=`, CognitiveComplexityRule and
+ * CyclomaticComplexityRule alike), while a standard's `max` is the largest value allowed. So the level written is one
+ * above the limit.
+ */
+export const reportLevelFor = (limit: number): number => limit + 1;
+
+/** The report level that enforces the declared limit of `key`. */
+function level(t: JavaTarget, key: string): string {
+  const limit = declared(t, key);
+  return String(typeof limit === "number" ? reportLevelFor(limit) : limit);
+}
+
 const indent = (lines: readonly string[], by: string): string[] => lines.map((l) => by + l);
 
 /** The generated PMD rule element for CognitiveComplexity at the declared limit, unindented. */
@@ -12,7 +25,7 @@ export function pmdCognitiveRule(t: JavaTarget): string[] {
   return [
     '<rule ref="category/java/design.xml/CognitiveComplexity">',
     "  <properties>",
-    `    <property name="reportLevel" value="${String(declared(t, "complexity.cognitive"))}"/>`,
+    `    <property name="reportLevel" value="${level(t, "complexity.cognitive")}"/>`,
     "  </properties>",
     "</rule>",
   ];
@@ -23,7 +36,7 @@ export function pmdCyclomaticRule(t: JavaTarget): string[] {
   return [
     '<rule ref="category/java/design.xml/CyclomaticComplexity">',
     "  <properties>",
-    `    <property name="methodReportLevel" value="${String(declared(t, "complexity.cyclomatic"))}"/>`,
+    `    <property name="methodReportLevel" value="${level(t, "complexity.cyclomatic")}"/>`,
     "  </properties>",
     "</rule>",
   ];

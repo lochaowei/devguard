@@ -25,7 +25,7 @@ interface ComplexityRule {
   key: string;
   /** The rule property that holds the limit. */
   property: string;
-  /** PMD's own default for that property. */
+  /** PMD's own default for that property: a report level, not a limit. */
   fallback: string;
   lines: (t: JavaTarget) => string[];
 }
@@ -83,7 +83,9 @@ function checkComplexity(t: JavaTarget, file: string, text: string, root: XmlEl,
   const rule = findRule(root, spec.name);
   if (!rule) return [ruleMissing(t, file, text, spec.name, spec.key, lines)];
   const level = property(rule, spec.property);
-  const raw = level ? valueOf(level) : spec.fallback;
+  // PMD reports at or above the level; the standard's limit is the largest value allowed.
+  const written = (level ? valueOf(level) : spec.fallback).trim();
+  const raw = /^\d+$/.test(written) ? String(Math.max(0, Number(written) - 1)) : written;
   return judgeNumber(t, spec.key, raw, {
     file,
     line: (level ?? rule).line,

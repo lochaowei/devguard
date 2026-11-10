@@ -16,10 +16,10 @@ afterEach(() => {
 const JAVA_ROOT = "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: java\n";
 
 const COGNITIVE = `<rule ref="category/java/design.xml/CognitiveComplexity">
-    <properties><property name="reportLevel" value="15"/></properties>
+    <properties><property name="reportLevel" value="16"/></properties>
   </rule>`;
 const CYCLOMATIC = `<rule ref="category/java/design.xml/CyclomaticComplexity">
-    <properties><property name="methodReportLevel" value="10"/></properties>
+    <properties><property name="methodReportLevel" value="11"/></properties>
   </rule>`;
 /** A banned-APIs rule as devguard generates it, for the given XPath conditions. */
 const bannedRule = (conditions: string) => `<rule name="BannedApis" language="java" message="banned"
@@ -219,18 +219,33 @@ describe("PMD settings", () => {
     expect(rules(await check(strict, decl))).toEqual(["hint:settings/stricter"]);
   });
 
-  it("accepts reportLevel written as a value element, and PMD's default of 15", async () => {
-    const nested = '<properties><property name="reportLevel"><value>15</value></property></properties>';
+  it("reads reportLevel as one above the limit: PMD reports at or above it (#195)", async () => {
+    const at = (v: string) => check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(level(v)) + CYCLOMATIC + BANNED) });
+    expect(await at("16")).toEqual([]); // limit 15: a method at 15 is allowed
+    expect(rules(await at("15"))).toEqual(["hint:settings/stricter"]); // reports at 15
+    const looser = await at("17");
+    expect(rules(looser)).toEqual(["error:settings/looser"]);
+    expect(looser[0]?.message).toContain("16");
+  });
+
+  it("accepts reportLevel written as a value element; PMD's default of 15 is a limit of 14", async () => {
+    const nested = '<properties><property name="reportLevel"><value>16</value></property></properties>';
     expect(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(nested) + CYCLOMATIC + BANNED) })).toEqual([]);
-    expect(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive() + CYCLOMATIC + BANNED) })).toEqual([]);
+    const byDefault = await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive() + CYCLOMATIC + BANNED) });
+    expect(rules(byDefault)).toEqual(["hint:settings/stricter"]);
   });
 
   it("counts the whole design category unless CognitiveComplexity is excluded", async () => {
     const whole = '<rule ref="category/java/design.xml"/>';
-    expect(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(whole + BANNED) })).toEqual([]);
+    // Both rules at PMD's defaults, one stricter than the standard's limits.
+    expect(rules(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(whole + BANNED) }))).toEqual([
+      "hint:settings/stricter",
+      "hint:settings/stricter",
+    ]);
     const excluded = '<rule ref="category/java/design.xml"><exclude name="CognitiveComplexity"/></rule>';
     const findings = await check({ ...GOOD, "pmd-ruleset.xml": ruleset(excluded + BANNED) });
-    expect(rules(findings)).toEqual(["error:settings/pmd-rule-missing"]);
+    // CyclomaticComplexity still comes from the category, at PMD's default.
+    expect(rules(findings)).toEqual(["error:settings/pmd-rule-missing", "hint:settings/stricter"]);
     expect(findings[0]?.message).toContain("CognitiveComplexity");
   });
 
@@ -254,21 +269,27 @@ describe("PMD settings", () => {
     it("errors when methodReportLevel is looser than declared, hints when it is stricter", async () => {
       const loose = await check(withCyclomatic(cyclomatic(methodLevel("25"))));
       expect(rules(loose)).toEqual(["error:settings/looser"]);
-      expect(loose[0]?.message).toContain("25");
+      expect(loose[0]?.message).toContain("24");
       expect(loose[0]?.fix).toContain("devguard fix");
-      expect(rules(await check(withCyclomatic(cyclomatic(methodLevel("7")))))).toEqual(["hint:settings/stricter"]);
+      expect(rules(await check(withCyclomatic(cyclomatic(methodLevel("8")))))).toEqual(["hint:settings/stricter"]);
     });
 
     it("judges methodReportLevel against the declared cyclomatic limit", async () => {
       const decl = JAVA_ROOT + "    overrides: {complexity.cyclomatic: 8}\n";
       expect(rules(await check(GOOD, decl))).toEqual(["error:settings/looser"]);
-      expect(await check(withCyclomatic(cyclomatic(methodLevel("8"))), decl)).toEqual([]);
+      expect(await check(withCyclomatic(cyclomatic(methodLevel("9"))), decl)).toEqual([]);
     });
 
-    it("accepts a value element and PMD's default of 10", async () => {
-      const nested = '<properties><property name="methodReportLevel"><value>10</value></property></properties>';
+    it("reads methodReportLevel as one above the limit: PMD reports at or above it (#195)", async () => {
+      expect(await check(withCyclomatic(cyclomatic(methodLevel("11"))))).toEqual([]); // limit 10
+      expect(rules(await check(withCyclomatic(cyclomatic(methodLevel("10")))))).toEqual(["hint:settings/stricter"]);
+      expect(rules(await check(withCyclomatic(cyclomatic(methodLevel("12")))))).toEqual(["error:settings/looser"]);
+    });
+
+    it("accepts a value element; PMD's default of 10 is a limit of 9", async () => {
+      const nested = '<properties><property name="methodReportLevel"><value>11</value></property></properties>';
       expect(await check(withCyclomatic(cyclomatic(nested)))).toEqual([]);
-      expect(await check(withCyclomatic(cyclomatic()))).toEqual([]);
+      expect(rules(await check(withCyclomatic(cyclomatic())))).toEqual(["hint:settings/stricter"]);
       const decl = JAVA_ROOT + "    overrides: {complexity.cyclomatic: 8}\n";
       expect(rules(await check(withCyclomatic(cyclomatic()), decl))).toEqual(["error:settings/looser"]);
     });
