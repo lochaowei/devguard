@@ -217,7 +217,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 | `coverage.lines` | `80` | JaCoCo `LINE` 與 `BRANCH` 皆須達 80%；使用 Lombok 時須設定 `lombok.addLombokGeneratedAnnotation = true` |
 | `deps.lockfile` | `true` | Maven：`maven-enforcer-plugin` 的 `banDynamicVersions` + `dependencyConvergence`；Gradle：`gradle.lockfile` |
 | `deps.banned` | `["log4j:log4j", "junit:junit"]` | 直接依賴禁用套件 |
-| `deps.bannedApis` | `["sun.*"]` | PMD `BannedApis` 規則：`a.b.*` 比對該 package 與其底下的 import，類別名稱比對該類別；沒有禁用任何 API 時不要求這條規則 |
+| `deps.bannedApis` | `["sun.*"]` | PMD `BannedApis` 規則：`a.b.*` 比對該 package 與其底下的 import，類別名稱比對該類別；沒有禁用任何 API 時不要求這條規則。已知限制：萬用字元 import 不會被當成引入其中被禁用的類別（禁用 `java.util.Date` 時，`import java.util.*;` 不會被標出） |
 
 ### PMD 複雜度門檻
 

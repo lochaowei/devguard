@@ -34,6 +34,21 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run format:check
+      # The BannedApis integration test (#196) runs real PMD; only Linux has it, the other OSes skip that test.
+      - uses: actions/setup-java@v4
+        if: runner.os == 'Linux'
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install PMD 7.17.0
+        if: runner.os == 'Linux'
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/pmd.zip" https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.17.0/pmd-dist-7.17.0-bin.zip
+          echo "440f6855769c1a651cebd735133cba188df077881af31bd923766b869482bebd  $RUNNER_TEMP/pmd.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/pmd.zip" -d "$RUNNER_TEMP"
+          echo "PMD_HOME=$RUNNER_TEMP/pmd-bin-7.17.0" >> "$GITHUB_ENV"
+
       - run: npm run test:coverage
 
       # Dogfood: devguard checks its own declaration and code against team@1.0.0.
