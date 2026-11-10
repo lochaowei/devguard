@@ -4,7 +4,7 @@ import { pathToolHint } from "../distribution.ts";
 import { FIX_LAYERS, runCheck, type CheckOptions, type CheckResult } from "../check.ts";
 import { parseDeclaration } from "../declaration/parse.ts";
 import { normalizeDir } from "../declaration/path.ts";
-import type { EffectiveItem, ResolvedComponent } from "../declaration/resolve.ts";
+import { unwrap, type EffectiveItem, type ResolvedComponent } from "../declaration/resolve.ts";
 import { DECLARATION_FILE, type Declaration, type RawOverride } from "../declaration/types.ts";
 import { writesItself } from "../fix/category.ts";
 import {
@@ -25,6 +25,7 @@ import { createToolRunner, type PackageRequest, type ToolRunner } from "../tools
 import { pinnedVersions, type Pinned } from "../versions/pinned.ts";
 import { inRange, parseRange } from "../versions/range.ts";
 import { BUNDLED_STANDARDS, findStandard, parseStandardId } from "./registry.ts";
+import { isRetiredValue } from "./retired.ts";
 import { LANGUAGE_LABEL, type ItemDef, type Language, type Standard } from "./types.ts";
 import { diffStandards, upgradeTargets, type ItemChange } from "./upgrade.ts";
 import { repoReaderSync } from "../shared/fs.ts";
@@ -43,7 +44,8 @@ export interface UpgradeOptions extends CheckOptions {
 export interface RedundantOverride {
   component: string;
   key: string;
-  why: "same" | "removed";
+  /** `retired`: it sets a value no standard offers any more (`RETIRED_VALUES`), which already counts as the default. */
+  why: "same" | "removed" | "retired";
   path: KeyPath;
 }
 
@@ -131,8 +133,10 @@ function redundantIn(
   before: Record<string, EffectiveItem> | undefined,
   after: Record<string, EffectiveItem> | undefined,
 ): { key: string; why: RedundantOverride["why"] }[] {
-  return overrides.flatMap(({ key }): { key: string; why: RedundantOverride["why"] }[] => {
+  return overrides.flatMap(({ key, raw }): { key: string; why: RedundantOverride["why"] }[] => {
     if (!defs[key]) return [{ key, why: "removed" }];
+    // The resolver ignores such an override (the default stays in force), so deleting it is the rewrite to the default.
+    if (isRetiredValue(key, unwrap(raw).value)) return [{ key, why: "retired" }];
     const became = after?.[key]?.status === "same" && before?.[key]?.status !== "same";
     return became ? [{ key, why: "same" }] : [];
   });
@@ -370,9 +374,12 @@ function toolLine(c: ToolChange): string {
 
 /** The preview of an upgrade plan. */
 export function renderUpgrade(plan: UpgradePlan): string {
-  const redundant = plan.redundant.map(
-    (r) => `${r.component}｜${r.key}${r.why === "removed" ? "（新標準已移除這個項目）" : "（與新預設相同）"}`,
-  );
+  const WHY = {
+    same: "（與新預設相同）",
+    removed: "（新標準已移除這個項目）",
+    retired: "（寫的是已退役的值，改回預設值）",
+  } as const;
+  const redundant = plan.redundant.map((r) => `${r.component}｜${r.key}${WHY[r.why]}`);
   return [
     `標準升級預覽：${plan.from} → ${plan.to}`,
     "",

@@ -286,6 +286,41 @@ describe("devguard standard upgrade (SPEC §5.5)", () => {
   });
 });
 
+describe("devguard standard upgrade of Checkstyle-era Java overrides (#197)", () => {
+  const javaRepo = (overrides: string) =>
+    repo({
+      ".devguard.yaml": `standard: team@1.0.0\ncomponents:\n  - path: api/\n    language: java\n    overrides:\n${overrides}`,
+    });
+
+  it("previews the retired values as overrides reset to the default, and --apply deletes them", async () => {
+    const dir = javaRepo(
+      "      lint.tool: checkstyle+pmd\n      lint.rules: [google_checks, pmd-quickstart]\n      complexity.cyclomatic: 8\n",
+    );
+    const preview = await upgrade(dir, { target: "team@1.1.0" });
+    expect(preview.out).toContain("lint.tool（寫的是已退役的值，改回預設值）");
+    expect(preview.out).toContain("lint.rules（寫的是已退役的值，改回預設值）");
+    expect(preview.out).not.toContain("complexity.cyclomatic（");
+    const applied = await upgrade(dir, { target: "team@1.1.0", apply: true });
+    expect(applied.code).toBe(0);
+    const text = read(dir, ".devguard.yaml");
+    expect(text).toContain("standard: team@1.1.0");
+    expect(text).not.toMatch(/lint\.(tool|rules)|checkstyle|google_checks/);
+    expect(text).toContain("complexity.cyclomatic: 8");
+  });
+
+  it("deletes a retired value written with a reason, and the whole overrides block when nothing else is left", async () => {
+    const dir = javaRepo('      lint.tool:\n        value: checkstyle+pmd\n        reason: "legacy"\n');
+    expect((await upgrade(dir, { target: "team@1.1.0", apply: true })).code).toBe(0);
+    expect(read(dir, ".devguard.yaml")).not.toMatch(/overrides|lint\.tool|checkstyle/);
+  });
+
+  it("leaves a current lint.tool override alone", async () => {
+    const dir = javaRepo("      lint.tool: pmd\n");
+    const { out } = await upgrade(dir, { target: "team@1.1.0" });
+    expect(out).not.toContain("已退役的值");
+  });
+});
+
 describe("devguard standard upgrade of a Poetry component (#53)", () => {
   /**
    * A Python component with poetry.lock (ruff 0.17.2 locked), its pyproject.toml written by `fix`. The declaration
