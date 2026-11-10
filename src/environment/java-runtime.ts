@@ -2,7 +2,7 @@ import type { Finding } from "../report/finding.ts";
 import type { EnvironmentCheck, EnvironmentContext } from "./types.ts";
 
 /**
- * The oldest JDK the Java tools in the standards run on (Checkstyle 10, Spotless, palantir-java-format). Not a standard
+ * The oldest JDK the Java tools in the standards run on (Spotless, palantir-java-format, PMD). Not a standard
  * item: `java.minVersion` is the version the code targets, this is the JDK that runs the tools (SPEC §6.5).
  */
 const MIN_RUNTIME = 11;

@@ -52,11 +52,11 @@ function check(t: CodeTarget, tools: ToolRunner, texts: Record<string, string> =
 const only = (...c: CodeCategory[]) => new Set<CodeCategory>(c);
 
 const mavenPlugin = (artifactId: string) => `<plugin><artifactId>${artifactId}</artifactId></plugin>`;
-const ALL_PLUGINS = ["spotless-maven-plugin", "maven-checkstyle-plugin", "maven-pmd-plugin"];
-/** A pom.xml applying Spotless, Checkstyle and PMD (or the given plugins). */
+const ALL_PLUGINS = ["spotless-maven-plugin", "maven-pmd-plugin"];
+/** A pom.xml applying Spotless and PMD (or the given plugins). */
 const pomXml = (inner = "", plugins = ALL_PLUGINS) =>
   `<project>${inner}<build><plugins>${plugins.map(mavenPlugin).join("")}</plugins></build></project>`;
-const GRADLE_BUILD = "plugins {\n  id 'checkstyle'\n  id 'pmd'\n  id 'com.diffplug.spotless' version '7.0.0'\n}\n";
+const GRADLE_BUILD = "plugins {\n  id 'pmd'\n  id 'com.diffplug.spotless' version '7.0.0'\n}\n";
 const MAVEN = { "svc/pom.xml": pomXml() };
 const GRADLE = { "svc/build.gradle": GRADLE_BUILD };
 
@@ -68,9 +68,7 @@ describe("java checker: Maven multi-module lint", () => {
       "svc/core/pom.xml": pomXml(),
       "svc/web/pom.xml": pomXml("<packaging>pom</packaging><modules><module>api</module></modules>"),
       "svc/web/api/pom.xml": pomXml(),
-      "svc/core/target/checkstyle-result.xml": sample("checkstyle-result.xml").replaceAll("svc", "svc/core"),
-      "svc/core/target/pmd.xml": '<pmd version="7"/>',
-      "svc/web/api/target/checkstyle-result.xml": '<checkstyle version="10"/>',
+      "svc/core/target/pmd.xml": sample("pmd.xml").replaceAll("svc", "svc/core"),
       "svc/web/api/target/pmd.xml": sample("pmd.xml").replaceAll("svc", "svc/web/api"),
     };
     const findings = await check(target({ categories: only("lint") }), tools, texts);
@@ -92,7 +90,7 @@ describe("java checker: Maven multi-module lint", () => {
     };
     await check(target({ categories: only("lint", "format") }), tools, texts);
     expect(calls.map((c) => c.args?.filter((a) => !a.startsWith("-")))).toEqual([
-      ["test-compile", "checkstyle:check", "pmd:check"],
+      ["test-compile", "pmd:check"],
       ["spotless:check"],
     ]);
   });
@@ -101,26 +99,21 @@ describe("java checker: Maven multi-module lint", () => {
     const { tools, calls } = fakeWrapper();
     const texts = { "svc/pom.xml": pomXml("<modules><module>core</module></modules>") };
     await check(target({ categories: only("lint") }), tools, texts);
-    expect(calls[0]?.args?.filter((a) => !a.startsWith("-"))).toEqual([
-      "test-compile",
-      "checkstyle:check",
-      "pmd:check",
-    ]);
+    expect(calls[0]?.args?.filter((a) => !a.startsWith("-"))).toEqual(["test-compile", "pmd:check"]);
   });
 
   it("runs only the lint goals for a single-module build", async () => {
     const { tools, calls } = fakeWrapper();
     await check(target({ categories: only("lint") }), tools, MAVEN);
-    expect(calls[0]?.args?.filter((a) => !a.startsWith("-"))).toEqual(["checkstyle:check", "pmd:check"]);
+    expect(calls[0]?.args?.filter((a) => !a.startsWith("-"))).toEqual(["pmd:check"]);
   });
 });
 
 describe("java checker: Maven lint", () => {
-  it("runs Checkstyle and PMD through the wrapper and reports their violations with file and line", async () => {
+  it("runs PMD through the wrapper and reports its violations with file and line", async () => {
     const { tools, calls } = fakeWrapper();
     const texts = {
       ...MAVEN,
-      "svc/target/checkstyle-result.xml": sample("checkstyle-result.xml"),
       "svc/target/pmd.xml": sample("pmd.xml"),
     };
     const findings = await check(target({ categories: only("lint") }), tools, texts);
@@ -129,30 +122,10 @@ describe("java checker: Maven lint", () => {
         language: "java",
         tool: "mvnw",
         dir: "svc/",
-        args: [
-          "-B",
-          "-ntp",
-          "checkstyle:check",
-          "pmd:check",
-          "-Dcheckstyle.failOnViolation=false",
-          "-Dpmd.failOnViolation=false",
-        ],
+        args: ["-B", "-ntp", "pmd:check", "-Dpmd.failOnViolation=false"],
       },
     ]);
     expect(findings).toEqual([
-      {
-        level: "error",
-        layer: "code",
-        rule: "checkstyle/UnusedImports",
-        message: "Unused import - java.util.List.",
-        component: "svc/ (Java)",
-        file: "svc/src/main/java/com/example/App.java",
-        line: 3,
-        fix: "依 Checkstyle 訊息手動修改",
-        fixable: false,
-      },
-      expect.objectContaining({ level: "error", rule: "checkstyle/CyclomaticComplexity", line: 12 }),
-      expect.objectContaining({ level: "hint", rule: "checkstyle/MissingJavadocMethod", line: 20 }),
       expect.objectContaining({
         level: "error",
         rule: "pmd/UnusedLocalVariable",
@@ -181,61 +154,35 @@ describe("java checker: Gradle lint", () => {
     args: [...tasks, "--continue", "--console=plain", "-q"],
   });
 
-  it("runs the Checkstyle and PMD tasks through the Gradle wrapper and reads each report", async () => {
+  it("runs the PMD tasks through the Gradle wrapper and reads each report", async () => {
     const { tools, calls } = fakeWrapper({
-      checkstyleMain: {
-        code: 1,
-        stderr: "Execution failed for task ':checkstyleMain'.\n> Checkstyle rule violations were found.",
-      },
+      pmdMain: { code: 1, stderr: "Execution failed for task ':pmdMain'.\n> 1 PMD rule violations were found." },
     });
-    const texts = {
-      ...GRADLE,
-      "svc/build/reports/checkstyle/main.xml": sample("checkstyle-result.xml"),
-      "svc/build/reports/pmd/main.xml": sample("pmd.xml"),
-    };
+    const texts = { ...GRADLE, "svc/build/reports/pmd/main.xml": sample("pmd.xml") };
     const findings = await check(target({ categories: only("lint") }), tools, texts);
-    expect(calls).toEqual([gradleRun("checkstyleMain", "checkstyleTest"), gradleRun("pmdMain", "pmdTest")]);
+    expect(calls).toEqual([gradleRun("pmdMain", "pmdTest")]);
     expect(findings.map((f) => `${f.rule}:${String(f.line)}`)).toEqual([
-      "checkstyle/UnusedImports:3",
-      "checkstyle/CyclomaticComplexity:12",
-      "checkstyle/MissingJavadocMethod:20",
       "pmd/UnusedLocalVariable:15",
       "pmd/processing-error:undefined",
     ]);
   });
 
-  it("reads the Checkstyle report of every subproject (#101)", async () => {
+  it("reads the PMD report of every subproject (#101)", async () => {
     const { tools, calls } = fakeWrapper();
     const texts = {
       "svc/build.gradle": "plugins { id 'java' }",
       "svc/settings.gradle": "include ':java-jwt'\nproject(':java-jwt').projectDir = file('lib')\n",
-      "svc/lib/build.gradle": "plugins { id 'checkstyle' }",
-      "svc/lib/build/reports/checkstyle/main.xml": sample("checkstyle-result.xml"),
+      "svc/lib/build.gradle": "plugins { id 'pmd' }",
+      "svc/lib/build/reports/pmd/main.xml": sample("pmd.xml"),
     };
     const findings = await check(target({ categories: only("lint") }), tools, texts);
-    expect(calls).toEqual([gradleRun("checkstyleMain", "checkstyleTest")]);
-    expect(findings.map((f) => f.rule)).toEqual([
-      "checkstyle/UnusedImports",
-      "checkstyle/CyclomaticComplexity",
-      "checkstyle/MissingJavadocMethod",
-    ]);
-  });
-
-  it("runs Checkstyle and PMD apart, so one failing does not lose the other's findings (#98)", async () => {
-    const { tools } = fakeWrapper({ pmdMain: { code: 1, stderr: "Could not resolve all files" } });
-    const texts = { ...GRADLE, "svc/build/reports/checkstyle/main.xml": sample("checkstyle-result.xml") };
-    const findings = await check(target({ categories: only("lint") }), tools, texts);
-    expect(findings.map((f) => f.rule)).toEqual([
-      "checkstyle/UnusedImports",
-      "checkstyle/CyclomaticComplexity",
-      "checkstyle/MissingJavadocMethod",
-      "code/tool-failed",
-    ]);
+    expect(calls).toEqual([gradleRun("pmdMain", "pmdTest")]);
+    expect(findings.map((f) => f.rule)).toEqual(["pmd/UnusedLocalVariable", "pmd/processing-error"]);
   });
 
   it("reports a failed Gradle build that is not about rule violations", async () => {
-    const { tools } = fakeWrapper({ checkstyleMain: { code: 1, stderr: "Could not resolve all files" } });
-    const texts = { ...GRADLE, "svc/build/reports/checkstyle/main.xml": sample("checkstyle-result.xml") };
+    const { tools } = fakeWrapper({ pmdMain: { code: 1, stderr: "Could not resolve all files" } });
+    const texts = { ...GRADLE, "svc/build/reports/pmd/main.xml": sample("pmd.xml") };
     const findings = await check(target({ categories: only("lint") }), tools, texts);
     expect(findings).toEqual([
       expect.objectContaining({
@@ -306,7 +253,6 @@ describe("java checker: scope", () => {
     const { tools } = fakeWrapper({ "spotless:check": { code: 1, stdout: sample("spotless-maven.txt") } });
     const texts = {
       ...MAVEN,
-      "svc/target/checkstyle-result.xml": sample("checkstyle-result.xml"),
       "svc/target/pmd.xml": sample("pmd.xml"),
     };
     const findings = await check(target({ files: ["src/test/java/com/example/AppTest.java"] }), tools, texts);
@@ -382,28 +328,23 @@ describe("java checker: build tool with both pom.xml and build.gradle (#96)", ()
   };
 
   it("runs Gradle when only the Gradle wrapper is committed", async () => {
-    expect(await wrappers({}, BOTH)).toEqual(["gradlew", "gradlew", "gradlew", "gradlew"]);
+    expect(await wrappers({}, BOTH)).toEqual(["gradlew", "gradlew", "gradlew"]);
   });
 
   it("runs the declared build tool over the build files", async () => {
-    expect(await wrappers(declared("gradle"), MAVEN)).toEqual(["gradlew", "gradlew", "gradlew", "gradlew"]);
+    expect(await wrappers(declared("gradle"), MAVEN)).toEqual(["gradlew", "gradlew", "gradlew"]);
     expect(await wrappers(declared("maven"), BOTH)).toEqual(["mvnw", "mvnw", "mvnw"]);
   });
 
   it("ignores the standard's default build.tool, which the declaration does not set", async () => {
-    expect(await wrappers({ effective: { "build.tool": "maven" } }, BOTH)).toEqual([
-      "gradlew",
-      "gradlew",
-      "gradlew",
-      "gradlew",
-    ]);
+    expect(await wrappers({ effective: { "build.tool": "maven" } }, BOTH)).toEqual(["gradlew", "gradlew", "gradlew"]);
   });
 });
 
 describe("java checker: build failures", () => {
   it("reports a failed Maven run instead of reading reports left over from an earlier build", async () => {
-    const { tools } = fakeWrapper({ "checkstyle:check": { code: 1, stdout: "[ERROR] Non-resolvable parent POM" } });
-    const texts = { ...MAVEN, "svc/target/checkstyle-result.xml": sample("checkstyle-result.xml") };
+    const { tools } = fakeWrapper({ "pmd:check": { code: 1, stdout: "[ERROR] Non-resolvable parent POM" } });
+    const texts = { ...MAVEN, "svc/target/pmd.xml": sample("pmd.xml") };
     const findings = await check(target({ categories: only("lint") }), tools, texts);
     expect(findings).toEqual([
       expect.objectContaining({
@@ -415,13 +356,13 @@ describe("java checker: build failures", () => {
 
   it("reports a missing or unreadable report as a tool failure", async () => {
     const { tools } = fakeWrapper();
+    const missing = await check(target({ categories: only("lint") }), tools, MAVEN);
+    expect(missing).toEqual([
+      expect.objectContaining({ rule: "code/tool-failed", message: "找不到 PMD 報告 svc/target/pmd.xml" }),
+    ]);
     const texts = { ...MAVEN, "svc/target/pmd.xml": "<pmd>" };
     const findings = await check(target({ categories: only("lint") }), tools, texts);
     expect(findings).toEqual([
-      expect.objectContaining({
-        rule: "code/tool-failed",
-        message: "找不到 Checkstyle 報告 svc/target/checkstyle-result.xml",
-      }),
       expect.objectContaining({
         rule: "code/tool-failed",
         message: expect.stringMatching(/^PMD 報告 svc\/target\/pmd.xml 無法解析/) as string,
@@ -431,15 +372,15 @@ describe("java checker: build failures", () => {
 });
 
 describe("java checker: tools whose plugin the build lacks are not run (#98)", () => {
-  it("runs only Checkstyle for a Maven build without Spotless and PMD", async () => {
+  it("runs only PMD for a Maven build without Spotless", async () => {
     const { tools, calls } = fakeWrapper();
     const texts: Record<string, string> = {
-      "svc/pom.xml": pomXml("", ["maven-checkstyle-plugin"]),
-      "svc/target/checkstyle-result.xml": '<checkstyle version="10"/>',
+      "svc/pom.xml": pomXml("", ["maven-pmd-plugin"]),
+      "svc/target/pmd.xml": '<pmd version="7"/>',
     };
     const t = target({ categories: only("lint", "format") });
     expect(await check(t, tools, texts)).toEqual([]);
-    expect(calls.map((c) => c.args?.filter((a) => !a.startsWith("-")))).toEqual([["checkstyle:check"]]);
+    expect(calls.map((c) => c.args?.filter((a) => !a.startsWith("-")))).toEqual([["pmd:check"]]);
     expect(await javaChecker.fixSteps(t, { cwd: CWD, tools, readText: (p) => Promise.resolve(texts[p]) })).toEqual([]);
   });
 
@@ -449,15 +390,15 @@ describe("java checker: tools whose plugin the build lacks are not run (#98)", (
     expect(calls).toEqual([]);
   });
 
-  it("runs only the Checkstyle tasks for a Gradle build without PMD and Spotless", async () => {
+  it("runs only the PMD tasks for a Gradle build without Spotless", async () => {
     const { tools, calls } = fakeWrapper();
     const texts = {
-      "svc/build.gradle": "plugins {\n  id 'java'\n  id 'checkstyle'\n}\n",
-      "svc/build/reports/checkstyle/main.xml": sample("checkstyle-result.xml"),
+      "svc/build.gradle": "plugins {\n  id 'java'\n  id 'pmd'\n}\n",
+      "svc/build/reports/pmd/main.xml": sample("pmd.xml"),
     };
     const findings = await check(target({ categories: only("lint", "format") }), tools, texts);
-    expect(calls.map((c) => c.args?.[0])).toEqual(["checkstyleMain"]);
-    expect(findings).toHaveLength(3);
+    expect(calls.map((c) => c.args?.[0])).toEqual(["pmdMain"]);
+    expect(findings).toHaveLength(2);
   });
 });
 
@@ -466,10 +407,7 @@ describe("java checker: tools whose plugin may come from elsewhere still run (#9
     const { tools, calls } = fakeWrapper();
     const parent = "<parent><groupId>g</groupId><artifactId>p</artifactId><version>1</version><relativePath/></parent>";
     await check(target({ categories: only("lint", "format") }), tools, { "svc/pom.xml": pomXml(parent, []) });
-    expect(calls.map((c) => c.args?.filter((a) => !a.startsWith("-")))).toEqual([
-      ["checkstyle:check", "pmd:check"],
-      ["spotless:check"],
-    ]);
+    expect(calls.map((c) => c.args?.filter((a) => !a.startsWith("-")))).toEqual([["pmd:check"], ["spotless:check"]]);
   });
 
   it("runs Spotless declared `apply false` in a root build, for its subprojects", async () => {

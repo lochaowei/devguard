@@ -263,17 +263,16 @@ exports[`derived standards keep their items > legacy@1.0.0 1`] = `
         "kind": "list",
         "label": "規則集",
         "value": [
-          "google_checks",
           "pmd-quickstart",
         ],
       },
       "lint.tool": {
         "allowed": [
-          "checkstyle+pmd",
+          "pmd",
         ],
         "kind": "choice",
         "label": "靜態分析工具",
-        "value": "checkstyle+pmd",
+        "value": "pmd",
       },
       "test.tool": {
         "allowed": [
@@ -282,14 +281,6 @@ exports[`derived standards keep their items > legacy@1.0.0 1`] = `
         "kind": "choice",
         "label": "測試框架",
         "value": "junit5",
-      },
-      "tools.checkstyle": {
-        "kind": "versionRange",
-        "label": "checkstyle 版本範圍",
-        "pinnedAs": [
-          "checkstyle",
-        ],
-        "value": ">=10.21,<15",
       },
       "tools.jacoco": {
         "kind": "versionRange",
@@ -306,14 +297,6 @@ exports[`derived standards keep their items > legacy@1.0.0 1`] = `
           "jacoco-maven-plugin",
         ],
         "value": ">=0.8.12,<0.9",
-      },
-      "tools.maven-checkstyle-plugin": {
-        "kind": "versionRange",
-        "label": "maven-checkstyle-plugin 版本範圍",
-        "pinnedAs": [
-          "maven-checkstyle-plugin",
-        ],
-        "value": ">=3.6,<4",
       },
       "tools.maven-enforcer-plugin": {
         "kind": "versionRange",
@@ -942,17 +925,16 @@ exports[`derived standards keep their items > team@1.1.0 1`] = `
         "kind": "list",
         "label": "規則集",
         "value": [
-          "google_checks",
           "pmd-quickstart",
         ],
       },
       "lint.tool": {
         "allowed": [
-          "checkstyle+pmd",
+          "pmd",
         ],
         "kind": "choice",
         "label": "靜態分析工具",
-        "value": "checkstyle+pmd",
+        "value": "pmd",
       },
       "test.tool": {
         "allowed": [
@@ -961,14 +943,6 @@ exports[`derived standards keep their items > team@1.1.0 1`] = `
         "kind": "choice",
         "label": "測試框架",
         "value": "junit5",
-      },
-      "tools.checkstyle": {
-        "kind": "versionRange",
-        "label": "checkstyle 版本範圍",
-        "pinnedAs": [
-          "checkstyle",
-        ],
-        "value": ">=10.21,<15",
       },
       "tools.jacoco": {
         "kind": "versionRange",
@@ -985,14 +959,6 @@ exports[`derived standards keep their items > team@1.1.0 1`] = `
           "jacoco-maven-plugin",
         ],
         "value": ">=0.8.12,<0.9",
-      },
-      "tools.maven-checkstyle-plugin": {
-        "kind": "versionRange",
-        "label": "maven-checkstyle-plugin 版本範圍",
-        "pinnedAs": [
-          "maven-checkstyle-plugin",
-        ],
-        "value": ">=3.6,<4",
       },
       "tools.maven-enforcer-plugin": {
         "kind": "versionRange",

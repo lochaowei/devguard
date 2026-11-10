@@ -11,7 +11,6 @@ import type { Repair } from "./repair.ts";
 export type FileCategory = "generated" | "managed" | "snippet" | "user";
 
 const GENERATED: readonly RegExp[] = [
-  /(^|\/)checkstyle\.xml$/,
   /(^|\/)(pmd-ruleset\.xml|pmd\.xml|config\/pmd\/ruleset\.xml|config\/pmd\/pmd\.xml)$/,
   /^\.claude\/rules\//,
   /^\.claude\/skills\/standards-doctor\//,

@@ -53,14 +53,12 @@ const goTools: Record<string, ItemDef> = {
 };
 
 const javaTools: Record<string, ItemDef> = {
-  "tools.maven-checkstyle-plugin": placeholderRange("maven-checkstyle-plugin", ">=3.6,<4"),
   "tools.maven-pmd-plugin": placeholderRange("maven-pmd-plugin", ">=3.26,<4"),
   "tools.spotless-maven-plugin": placeholderRange("spotless-maven-plugin", ">=2.44,<3"),
   "tools.jacoco-maven-plugin": placeholderRange("jacoco-maven-plugin", ">=0.8.12,<0.9"),
   "tools.maven-enforcer-plugin": placeholderRange("maven-enforcer-plugin", ">=3.5,<4"),
   "tools.spotless-gradle-plugin": placeholderRange("spotless-gradle-plugin", ">=7,<8", ["com.diffplug.spotless"]),
   // Gradle's built-in plugins pin the tool itself through `toolVersion`.
-  "tools.checkstyle": placeholderRange("checkstyle", ">=10.21,<11"),
   "tools.pmd": placeholderRange("pmd", ">=7,<8"),
   "tools.jacoco": placeholderRange("jacoco", ">=0.8.12,<0.9"),
 };
@@ -178,8 +176,8 @@ export const team_1_0_0: Standard = {
       "java.minVersion": { kind: "minVersion", label: "Java 最低版本", value: "17" },
       "build.tool": { kind: "choice", label: "建置工具", value: "maven", allowed: ["maven", "gradle"] },
       "format.tool": { kind: "style", label: "格式化工具", value: "palantir-java-format" },
-      "lint.tool": { kind: "choice", label: "靜態分析工具", value: "checkstyle+pmd", allowed: ["checkstyle+pmd"] },
-      "lint.rules": { kind: "list", label: "規則集", value: ["google_checks", "pmd-quickstart"] },
+      "lint.tool": { kind: "choice", label: "靜態分析工具", value: "pmd", allowed: ["pmd"] },
+      "lint.rules": { kind: "list", label: "規則集", value: ["pmd-quickstart"] },
       "complexity.cyclomatic": cyclomatic,
       "complexity.cognitive": cognitive,
       "test.tool": { kind: "choice", label: "測試框架", value: "junit5", allowed: ["junit5"] },

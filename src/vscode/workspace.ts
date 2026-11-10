@@ -1,8 +1,6 @@
 import type { Resolution, ResolvedComponent } from "../declaration/resolve.ts";
 import type { KeyPath, Layout } from "../fix/repair.ts";
 import { componentBuildTool } from "../settings/java/build.ts";
-import { CHECKSTYLE_FILES } from "../settings/java/checkstyle.ts";
-import { readGradleBuild } from "../versions/pinned.ts";
 
 export const SETTINGS_FILE = ".vscode/settings.json";
 export const EXTENSIONS_FILE = ".vscode/extensions.json";
@@ -60,7 +58,7 @@ function languageExtensions(c: ResolvedComponent): Extensions {
       return { recommended: [...used, ...vitest], unwanted: other };
     }
     case "java":
-      return { recommended: ["vscjava.vscode-java-pack", "shengchen.vscode-checkstyle"], unwanted: [] };
+      return { recommended: ["vscjava.vscode-java-pack"], unwanted: [] };
   }
 }
 
@@ -131,36 +129,6 @@ function typescriptSettings(resolution: Resolution, c: ResolvedComponent): Manag
       path: ["eslint.workingDirectories"],
       value: workingDirectory(t.dir),
     })),
-  ];
-}
-
-/** The Checkstyle version the build pins: the checkstyle dependency of the Maven plugin, or Gradle's `toolVersion`. */
-function checkstyleVersion(build: { pom?: string; gradle?: string }): string | undefined {
-  if (build.pom !== undefined) {
-    const xml = build.pom.replace(/<!--[\s\S]*?-->/g, "");
-    return /<artifactId>\s*checkstyle\s*<\/artifactId>\s*<version>\s*([^<$\s]+)\s*<\/version>/.exec(xml)?.[1];
-  }
-  return build.gradle === undefined ? undefined : readGradleBuild(build.gradle).get("checkstyle");
-}
-
-async function javaSettings(c: ResolvedComponent, read: ReadRepoText): Promise<Managed[]> {
-  let config: string = CHECKSTYLE_FILES[0];
-  for (const name of CHECKSTYLE_FILES) {
-    if ((await read(c.dir + name)) !== undefined) {
-      config = name;
-      break;
-    }
-  }
-  const pom = await read(`${c.dir}pom.xml`);
-  const gradle = (await read(`${c.dir}build.gradle.kts`)) ?? (await read(`${c.dir}build.gradle`));
-  const version = checkstyleVersion({
-    ...(pom === undefined ? {} : { pom }),
-    ...(gradle === undefined ? {} : { gradle }),
-  });
-  return [
-    setting(["[java]", "editor.formatOnSave"], false),
-    setting(["java.checkstyle.configuration"], `\${workspaceFolder}/${c.dir}${config}`),
-    ...(version ? [setting(["java.checkstyle.version"], version)] : []),
   ];
 }
 
@@ -238,7 +206,7 @@ export function workspaceLayout(resolution: Resolution): Layout {
 /**
  * Everything the CLI manages in `.vscode/` for the languages the declaration uses (SPEC §7.2). One `.vscode/` at the
  * repo root: per-language sections and `eslint.workingDirectories` cover the components; single-valued settings
- * (interpreter, tsdk, Checkstyle) follow the first component of the language.
+ * (interpreter, tsdk) follow the first component of the language.
  */
 export async function managedWorkspace(resolution: Resolution, read: ReadRepoText): Promise<Managed[]> {
   const managed: Managed[] = [setting(["files.eol"], "\n")];
@@ -247,8 +215,7 @@ export async function managedWorkspace(resolution: Resolution, read: ReadRepoTex
   if (first(resolution, "go")) managed.push(...GO_SETTINGS);
   const typescript = first(resolution, "typescript");
   if (typescript) managed.push(...typescriptSettings(resolution, typescript));
-  const java = first(resolution, "java");
-  if (java) managed.push(...(await javaSettings(java, read)));
+  if (first(resolution, "java")) managed.push(setting(["[java]", "editor.formatOnSave"], false));
   const extensions = workspaceExtensions(resolution);
   for (const id of extensions.recommended) {
     managed.push({ kind: "member", file: EXTENSIONS_FILE, path: ["recommendations"], value: id });

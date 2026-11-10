@@ -1,6 +1,6 @@
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import type { Finding, Level } from "../report/finding.ts";
+import type { Finding } from "../report/finding.ts";
 import { descendants, parseXmlText, type XmlEl } from "../xml/parse.ts";
 import { targetBuildTool, type BuildTool } from "../settings/java/build.ts";
 import { isMavenMultiModule, mavenReportDirs } from "../settings/java/modules.ts";
@@ -9,33 +9,8 @@ import { readBuildPlugins, type JavaPlugin } from "../settings/java/plugins.ts";
 import { codeFinding, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
 
-function checkstyleLevel(severity: string | undefined): Level {
-  return severity === "info" || severity === "ignore" ? "hint" : "error";
-}
-
-/** `com.puppycrawl...imports.UnusedImportsCheck` -> `UnusedImports`. */
-function checkstyleRule(source: string | undefined): string {
-  const name = (source ?? "").split(".").pop() ?? "";
-  return name.replace(/Check$/, "") || "violation";
-}
-
 function lineOf(value: string | undefined): number | undefined {
   return value === undefined ? undefined : Number(value);
-}
-
-function checkstyleFindings(target: CodeTarget, ctx: CodeCheckContext, root: XmlEl): Finding[] {
-  return descendants(root, "file").flatMap((file) =>
-    descendants(file, "error").map((e) =>
-      codeFinding(target, {
-        level: checkstyleLevel(e.attrs.severity),
-        rule: `checkstyle/${checkstyleRule(e.attrs.source)}`,
-        message: e.attrs.message ?? "",
-        file: toRepoPath(ctx.cwd, target.dir, file.attrs.name ?? ""),
-        line: lineOf(e.attrs.line),
-        fix: "依 Checkstyle 訊息手動修改",
-      }),
-    ),
-  );
 }
 
 function pmdFindings(target: CodeTarget, ctx: CodeCheckContext, root: XmlEl): Finding[] {
@@ -91,9 +66,9 @@ function buildOf(target: CodeTarget, ctx: CodeCheckContext): Promise<BuildTool> 
   return targetBuildTool(target, ctx.readText);
 }
 
-/** Checkstyle and PMD: how each runs through either wrapper and where it writes its reports. */
+/** PMD: how it runs through either wrapper and where it writes its reports. */
 interface LintTool {
-  plugin: "checkstyle" | "pmd";
+  plugin: "pmd";
   label: string;
   parse: ReportParser;
   mavenGoal: string;
@@ -105,16 +80,6 @@ interface LintTool {
 }
 
 const LINT_TOOLS: readonly LintTool[] = [
-  {
-    plugin: "checkstyle",
-    label: "Checkstyle",
-    parse: checkstyleFindings,
-    mavenGoal: "checkstyle:check",
-    mavenFlag: "-Dcheckstyle.failOnViolation=false",
-    mavenReport: "target/checkstyle-result.xml",
-    gradleTasks: ["checkstyleMain", "checkstyleTest"],
-    gradleReports: ["build/reports/checkstyle/main.xml", "build/reports/checkstyle/test.xml"],
-  },
   {
     plugin: "pmd",
     label: "PMD",
@@ -204,7 +169,7 @@ async function pluginsOf(
   if (build === "gradle") {
     // A multi-project build may apply a plugin only in its subprojects (#101).
     const lacking = new Set<JavaPlugin>();
-    for (const plugin of ["spotless", "checkstyle", "pmd"] as const)
+    for (const plugin of ["spotless", "pmd"] as const)
       if ((await gradleApplied(ctx.readText, dirs, plugin)) === "no") lacking.add(plugin);
     return (plugin) => !lacking.has(plugin);
   }
@@ -295,12 +260,12 @@ async function format(target: CodeTarget, ctx: CodeCheckContext, build: BuildToo
   );
 }
 
-/** Spotless, Checkstyle and PMD through the project's Maven or Gradle wrapper (SPEC §6.4). */
+/** Spotless and PMD through the project's Maven or Gradle wrapper (SPEC §6.4). */
 export const javaChecker: CodeChecker = {
   language: "java",
   // No stdin mode: the build reads the files on disk.
   workingTreeTools(target) {
-    const lint = target.categories.has("lint") ? ["Checkstyle", "PMD"] : [];
+    const lint = target.categories.has("lint") ? ["PMD"] : [];
     return target.categories.has("format") ? ["Spotless", ...lint] : lint;
   },
   async check(target, ctx) {
@@ -315,7 +280,7 @@ export const javaChecker: CodeChecker = {
     const wanted = new Set(target.files.map((f) => toRepoPath(ctx.cwd, target.dir, f)));
     return findings.filter((f) => f.file === undefined || wanted.has(f.file));
   },
-  /** Spotless formats the whole component; Checkstyle and PMD have no automatic fixes. */
+  /** Spotless formats the whole component; PMD has no automatic fixes. */
   async fixSteps(target, ctx) {
     const build = await buildOf(target, ctx);
     const dirs = await gradleProjects(target, ctx, build);

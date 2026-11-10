@@ -24,7 +24,7 @@ function convert(el: XmlElement, source: string): XmlEl {
 
 /**
  * Parses an XML file into plain elements. External DTDs are never fetched, and unknown entities are left as-is,
- * so tool configs such as Checkstyle's (with a DOCTYPE) parse offline.
+ * so tool configs with a DOCTYPE parse offline.
  */
 export function parseXmlText(text: string): XmlParse {
   try {

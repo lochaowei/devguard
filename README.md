@@ -15,7 +15,7 @@
 **SPEC 的指令都已實作**（`check`、`doctor`、`fix`、`install`、`hook`、`draft`、`standard upgrade`）。以 Bun 打包成 Windows、Linux、macOS 的單一執行檔，透過 GitHub Release 發佈（見[安裝](#安裝)）。見下方[路線圖](#路線圖)與[已知限制](#已知限制)。
 
 - **專案宣告與草稿**：解析並檢查 `.devguard.yaml`（9 種標準項目類型、覆寫與偏離規則、到期日檢查、未涵蓋程式檔提示），以及依既有設定產生宣告草稿（`devguard draft`，含 Gradle、pnpm、yarn、Poetry、Biome、Jest、pyright、basedpyright 等工具選擇）。
-- **四語言設定檢查與一致性檢查**：Python（`pyproject.toml`、`ruff.toml`、`pyrightconfig.json`）、Go（golangci-lint 採用的 `.golangci.json` / `.toml` / `.yaml` / `.yml`、`go.mod`）、TypeScript（`tsconfig.json`、ESLint、Prettier、Biome、Vitest / Jest、`package.json`）、Java（`pom.xml`、`build.gradle(.kts)`、`checkstyle.xml`、PMD ruleset、`lombok.config`）與共通 `.gitattributes`（`* text=auto eol=lf`）。monorepo 的子元件沿用上層目錄的共用設定檔。
+- **四語言設定檢查與一致性檢查**：Python（`pyproject.toml`、`ruff.toml`、`pyrightconfig.json`）、Go（golangci-lint 採用的 `.golangci.json` / `.toml` / `.yaml` / `.yml`、`go.mod`）、TypeScript（`tsconfig.json`、ESLint、Prettier、Biome、Vitest / Jest、`package.json`）、Java（`pom.xml`、`build.gradle(.kts)`、PMD ruleset、`lombok.config`）與共通 `.gitattributes`（`* text=auto eol=lf`）。monorepo 的子元件沿用上層目錄的共用設定檔。
 - **依賴規則與工具版本範圍**：lockfile 是否提交（含 `go mod tidy -diff`、Maven Enforcer、Gradle `gradle.lockfile`）、直接依賴是否包含禁用套件（`deps.banned`），以及鎖定的工具版本（`uv.lock` / `poetry.lock`、`package-lock.json` / `pnpm-lock.yaml` / `yarn.lock` / `bun.lock` 等）是否落在標準允許的範圍內（`tools.*`）。
 - **程式碼與測試**：透過專案環境鎖定的工具執行 lint、format 與 typecheck；`check --full` 再跑測試與行 / 分支覆蓋率門檻。
 - **三道防線**：`install` 產生 `.vscode/`、`.claude/` 與工具設定檔，並安裝 pre-commit / pre-push hook（或注入既有的 pre-commit、husky、lefthook）；`doctor` 檢查本機環境。
@@ -212,7 +212,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
 
 ---
 
-#### Java（Java `17+` + Maven / Gradle Wrapper + `Spotless` + `Checkstyle` + `PMD` + `JaCoCo`）
+#### Java（Java `17+` + Maven / Gradle Wrapper + `Spotless` + `PMD` + `JaCoCo`）
 
 1. **前置環境與建置 Wrapper**：
    - JDK `>= 17`（新專案建議 21+）。
@@ -235,22 +235,20 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
    devguard install
    ```
    - **CLI 全權產生（`generated`）**：
-     - `checkstyle.xml`：包含 `CyclomaticComplexity`（上限 10）與 `IllegalImport`（預設禁用 `sun.*`）
      - `pmd-ruleset.xml`：引用 `rulesets/java/quickstart.xml` 並啟用 `CognitiveComplexity`（`reportLevel = 15`）
    - **結構化設定（`managed`）**：
      - `lombok.config`（若偵測到使用 Lombok）：自動補上 `lombok.addLombokGeneratedAnnotation = true`，避免 Lombok 產生的程式碼拉低 JaCoCo 覆蓋率
-     - `.vscode/settings.json`：關閉 Java `editor.formatOnSave`（避免 IDE 格式化與 Palantir 衝突），並將 `java.checkstyle.configuration` 與 `java.checkstyle.version` 對齊建置檔；同時在 `.vscode/tasks.json` 產生 `standards: format (Spotless)` task
+     - `.vscode/settings.json`：關閉 Java `editor.formatOnSave`（避免 IDE 格式化與 Palantir 衝突）；同時在 `.vscode/tasks.json` 產生 `standards: format (Spotless)` task
    - **建置檔設定（`snippet`，手動加入 `pom.xml` 或 `build.gradle(.kts)`）**：
      - Java 版本：`<maven.compiler.release>17</maven.compiler.release>`（或 Gradle Java toolchain）
      - 鎖定外掛版本並設定：
        - `spotless-maven-plugin`（`>=2.44,<3`）或 `com.diffplug.spotless`（`>=7,<8`），設定 `palantirJavaFormat()`
-       - `maven-checkstyle-plugin`（`>=3.6,<4`，設定 `configLocation` 為 `checkstyle.xml`）或 Gradle `checkstyle`（`toolVersion` `>=10.21,<11`）
        - `maven-pmd-plugin`（`>=3.26,<4`，設定 `rulesets` 為 `pmd-ruleset.xml`）或 Gradle `pmd`（`toolVersion` `>=7,<8`）
        - `jacoco-maven-plugin`（`>=0.8.12,<0.9`，含 `prepare-agent` 與 `report`）或 Gradle `jacoco`（開啟 `xml.required = true`）
        - 依賴鎖定：Maven 設定 `maven-enforcer-plugin`（`>=3.5,<4`）啟用 `banDynamicVersions` 與 `dependencyConvergence`；Gradle 啟用 dependency locking 並提交 `gradle.lockfile`
 4. **日常檢查與修正**：
    ```bash
-   devguard check          # 執行 spotless:check、checkstyle:check、pmd:check（或對應 Gradle tasks）並解析報告
+   devguard check          # 執行 spotless:check、pmd:check（或對應 Gradle tasks）並解析報告
    devguard fix --code     # 執行 spotless:apply（或 spotlessApply）自動格式化
    devguard check --full   # 執行 test + jacoco，解析 jacoco.xml 檢查 LINE 與 BRANCH 覆蓋率各自 >= 80%
    ```
@@ -397,7 +395,7 @@ web/ (TypeScript)
 
 | 類別 | 範例 | `devguard fix` 做法 |
 |---|---|---|
-| **CLI 全權產生**（`generated`） | `checkstyle.xml`、`pmd-ruleset.xml`、`.mvn/settings.xml`、`.mvn/maven.config` | 整份重新產生，檔頭標註「由 CLI 產生（devguard），請勿手動修改」 |
+| **CLI 全權產生**（`generated`） | `pmd-ruleset.xml`、`.mvn/settings.xml`、`.mvn/maven.config` | 整份重新產生，檔頭標註「由 CLI 產生（devguard），請勿手動修改」 |
 | **結構化的共用檔**（`managed`） | `pyproject.toml`、`.golangci.yml`、`tsconfig.json`、`.prettierrc`、`biome.json`、`.gitattributes` | 只修改 CLI 管理的 key 或行規則，保留註解與原有順序 |
 | **建置檔與程式碼設定**（`snippet`） | `pom.xml`、`build.gradle(.kts)`、`eslint.config.js`、`vitest.config.ts` | 不自動修改檔案，在預覽中印出應套用的設定片段 |
 | **使用者層級設定**（`user`） | `~/.m2/settings.xml`、使用者的 `.npmrc`、`go env` | 絕不自動修改，只印出修改說明 |
@@ -414,13 +412,13 @@ web/ (TypeScript)
   - **Python**：推薦 `ms-python.python`、`charliermarsh.ruff`、`ms-python.mypy-type-checker`（使用 mypy 時）；不推薦 `black-formatter`、`isort`、`flake8`、`pylint`
   - **Go**：推薦 `golang.go`
   - **TypeScript**：預設推薦 `dbaeumer.vscode-eslint`、`esbenp.prettier-vscode`（改用 Biome 時推薦 `biomejs.biome`，未選用的那一套列入不推薦），以及 `vitest.explorer`（使用 Vitest 時）
-  - **Java**：推薦 `vscjava.vscode-java-pack`、`shengchen.vscode-checkstyle`
+  - **Java**：推薦 `vscjava.vscode-java-pack`
 - **`settings.json`**（只修改 CLI 管理的 key，保留個人或專案其他設定）：
   - 共通：`files.eol: "\n"`
   - Python：存檔時以 Ruff 格式化並執行 `source.fixAll` / `source.organizeImports`，`ruff.importStrategy` 與 `mypy-type-checker.importStrategy` 設為 `fromEnvironment`，`python.defaultInterpreterPath` 指向 `.venv`
   - Go：`go.lintTool: "golangci-lint-v2"`、`go.lintOnSave: "package"`、`gopls.formatting.gofumpt: true`
   - TypeScript：存檔時以 Prettier 或 Biome 格式化並執行 `source.fixAll.eslint`（或 `source.fixAll.biome`），`js/ts.tsdk.path` 指向專案 `node_modules/typescript/lib`，`eslint.workingDirectories` 列出所有 ESLint 元件
-  - Java：**關閉 `[java].editor.formatOnSave`**（避免 IDE 格式化與 Spotless Palantir 規則衝突），並將 `java.checkstyle.configuration` 與 `java.checkstyle.version` 同步至建置設定
+  - Java：**關閉 `[java].editor.formatOnSave`**（避免 IDE 格式化與 Spotless Palantir 規則衝突）
 - **`tasks.json`**：提供 `standards: doctor`（開啟資料夾時自動執行 `devguard doctor --quiet`）、`standards: check`、`standards: fix`、`standards: test & coverage`，以及 Java 專案的 `standards: format (Spotless)`。
 
 ### 第二道防線：Claude Code（`.claude/`）
@@ -498,7 +496,7 @@ src/
   repo/                  repo 的檔案清單、元件歸屬與路徑工具
   report/                finding 型別、各種報告格式、exit code、帳密遮蔽
   shared/                共用的檔案讀取與型別守衛
-  xml/                   XML 解析（含行號，不讀外部 DTD；供 pom.xml、Checkstyle、PMD、JaCoCo 使用）
+  xml/                   XML 解析（含行號，不讀外部 DTD；供 pom.xml、PMD、JaCoCo 使用）
 test/                    Vitest 測試
 scripts/                 exe 打包、smoke test、T2 探測
 assets/                  exe 圖示

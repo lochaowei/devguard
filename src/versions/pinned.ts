@@ -236,14 +236,13 @@ export function readMavenPlugins(text: string): Map<string, string> {
 }
 
 const GRADLE_PLUGIN = /\bid\s*\(?\s*["']([^"']+)["']\s*\)?\s*version\s*\(?\s*["']([^"']+)["']/g;
-const GRADLE_TOOL = /\b(checkstyle|pmd|jacoco|spotbugs)\s*\{[^}]*?\btoolVersion\b\s*=?\s*\(?\s*["']([^"']+)["']/g;
+const GRADLE_TOOL = /\b(pmd|jacoco|spotbugs)\s*\{[^}]*?\btoolVersion\b\s*=?\s*\(?\s*["']([^"']+)["']/g;
 
-/** `checkstyle 'group:artifact:X'` / `pmd("group:artifact:X")` in a `dependencies {}` block (Groovy and Kotlin DSL). */
-const GRADLE_TOOL_DEPENDENCY = /\b(checkstyle|pmd|spotbugs)\s*\(?\s*["'][^"':\s]+:([^"':\s]+):(\d[^"':\s]*)["']/g;
+/** `pmd('group:artifact:X')` / `pmd("group:artifact:X")` in a `dependencies {}` block (Groovy and Kotlin DSL). */
+const GRADLE_TOOL_DEPENDENCY = /\b(pmd|spotbugs)\s*\(?\s*["'][^"':\s]+:([^"':\s]+):(\d[^"':\s]*)["']/g;
 
 /** The artifact each tool's configuration takes its version from: PMD is `pmd-java` or `pmd-core`. */
 const TOOL_ARTIFACTS: Readonly<Record<string, readonly string[]>> = {
-  checkstyle: ["checkstyle"],
   pmd: ["pmd-java", "pmd-core"],
   spotbugs: ["spotbugs"],
 };
@@ -256,7 +255,7 @@ function toolDependencies(text: string): [string, string][] {
 }
 
 /**
- * Plugin id → version from the `plugins {}` block, and the version of checkstyle / pmd / jacoco / spotbugs: its
+ * Plugin id → version from the `plugins {}` block, and the version of pmd / jacoco / spotbugs: its
  * `toolVersion`, or the dependency of its configuration, which wins because it is the version Gradle runs (#103).
  */
 export function readGradleBuild(text: string): Map<string, string> {

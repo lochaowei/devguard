@@ -284,17 +284,17 @@ extend-select = [
     await fixesEverything(dir);
   });
 
-  it("Java: regenerates checkstyle.xml and the PMD ruleset, never touches pom.xml", async () => {
+  it("Java: regenerates the PMD ruleset, never touches pom.xml", async () => {
     const pom = `<project><properties><maven.compiler.release>11</maven.compiler.release></properties></project>\n`;
     const dir = repo({
       ".devguard.yaml": decl("java"),
       "pom.xml": pom,
       mvnw: "",
       "mvnw.cmd": "",
-      "checkstyle.xml": '<!-- 由 CLI 產生（devguard） -->\n<module name="Checker"><module name="TreeWalker"/></module>',
+      "pmd-ruleset.xml": '<!-- 由 CLI 產生（devguard） -->\n<ruleset name="old"/>',
     });
     const after = await fixesEverything(dir);
-    expect(read(dir, "checkstyle.xml")).toContain('<module name="CyclomaticComplexity">');
+    expect(read(dir, "pmd-ruleset.xml")).toContain("CognitiveComplexity");
     expect(read(dir, "pmd-ruleset.xml")).toContain("由 CLI 產生");
     expect(read(dir, "pom.xml")).toBe(pom);
     expect(after.map((f) => f.rule)).toContain("settings/looser");
@@ -302,48 +302,7 @@ extend-select = [
     expect(after.map((f) => f.rule)).toContain("settings/java-plugin-missing");
   });
 
-  it("Java: generates checkstyle.xml from google_checks.xml minus palantir's layout modules (#131)", async () => {
-    const dir = repo({ ".devguard.yaml": decl("java"), "pom.xml": "<project/>\n", mvnw: "", "mvnw.cmd": "" });
-    await runFix({ cwd: dir, today: TODAY, io: YES });
-    const xml = read(dir, "checkstyle.xml");
-    const modules = [...xml.matchAll(/<module name="([^"]+)"/g)].map((m) => m[1]);
-    expect(modules).toEqual(
-      expect.arrayContaining(["MemberName", "AvoidStarImport", "JavadocMethod", "SummaryJavadoc"]),
-    );
-    // Properties of the declared standard, after the google modules.
-    expect(xml).toContain('<module name="CyclomaticComplexity">\n      <property name="max" value="10"/>');
-    expect(xml).toContain('<property name="illegalPkgs" value="sun"/>');
-    expect(modules.slice(-2)).toEqual(["CyclomaticComplexity", "IllegalImport"]);
-    for (const layout of [
-      "LineLength",
-      "Indentation",
-      "OperatorWrap",
-      "SeparatorWrap",
-      "WhitespaceAround",
-      "WhitespaceAfter",
-      "CustomImportOrder",
-    ]) {
-      expect(modules).not.toContain(layout);
-    }
-    expect(xml).toContain("由 CLI 產生");
-    expect(xml).toContain("checkstyle-10.21.0/src/main/resources/google_checks.xml");
-    expect(xml).toContain("LGPL-2.1");
-    expect(xml).toContain("${org.checkstyle.google.severity}");
-    expect((await check(dir)).filter((f) => f.file === "checkstyle.xml")).toEqual([]);
-  });
-
-  it("Java: never overwrites a checkstyle.xml or PMD ruleset devguard did not generate, prints what to add (#100)", async () => {
-    const checkstyle = [
-      '<?xml version="1.0"?>',
-      '<module name="Checker">',
-      "  <!-- the team's own checks -->",
-      '  <module name="TreeWalker">',
-      '    <module name="FinalLocalVariable"/>',
-      '    <module name="MagicNumber"/>',
-      "  </module>",
-      "</module>",
-      "",
-    ].join("\n");
+  it("Java: never overwrites a PMD ruleset devguard did not generate, prints what to add (#100)", async () => {
     const pmd =
       '<?xml version="1.0"?>\n<ruleset name="ours">\n  <rule ref="rulesets/java/quickstart.xml"/>\n</ruleset>\n';
     const dir = repo({
@@ -351,28 +310,18 @@ extend-select = [
       "pom.xml": "<project/>\n",
       mvnw: "",
       "mvnw.cmd": "",
-      "checkstyle.xml": checkstyle,
       "pmd-ruleset.xml": pmd,
     });
-    const own = (f: Finding) => f.file === "checkstyle.xml" || f.file === "pmd-ruleset.xml";
+    const own = (f: Finding) => f.file === "pmd-ruleset.xml";
     const before = (await check(dir)).filter(own);
-    expect(before.map((f) => f.rule).sort()).toEqual([
-      "settings/checkstyle-module-missing",
-      "settings/checkstyle-module-missing",
-      "settings/pmd-rule-missing",
-    ]);
+    expect(before.map((f) => f.rule)).toEqual(["settings/pmd-rule-missing"]);
     expect(before.filter(fixable)).toEqual([]);
     expect(before[0]?.fix).toContain("不是 devguard 產生的");
     let out = "";
     const io: Interaction = { ...YES, write: (s) => (out += s) };
     await runFix({ cwd: dir, today: TODAY, io });
-    expect(read(dir, "checkstyle.xml")).toBe(checkstyle);
     expect(read(dir, "pmd-ruleset.xml")).toBe(pmd);
-    expect(out).toContain("checkstyle.xml：這份檔案不是 devguard 產生的，不會覆寫");
-    expect(out).toContain(
-      '    <module name="CyclomaticComplexity">\n      <property name="max" value="10"/>\n    </module>',
-    );
-    expect(out).toContain('    <module name="IllegalImport">');
+    expect(out).toContain("pmd-ruleset.xml：這份檔案不是 devguard 產生的，不會覆寫");
     expect(out).toContain('    <rule ref="category/java/design.xml/CognitiveComplexity">');
     expect(out).not.toContain("<!DOCTYPE");
   });

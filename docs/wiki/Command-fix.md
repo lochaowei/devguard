@@ -57,7 +57,7 @@ devguard fix --code [檔案…] [--yes] [--cwd <dir>]
 
 | 檔案類別 | 對象 | `fix` 的處理 |
 |---|---|---|
-| `generated`：CLI 全權產生 | `checkstyle.xml`、`pmd-ruleset.xml`（與 `pmd.xml`、`config/pmd/*.xml`）、`.claude/rules/*`、`.claude/skills/standards-doctor/*`、`.githooks/*`、git hook 檔 | 整份重新產生，檔頭加上 `由 CLI 產生（devguard），請勿手動修改`。檔案存在但**不是 devguard 產生的**（非空白、沒有這個檔頭）時**不寫入**，見下方說明 |
+| `generated`：CLI 全權產生 | `pmd-ruleset.xml`（與 `pmd.xml`、`config/pmd/*.xml`）、`.claude/rules/*`、`.claude/skills/standards-doctor/*`、`.githooks/*`、git hook 檔 | 整份重新產生，檔頭加上 `由 CLI 產生（devguard），請勿手動修改`。檔案存在但**不是 devguard 產生的**（非空白、沒有這個檔頭）時**不寫入**，見下方說明 |
 | `managed`：結構化的共用檔 | `pyproject.toml`、golangci 設定檔（golangci-lint 採用的 `.golangci.json` / `.toml` / `.yaml` / `.yml`，沒有時建立 `.golangci.yml`：在 `go.work` 所在目錄（模組在它的 `use` 清單中時），否則在最上層的 Go 元件目錄，多個模組共用這一份（#88））、`tsconfig.json`、`.prettierrc`、`biome.json`、`package.json`、`.gitattributes`、`.npmrc`、`.vscode/*.json`、`.claude/settings.json` 等 | 只改 CLI 管理的 key，保留註解、空行、欄位順序與換行字元（原本是 CRLF 就寫 CRLF，新建的檔案用 LF）。YAML 檔中修改沒有碰到的行逐字不變，包括 `[revive]` 或 `[ revive ]` 的寫法與行尾註解前的對齊空白 |
 | `snippet`：建置檔與程式碼形式的設定 | `pom.xml`、`build.gradle(.kts)`、`eslint.config.js`、`vitest.config.ts` 等 | **不寫入**，只印出要手動套用的片段 |
 | `user`：使用者層級設定 | repo 以外的路徑，例如 `~/.m2/settings.xml` | **不寫入**，只印出修改說明 |
@@ -79,23 +79,18 @@ devguard fix --code [檔案…] [--yes] [--cwd <dir>]
 
 `generated` 類的檔案已經存在、內容不是空白、卻沒有 `由 CLI 產生` 檔頭時，表示是專案自己寫的。`fix` 不會覆寫它，加上 `--yes` 也一樣，只印出要加入的內容，其他檔案照常處理：
 
-- `checkstyle.xml`：印出 `TreeWalker` 底下缺少或要換掉的 module（`CyclomaticComplexity`、`IllegalImport`），內含宣告的屬性值；不要求補上 `google_checks.xml` 的規則。
-
-由 devguard 產生的 `checkstyle.xml`（有檔頭）重新產生時，內容是 Checkstyle 10.21 的 `google_checks.xml`（移除與 palantir-java-format 衝突的格式類 module，來源與 LGPL-2.1 註明在檔頭），加上 `CyclomaticComplexity` 與 `IllegalImport`。
 - PMD ruleset：印出 `CognitiveComplexity` 的 `<rule>`。
 - `.claude/rules/*`、`/standards-doctor` skill：印出完整的產生內容，請自行比對。
 
 ```text
 $ devguard fix --yes
-checkstyle.xml：這份檔案不是 devguard 產生的，不會覆寫；請自行加入以下內容
-    加在 TreeWalker 底下：
-    <module name="CyclomaticComplexity">
-      <property name="max" value="10"/>
-    </module>
-    加在 TreeWalker 底下：
-    <module name="IllegalImport">
-      <property name="illegalPkgs" value="sun"/>
-    </module>
+pmd-ruleset.xml：這份檔案不是 devguard 產生的，不會覆寫；請自行加入以下內容
+    加在 ruleset 底下：
+    <rule ref="category/java/design.xml/CognitiveComplexity">
+      <properties>
+        <property name="reportLevel" value="15"/>
+      </properties>
+    </rule>
 ```
 
 **建立 `tsconfig.json` 時排除子元件：** TypeScript 元件沒有 `tsconfig.json`、底下又有其他 TypeScript 元件（例如宣告了 monorepo 根目錄 `./` 與 `packages/*`）時，`fix` 建立的 `tsconfig.json` 加上 `exclude`，列出子元件的目錄與 `node_modules`，讓 `tsc` 不把子元件與依賴的檔案算進這個元件（#125）。沒有子元件時不寫 `exclude`。
@@ -205,7 +200,7 @@ $ devguard fix --code src/mul.ts --yes
 | 安裝套件時連不上 `nexus.example.internal` | 舊版 devguard 的 `fix` 會把標準中的範例鏡像網址寫進專案：`.npmrc` 的 `registry=`、`pyproject.toml` 的 `[[tool.uv.index]]` / `[[tool.poetry.source]]`（`name = "nexus"`）、`.mvn/settings.xml` 與 `.mvn/maven.config`。現在 devguard 不再寫入任何套件來源（#65、#64），套件來源交給使用者層級的設定；請自行刪除這些設定 |
 | `fix` 印出 `錯誤：修改後不是合法的 TOML，不會修改；請自行套用` | 標準要求的 key 與檔案現有的寫法衝突，例如標準要求 `[tool.x]` 表格，但檔案中 `x` 已經是一般的值。檔案沒有被修改，請依印出的內容自行調整 |
 | `fix` 之後 `check` 仍報 `settings/missing-file`（`eslint.config.js`、`vitest.config.ts`） | 程式碼形式的設定檔屬於 `snippet`，`fix` 只印出片段，要自己建立或修改 |
-| `fix` 印出 `這份檔案不是 devguard 產生的，不會覆寫` | 這份 `checkstyle.xml`、PMD ruleset 或 `.claude/` 檔案沒有 `由 CLI 產生` 檔頭，devguard 不會蓋掉專案自己的設定。請把印出的片段加進檔案；或刪除檔案，讓 `fix` 重新產生 |
+| `fix` 印出 `這份檔案不是 devguard 產生的，不會覆寫` | 這份 PMD ruleset 或 `.claude/` 檔案沒有 `由 CLI 產生` 檔頭，devguard 不會蓋掉專案自己的設定。請把印出的片段加進檔案；或刪除檔案，讓 `fix` 重新產生 |
 | 改了 `.devguard.yaml` 之後 `check` 報 `.claude/rules/…` 不一致 | rules 檔會列出元件的標準與偏離，宣告改了就要重新產生。執行 `devguard fix --yes` |
 
 ---
