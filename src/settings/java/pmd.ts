@@ -25,7 +25,7 @@ interface ComplexityRule {
   key: string;
   /** The rule property that holds the limit. */
   property: string;
-  /** PMD's own default for that property: a report level, not a limit. */
+  /** PMD's own default for that property (a report level, not a limit); used when the property is left out. */
   fallback: string;
   lines: (t: JavaTarget) => string[];
 }
@@ -86,12 +86,15 @@ function checkComplexity(t: JavaTarget, file: string, text: string, root: XmlEl,
   // PMD reports at or above the level; the standard's limit is the largest value allowed.
   const written = (level ? valueOf(level) : spec.fallback).trim();
   const raw = /^\d+$/.test(written) ? String(Math.max(0, Number(written) - 1)) : written;
-  return judgeNumber(t, spec.key, raw, {
+  const findings = judgeNumber(t, spec.key, raw, {
     file,
     line: (level ?? rule).line,
     setting: `${spec.name} ${spec.property}`,
     own: own(text, spec.name, lines, true),
   });
+  // A property left out means PMD's default, which counts as meeting the standard; only a value written down is held
+  // to "stricter" too. A default that is looser than a declared limit is still an error.
+  return level ? findings : findings.filter((f) => f.rule !== "settings/stricter");
 }
 
 /** Whether the XPath of the banned-APIs rule matches an import of the API (the literal the generator writes). */
