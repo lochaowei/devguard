@@ -90,6 +90,36 @@ describe("resolveDeclaration — other rules", () => {
     expect(r.components[0]?.effective["deps.vulnScan"]?.source).toBe("default");
   });
 
+  it("only hints at the Checkstyle items and values of an older Java declaration (#193)", () => {
+    const java = (overrides: string) => `${head}  - path: ./\n    language: java\n    overrides:\n${overrides}`;
+    const r = resolveText(
+      java(
+        [
+          '      tools.checkstyle: {value: ">=10.21,<15", reason: "newer"}',
+          '      tools.maven-checkstyle-plugin: ">=3.6,<4"',
+          "      lint.tool: checkstyle+pmd",
+          "      lint.rules: [google_checks, pmd-quickstart]",
+          "",
+        ].join("\n"),
+      ),
+    );
+    expect(rules(r.findings)).toEqual(Array<string>(4).fill("hint:declaration/retired-item"));
+    expect(r.findings.map((f) => f.message)).toEqual([
+      expect.stringContaining("「tools.checkstyle」Checkstyle 已從 Java 檢查移除"),
+      expect.stringContaining("「tools.maven-checkstyle-plugin」Checkstyle 已從 Java 檢查移除"),
+      expect.stringContaining("「lint.tool」寫的是 Checkstyle 時期的值"),
+      expect.stringContaining("「lint.rules」寫的是 Checkstyle 時期的值"),
+    ]);
+    expect(r.findings[2]?.fix).toContain("PMD");
+    expect(r.components[0]?.effective["lint.tool"]).toEqual({ value: "pmd", source: "default", status: "same" });
+    expect(r.components[0]?.effective["lint.rules"]?.source).toBe("default");
+  });
+
+  it("still judges a current lint.tool value and other Java overrides (#193)", () => {
+    const r = resolveText(`${head}  - path: ./\n    language: java\n    overrides:\n      lint.tool: spotbugs\n`);
+    expect(rules(r.findings)).toEqual(["error:declaration/looser-without-reason"]);
+  });
+
   it("still reports a retired key written where it never belonged", () => {
     const r = resolveText(web("      mirrors.npm: https://other/\n"));
     expect(rules(r.findings)).toEqual(["error:declaration/unknown-item"]);

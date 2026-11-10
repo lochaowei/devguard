@@ -6,7 +6,7 @@
 
 - TypeScript 不再要求 `eslint-plugin-sonarjs`（見 [TypeScript](#3-typescript)）。因此 `team@1.1.0` 與 `legacy@1.0.0` 下，TypeScript 的 `complexity.cognitive` 只在使用 Biome 時強制；使用 ESLint 時只是參考值。
 - 語言最低版本不變：`java.minVersion` 維持 `"17"`（需要 Java 8 的既有專案改用 `legacy@1.0.0`）；Python、Node、Go 的最低版本已是上游仍支援的最舊版本。
-- 工具版本範圍（#36 於 2026-10-27 審視並訂定）：`tools.ruff` `>=0.17,<1`、`tools.pyright` `>=1.1.400,<2`、`tools.vitest` `>=4.1,<6`、`tools.spotless-maven-plugin` `>=2.44,<4`、`tools.spotless-gradle-plugin` `>=7,<9`、`tools.checkstyle` `>=10.21,<15`。下限不低於上游仍在修補的版本線。
+- 工具版本範圍（#36 於 2026-10-27 審視並訂定）：`tools.ruff` `>=0.17,<1`、`tools.pyright` `>=1.1.400,<2`、`tools.vitest` `>=4.1,<6`、`tools.spotless-maven-plugin` `>=2.44,<4`、`tools.spotless-gradle-plugin` `>=7,<9`。下限不低於上游仍在修補的版本線。
 
 `team@1.2.0`（定義於 [`src/standard/team-1.2.0.ts`](../../src/standard/team-1.2.0.ts)）沿用 `team@1.1.0` 的所有項目，只多了一個替代工具（minor，見 [SPEC §6](../../SPEC.md)）：
 
@@ -18,6 +18,8 @@
 - 各語言的 `deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`，以及 Go 的 `tools.govulncheck`：devguard 不再執行弱點掃描。
 
 較舊的版本仍保留這些項目，但 devguard 不再依它們做任何檢查：不論宣告哪個版本，寫著它們只會得到 `declaration/retired-item` 提示；執行 `devguard standard upgrade` 到 `team@1.3.0` 或更新的版本會把它們從宣告中刪除。
+
+Checkstyle 已從 Java 檢查移除（#193），所有版本都沒有 `tools.checkstyle`、`tools.maven-checkstyle-plugin`，Java 的 `lint.tool` 只剩 `pmd`、`lint.rules` 只剩 `pmd-quickstart`。舊宣告若還寫著這些項目，或 `lint.tool: checkstyle+pmd`、含 `google_checks` 的 `lint.rules`，同樣只得到 `declaration/retired-item` 提示，請刪除該項。
 
 `team@1.4.0`（定義於 [`src/standard/team-1.4.0.ts`](../../src/standard/team-1.4.0.ts)）是 CLI 內建的最新版本，`devguard draft` 寫入、`doctor` 建議升級到的都是它。它沿用 `team@1.3.0` 的所有項目，只放寬一個版本範圍並多允許一個套件管理工具（minor，見 [SPEC §6](../../SPEC.md)，#113、#138）：
 
@@ -41,7 +43,7 @@
 | `deps.banned` | 只保留 Python `pycrypto`、TypeScript `request`、Java `log4j:log4j`；Go 為空。JUnit 4（`junit:junit`）等不再禁用 |
 | `java.minVersion` | `"8"`（`team@1.1.0` 是 `"17"`），讓 Java 8 的既有專案可以納管 |
 
-`java.minVersion` 是程式碼的目標版本（Maven `maven.compiler.release`、Gradle toolchain），不是執行工具用的 JDK。Java 工具（Checkstyle、Spotless、palantir-java-format）的版本範圍沿用 `team@1.1.0`，所以：
+`java.minVersion` 是程式碼的目標版本（Maven `maven.compiler.release`、Gradle toolchain），不是執行工具用的 JDK。Java 工具（Spotless、palantir-java-format）的版本範圍沿用 `team@1.1.0`，所以：
 
 - 執行 Java 工具至少需要 **JDK 11**；使用 Spotless 3.x（Maven）或 8.x（Gradle）時需要 **JDK 17**。
 - Java 8 的既有專案以 JDK 11 以上建置，並以 release 8 為目標即可（例如 `maven.compiler.release` 設為 `8`）。
@@ -209,30 +211,30 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 | `java.minVersion` | `"17"`（`legacy@1.0.0`：`"8"`） | Maven `maven.compiler.release` 或 Gradle Java toolchain |
 | `build.tool` | `"maven"` | 允許替代：`gradle`；必須提交 `./mvnw` 或 `./gradlew` wrapper |
 | `format.tool` | `"palantir-java-format"` | 透過 Spotless 執行 |
-| `lint.tool` / `lint.rules` | `"checkstyle+pmd"` / `["google_checks", "pmd-quickstart"]` | CLI 產生並檢查 `checkstyle.xml` 與 `pmd-ruleset.xml` |
-| `complexity.cyclomatic` / `cognitive` | `10` / `15` | Checkstyle `CyclomaticComplexity` / PMD `CognitiveComplexity` |
+| `lint.tool` / `lint.rules` | `"pmd"` / `["pmd-quickstart"]` | CLI 產生並檢查 `pmd-ruleset.xml` |
+| `complexity.cyclomatic` / `cognitive` | `10` / `15` | PMD `CyclomaticComplexity`（`methodReportLevel`）/ `CognitiveComplexity`（`reportLevel`） |
 | `test.tool` | `"junit5"` | JUnit 5 |
 | `coverage.lines` | `80` | JaCoCo `LINE` 與 `BRANCH` 皆須達 80%；使用 Lombok 時須設定 `lombok.addLombokGeneratedAnnotation = true` |
 | `deps.lockfile` | `true` | Maven：`maven-enforcer-plugin` 的 `banDynamicVersions` + `dependencyConvergence`；Gradle：`gradle.lockfile` |
 | `deps.banned` | `["log4j:log4j", "junit:junit"]` | 直接依賴禁用套件 |
-| `deps.bannedApis` | `["sun.*"]` | Checkstyle `IllegalImport` |
+| `deps.bannedApis` | `["sun.*"]` | PMD `BannedApis` 規則：`a.b.*` 比對該 package 與其底下的 import，類別名稱比對該類別；沒有禁用任何 API 時不要求這條規則 |
 
 ### 執行方式
 
 - **建置工具**：宣告的 `build.tool` 優先；沒有宣告時，只有 `pom.xml` 是 Maven，只有 `build.gradle(.kts)`／`settings.gradle(.kts)` 是 Gradle；兩者都有時，只提交了 `gradlew` 是 Gradle，其餘是 Maven。設定、程式碼、測試與依賴檢查都用同一個判斷。
 - **工具執行器**：元件目錄或上層目錄中**該建置工具**的 wrapper，Maven 是 `./mvnw`（`mvnw.cmd`），Gradle 是 `./gradlew`（`gradlew.bat`）。找不到時回報缺少 wrapper（安裝提示 `mvn -N wrapper:wrapper` 或 `gradle wrapper`），不會改用另一種建置工具的 wrapper。
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
-  - Maven plugins：`maven-checkstyle-plugin`（`>=3.6,<4`）、`maven-pmd-plugin`（`>=3.26,<4`）、`spotless-maven-plugin`（`>=2.44,<3`；`team@1.1.0`：`>=2.44,<4`）、`jacoco-maven-plugin`（`>=0.8.12,<0.9`）、`maven-enforcer-plugin`（`>=3.5,<4`）
-  - Gradle plugin 與 `toolVersion`：`spotless-gradle-plugin` / `com.diffplug.spotless`（`>=7,<8`；`team@1.1.0`：`>=7,<9`）、`checkstyle`（`>=10.21,<11`；`team@1.1.0`：`>=10.21,<15`）、`pmd`（`>=7,<8`）、`jacoco`（`>=0.8.12,<0.9`）
-  - Gradle 的版本讀自 `toolVersion` 與工具 configuration 的 dependency（`checkstyle 'com.puppycrawl.tools:checkstyle:X'`、`pmd 'net.sourceforge.pmd:pmd-java:X'`、`spotbugs '…:spotbugs:X'`，Groovy 與 Kotlin DSL 皆可；兩者並存時以 dependency 為準）；多專案建置讀元件目錄與所有子專案的建置檔，超出範圍的版本依建置檔各回報一筆 `tool-version/out-of-range`。
+  - Maven plugins：`maven-pmd-plugin`（`>=3.26,<4`）、`spotless-maven-plugin`（`>=2.44,<3`；`team@1.1.0`：`>=2.44,<4`）、`jacoco-maven-plugin`（`>=0.8.12,<0.9`）、`maven-enforcer-plugin`（`>=3.5,<4`）
+  - Gradle plugin 與 `toolVersion`：`spotless-gradle-plugin` / `com.diffplug.spotless`（`>=7,<8`；`team@1.1.0`：`>=7,<9`）、`pmd`（`>=7,<8`）、`jacoco`（`>=0.8.12,<0.9`）
+  - Gradle 的版本讀自 `toolVersion` 與工具 configuration 的 dependency（`pmd 'net.sourceforge.pmd:pmd-java:X'`、`spotbugs '…:spotbugs:X'`，Groovy 與 Kotlin DSL 皆可；兩者並存時以 dependency 為準）；多專案建置讀元件目錄與所有子專案的建置檔，超出範圍的版本依建置檔各回報一筆 `tool-version/out-of-range`。
 - **建置檔的 plugin（設定層）**：讀元件的建置檔（Maven：`pom.xml` 的 `<build><plugins>` 與 `<pluginManagement>`；Gradle：`build.gradle(.kts)` 的 `plugins {}`、`apply plugin`、版本目錄的 `alias(libs.plugins.…)`）；Maven 的 parent POM 在 repo 中時（`<relativePath>`，預設 `../pom.xml`）也算。plugin 可能來自 devguard 讀不到的地方時（repo 外的 parent POM、`<profiles>`、Gradle 的 buildSrc／`includeBuild` convention plugin、`apply from`、上層 Gradle 建置、根建置的 `apply false`）不回報，程式碼層照常執行該工具。建置檔不會被修改，`fix` 只印出要加入的片段。
-  - `settings/java-plugin-missing`：沒有 Spotless（`spotless-maven-plugin` / `com.diffplug.spotless`）、Checkstyle（`maven-checkstyle-plugin` / `checkstyle`）或 PMD（`maven-pmd-plugin` / `pmd`）plugin，各一筆錯誤；片段含 palantir-java-format，Checkstyle / PMD 的片段指向 devguard 的設定檔。
-  - `settings/java-plugin-config`：Checkstyle 沒有指向元件使用的 Checkstyle 設定檔（Maven `<configLocation>` 或 `checkstyle.config.location` 屬性；Gradle `configFile` / `configDirectory`，沒有設定時是 `config/checkstyle/checkstyle.xml`），或 PMD 沒有指向元件使用的 ruleset（Maven `<rulesets>`；Gradle `ruleSetFiles`）。Maven 沒有設定時 Checkstyle 用內建的 `sun_checks.xml`。路徑可以用 `${project.basedir}`、`${maven.multiModuleProjectDirectory}`、`$rootDir`、`rootProject.file(…)` 等；其他無法解析的寫法不回報。
+  - `settings/java-plugin-missing`：沒有 Spotless（`spotless-maven-plugin` / `com.diffplug.spotless`）或 PMD（`maven-pmd-plugin` / `pmd`）plugin，各一筆錯誤；片段含 palantir-java-format，PMD 的片段指向 devguard 的設定檔。
+  - `settings/java-plugin-config`：PMD 沒有指向元件使用的 ruleset（Maven `<rulesets>`；Gradle `ruleSetFiles`）。路徑可以用 `${project.basedir}`、`${maven.multiModuleProjectDirectory}`、`$rootDir`、`rootProject.file(…)` 等；其他無法解析的寫法不回報。
 - **程式碼檢查（`code` 層）**：
-  - 建置檔沒有某個工具的 plugin 時不執行那個工具（由設定層回報），不會產生 `code/tool-failed`。Gradle 的 Checkstyle 與 PMD task 分開執行，一個失敗不影響另一個的結果。
+  - 建置檔沒有某個工具的 plugin 時不執行那個工具（由設定層回報），不會產生 `code/tool-failed`。
   - `format`：`mvnw -B -ntp spotless:check`（或 Gradle `spotlessCheck --console=plain -q`）
-  - `lint`：`mvnw -B -ntp checkstyle:check pmd:check -Dcheckstyle.failOnViolation=false -Dpmd.failOnViolation=false`（或 Gradle `checkstyleMain checkstyleTest --continue --console=plain -q` 與 `pmdMain pmdTest --continue --console=plain -q` 兩次執行），解析產生的 Checkstyle（`target/checkstyle-result.xml` 或 `build/reports/checkstyle/*.xml`）與 PMD（`target/pmd.xml` 或 `build/reports/pmd/*.xml`）XML 報告。
-  - Maven 多模組（`pom.xml` 有 `<modules>`）時，指令在 `checkstyle:check` 之前加上 `test-compile`，讓 reactor 先編譯並解析兄弟模組；因此會先編譯整個建置，比較慢，編譯失敗時回報 `code/tool-failed`，訊息是建置輸出中的錯誤行。報告從各模組的 `target/` 讀取。
+  - `lint`：`mvnw -B -ntp pmd:check -Dpmd.failOnViolation=false`（或 Gradle `pmdMain pmdTest --continue --console=plain -q`），解析產生的 PMD（`target/pmd.xml` 或 `build/reports/pmd/*.xml`）XML 報告。
+  - Maven 多模組（`pom.xml` 有 `<modules>`）時，指令在 `pmd:check` 之前加上 `test-compile`，讓 reactor 先編譯並解析兄弟模組；因此會先編譯整個建置，比較慢，編譯失敗時回報 `code/tool-failed`，訊息是建置輸出中的錯誤行。報告從各模組的 `target/` 讀取。
 - **自動修正程式碼（`fix --code`）**：
   - `mvnw -B -ntp spotless:apply`（或 `gradlew spotlessApply --console=plain -q`）。
 - **測試與覆蓋率（`tests` 層，`--full`）**：

@@ -99,7 +99,7 @@ export async function gradleReportDirs(read: ReadText, subdirs: ListDirs, dir: s
 
 /**
  * Whether any of the Gradle projects in `dirs` applies a plugin: "yes" if one does, else "unknown" if one may, else "no".
- * A multi-project build often applies JaCoCo, Checkstyle or PMD only in its subprojects.
+ * A multi-project build often applies JaCoCo or PMD only in its subprojects.
  */
 export async function gradleApplied(read: ReadText, dirs: readonly string[], plugin: JavaPlugin): Promise<Applied> {
   const answers = (await Promise.all(dirs.map((d) => readBuildPlugins(read, d, "gradle"))))

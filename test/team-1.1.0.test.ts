@@ -120,16 +120,13 @@ describe("team@1.1.0 admits the current Java tool releases (#36)", () => {
     "mvn/pom.xml":
       "<project><build><plugins><plugin><artifactId>spotless-maven-plugin</artifactId><version>3.10.4</version>" +
       "</plugin></plugins></build></project>",
-    "gradle/build.gradle.kts":
-      'plugins {\n    checkstyle\n    id("com.diffplug.spotless") version "8.10.4"\n}\n' +
-      'checkstyle {\n    toolVersion = "14.3.0"\n}\n',
+    "gradle/build.gradle.kts": 'plugins {\n    id("com.diffplug.spotless") version "8.10.4"\n}\n',
   });
 
-  it("accepts spotless 3 (Maven) / 8 (Gradle) and Checkstyle 14, which team@1.0.0 rejects", async () => {
+  it("accepts spotless 3 (Maven) / 8 (Gradle), which team@1.0.0 rejects", async () => {
     const on = async (standard: string) => (await checkTools(files(standard))).findings.map((f) => [f.rule, f.file]);
     expect(await on("team@1.0.0")).toEqual([
       ["tool-version/out-of-range", "mvn/pom.xml"],
-      ["tool-version/out-of-range", "gradle/build.gradle.kts"],
       ["tool-version/out-of-range", "gradle/build.gradle.kts"],
     ]);
     expect(await on("team@1.1.0")).toEqual([]);
@@ -144,17 +141,17 @@ describe("Gradle tool versions outside the component's own plugins block (#103)"
       f.message,
     ]);
 
-  it("reports a Checkstyle dependency version out of range (disruptor)", async () => {
-    const build = "dependencies {\n    checkstyle 'com.puppycrawl.tools:checkstyle:10.4'\n}\n";
+  it("reports a PMD dependency version out of range (disruptor)", async () => {
+    const build = "dependencies {\n    pmd 'net.sourceforge.pmd:pmd-java:6.55.0'\n}\n";
     expect(await on({ "build.gradle": build })).toEqual([
-      ["tool-version/out-of-range", "build.gradle", expect.stringContaining("checkstyle 10.4")],
+      ["tool-version/out-of-range", "build.gradle", expect.stringContaining("pmd 6.55.0")],
     ]);
   });
 
   it("reads the Kotlin DSL dependency form", async () => {
-    const build = 'dependencies {\n    checkstyle("com.puppycrawl.tools:checkstyle:10.4")\n}\n';
+    const build = 'dependencies {\n    pmd("net.sourceforge.pmd:pmd-java:6.55.0")\n}\n';
     expect(await on({ "build.gradle.kts": build })).toEqual([
-      ["tool-version/out-of-range", "build.gradle.kts", expect.stringContaining("checkstyle 10.4")],
+      ["tool-version/out-of-range", "build.gradle.kts", expect.stringContaining("pmd 6.55.0")],
     ]);
   });
 
@@ -163,17 +160,17 @@ describe("Gradle tool versions outside the component's own plugins block (#103)"
       await on({
         "settings.gradle": "include ':lib'\n",
         "build.gradle": "plugins { id 'java' }\n",
-        "lib/build.gradle": "checkstyle { toolVersion '10.0' }\n",
+        "lib/build.gradle": "pmd { toolVersion '6.0.0' }\n",
       }),
-    ).toEqual([["tool-version/out-of-range", "lib/build.gradle", expect.stringContaining("checkstyle 10.0")]]);
+    ).toEqual([["tool-version/out-of-range", "lib/build.gradle", expect.stringContaining("pmd 6.0.0")]]);
   });
 
   it("reports each build file with an out-of-range version once", async () => {
     const found = await on({
       "settings.gradle": "include ':a', ':b'\n",
-      "build.gradle": "checkstyle { toolVersion '10.0' }\n",
-      "a/build.gradle": "checkstyle { toolVersion '10.1' }\n",
-      "b/build.gradle": "checkstyle { toolVersion '12.0' }\n",
+      "build.gradle": "pmd { toolVersion '6.0.0' }\n",
+      "a/build.gradle": "pmd { toolVersion '6.1.0' }\n",
+      "b/build.gradle": "pmd { toolVersion '7.1.0' }\n",
     });
     expect(found.map(([, file]) => file)).toEqual(["build.gradle", "a/build.gradle"]);
   });
@@ -207,23 +204,22 @@ describe("team@1.1.0 keeps java.minVersion 17; Java 8 projects use legacy@1.0.0 
 });
 
 describe("standard upgrade to team@1.1.0 shows the widened items (#36)", () => {
-  /** A Java project on team@1.0.0 that lowered java.minVersion and widened Checkstyle with reasons. */
+  /** A Java project on team@1.0.0 that lowered java.minVersion and widened Spotless with reasons. */
   const JAVA_ON_1_0_0 =
     "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: java\n    overrides:\n" +
     '      java.minVersion:\n        value: "8"\n        reason: "legacy customers"\n' +
-    '      tools.checkstyle:\n        value: ">=10.21,<15"\n        reason: "Checkstyle 14"\n';
+    '      tools.spotless-maven-plugin:\n        value: ">=2.44,<4"\n        reason: "Spotless 3"\n';
 
   it("previews the new ranges and the overrides they make pointless, but not java.minVersion", async () => {
     const dir = repo({ ".devguard.yaml": JAVA_ON_1_0_0 });
     const { out } = await upgrade(dir, { target: "team@1.1.0" });
     expect(out).not.toContain("Java 最低版本");
     expect(out).not.toContain("java.minVersion（與新預設相同）");
-    expect(out).toContain('Java｜checkstyle 版本範圍：">=10.21,<11" → ">=10.21,<15"');
     expect(out).toContain('Java｜spotless-maven-plugin 版本範圍：">=2.44,<3" → ">=2.44,<4"');
-    expect(out).toContain("tools.checkstyle（與新預設相同）");
+    expect(out).toContain("tools.spotless-maven-plugin（與新預設相同）");
   });
 
-  it("--apply drops the Checkstyle override and keeps the java.minVersion deviation", async () => {
+  it("--apply drops the Spotless override and keeps the java.minVersion deviation", async () => {
     const dir = repo({ ".devguard.yaml": JAVA_ON_1_0_0 });
     expect((await upgrade(dir, { apply: true, target: "team@1.1.0" })).code).toBe(0);
     expect(read(dir, ".devguard.yaml")).toBe(

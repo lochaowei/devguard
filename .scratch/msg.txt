@@ -1,0 +1,11 @@
+feat: check Java cyclomatic complexity and banned APIs with PMD, hint at retired Checkstyle declarations (#193)
+
+The PMD ruleset generator and check now carry complexity.cyclomatic
+(CyclomaticComplexity methodReportLevel) and deps.bannedApis (a generated
+BannedApis XPath rule over imports), which only Checkstyle enforced before.
+
+tools.checkstyle, tools.maven-checkstyle-plugin and the Checkstyle-era values
+of lint.tool / lint.rules in an existing .devguard.yaml now get a
+declaration/retired-item hint that says Checkstyle was removed, not an error.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>

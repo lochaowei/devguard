@@ -75,7 +75,7 @@ export interface OwnConfig {
 /** Regenerate the file, or, for a file devguard did not generate, print the part to add (#100). */
 function repairsFor(t: JavaTarget, file: string, own: OwnConfig | undefined): Repair[] {
   if (!own || !isForeign(own.text)) return regenerate(t, file);
-  return [{ op: "snippet", file, text: own.missing ?? generatedContent(t, file) }];
+  return [{ op: "snippet", file, text: own.missing ?? generatedContent(t) }];
 }
 
 /**

@@ -4,13 +4,12 @@ import type { Finding } from "../../report/finding.ts";
 import { upwards } from "../../repo/paths.ts";
 import { child, descendants, parseXmlText, type XmlEl } from "../../xml/parse.ts";
 import { componentBuildTool, GRADLE_FILES, type BuildTool } from "./build.ts";
-import { CHECKSTYLE_FILES } from "./checkstyle.ts";
 import { finding, findConfig, type JavaTarget } from "./common.ts";
 import type { ReadText } from "./modules.ts";
 import { PMD_FILES } from "./pmd.ts";
 
 /** The build plugins devguard runs its Java tools through (JaCoCo: the tests check, #99). */
-export type JavaPlugin = "spotless" | "checkstyle" | "pmd" | "jacoco";
+export type JavaPlugin = "spotless" | "pmd" | "jacoco";
 
 interface PluginNames {
   label: string;
@@ -22,7 +21,6 @@ interface PluginNames {
 
 export const JAVA_PLUGINS: Readonly<Record<JavaPlugin, PluginNames>> = {
   spotless: { label: "Spotless", maven: "spotless-maven-plugin", gradle: "com.diffplug.spotless" },
-  checkstyle: { label: "Checkstyle", maven: "maven-checkstyle-plugin", gradle: "checkstyle" },
   pmd: { label: "PMD", maven: "maven-pmd-plugin", gradle: "pmd" },
   jacoco: { label: "JaCoCo", maven: "jacoco-maven-plugin", gradle: "jacoco" },
 };
@@ -279,16 +277,15 @@ function minVersion(t: JavaTarget, tool: string): string | undefined {
 }
 
 /** The plugins the settings check asks for. */
-const CHECKED_PLUGINS = ["spotless", "checkstyle", "pmd"] as const;
+const CHECKED_PLUGINS = ["spotless", "pmd"] as const;
 type CheckedPlugin = (typeof CHECKED_PLUGINS)[number];
 /** The plugins devguard points at a config file it owns. */
 type ConfiguredPlugin = Exclude<CheckedPlugin, "spotless">;
-const CONFIGURED_PLUGINS: readonly ConfiguredPlugin[] = ["checkstyle", "pmd"];
+const CONFIGURED_PLUGINS: readonly ConfiguredPlugin[] = ["pmd"];
 
 /** The repo path of the config devguard checks for the tool: the one found, or where `fix` generates it. */
-function configFile(t: JavaTarget, plugin: ConfiguredPlugin): string {
-  const candidates = plugin === "checkstyle" ? CHECKSTYLE_FILES : PMD_FILES;
-  return findConfig(t, candidates) ?? t.component.dir + candidates[0];
+function configFile(t: JavaTarget): string {
+  return findConfig(t, PMD_FILES) ?? t.component.dir + PMD_FILES[0];
 }
 
 /** `path` relative to the directory `from` (both repo-relative, `from` normalized). */
@@ -310,16 +307,14 @@ const mavenConfigPath = (t: JavaTarget, file: string): string =>
   `\${maven.multiModuleProjectDirectory}/${relativeTo(mavenRoot(t), file)}`;
 
 /** The `<configuration>` elements that point a Maven plugin at devguard's config. */
-function mavenConfigXml(t: JavaTarget, plugin: ConfiguredPlugin): string[] {
-  const path = mavenConfigPath(t, configFile(t, plugin));
-  if (plugin === "checkstyle") return [`<configLocation>${path}</configLocation>`];
+function mavenConfigXml(t: JavaTarget): string[] {
+  const path = mavenConfigPath(t, configFile(t));
   return ["<rulesets>", `  <ruleset>${path}</ruleset>`, "</rulesets>"];
 }
 
 /** The settings that point a Gradle plugin at devguard's config, indented for its extension block. */
-function gradleConfigLines(t: JavaTarget, plugin: ConfiguredPlugin, kotlin: boolean): string[] {
-  const path = relativeTo(t.component.dir, configFile(t, plugin));
-  if (plugin === "checkstyle") return [`    configFile = file("${path}")`];
+function gradleConfigLines(t: JavaTarget, kotlin: boolean): string[] {
+  const path = relativeTo(t.component.dir, configFile(t));
   return [`    ruleSetFiles = files("${path}")`, `    ruleSets = ${kotlin ? "listOf()" : "[]"}`];
 }
 
@@ -329,8 +324,7 @@ function mavenPluginXml(t: JavaTarget, plugin: CheckedPlugin): string[] {
   const { maven } = JAVA_PLUGINS[plugin];
   const group = plugin === "spotless" ? "com.diffplug.spotless" : "org.apache.maven.plugins";
   const version = minVersion(t, maven);
-  const configuration =
-    plugin === "spotless" ? ["<java>", "  <palantirJavaFormat/>", "</java>"] : mavenConfigXml(t, plugin);
+  const configuration = plugin === "spotless" ? ["<java>", "  <palantirJavaFormat/>", "</java>"] : mavenConfigXml(t);
   return [
     "<plugin>",
     `  <groupId>${group}</groupId>`,
@@ -364,7 +358,7 @@ function gradlePluginLines(t: JavaTarget, plugin: CheckedPlugin, kotlin: boolean
     "}",
     `${plugin} {`,
     ...(version ? [`    toolVersion = "${version}"`] : []),
-    ...gradleConfigLines(t, plugin, kotlin),
+    ...gradleConfigLines(t, kotlin),
     "}",
   ];
 }
@@ -372,7 +366,6 @@ function gradlePluginLines(t: JavaTarget, plugin: CheckedPlugin, kotlin: boolean
 /** Why devguard needs the plugin, per tool. */
 const NEEDED_FOR: Record<CheckedPlugin, string> = {
   spotless: "無法檢查格式",
-  checkstyle: "無法執行 Checkstyle",
   pmd: "無法執行 PMD",
 };
 
@@ -420,38 +413,26 @@ function pointsAt(
   return resolved.includes(undefined) ? "unknown" : "no";
 }
 
-/** Where Maven's Checkstyle / PMD plugin reads its config: `<configLocation>` / `<rulesets>`, or the user property. */
-function mavenLocations(plugins: BuildPlugins, plugin: ConfiguredPlugin): string[] {
-  const inConfig = plugins.maven(plugin).flatMap(({ configuration }) => {
+/** Where Maven's PMD plugin reads its config: `<rulesets>`. */
+function mavenLocations(plugins: BuildPlugins): string[] {
+  return plugins.maven("pmd").flatMap(({ configuration }) => {
     if (!configuration) return [];
-    const elements =
-      plugin === "checkstyle"
-        ? configuration.children.filter((e) => e.name === "configLocation")
-        : (child(configuration, "rulesets")?.children.filter((e) => e.name === "ruleset") ?? []);
-    return elements.map((e) => e.text);
+    return (child(configuration, "rulesets")?.children.filter((e) => e.name === "ruleset") ?? []).map((e) => e.text);
   });
-  if (plugin === "pmd") return inConfig;
-  const property = plugins.files.flatMap((pom) => {
-    const properties = pom.xml && child(pom.xml, "properties");
-    const value = properties && child(properties, "checkstyle.config.location")?.text;
-    return value === undefined ? [] : [value];
-  });
-  return [...inConfig, ...property];
 }
 
 /**
  * The string literals given to any of `settings` in the Gradle build scripts: `configFile = file("…")`,
- * `configFile.set(file("…"))` or Groovy's `configFile file('…')`. A `configDirectory` names the directory of
- * checkstyle.xml; `rootProject.file(…)` and `rootDir` are relative to the root project.
+ * `ruleSetFiles = files("…")` or Groovy's `ruleSetFiles file('…')`. `rootProject.file(…)` and `rootDir` are relative
+ * to the root project.
  */
 function gradleLocations(plugins: BuildPlugins, settings: readonly string[]): string[] {
   const assignment = new RegExp(`\\b(${settings.join("|")})\\b(?:\\s*\\.\\s*set\\b)?[ \\t]*[=(]?[ \\t]*([^\\n]*)`, "g");
   return plugins.files.flatMap((f) =>
-    [...withoutComments(f.text).matchAll(assignment)].flatMap(([, setting = "", rest = ""]) => {
+    [...withoutComments(f.text).matchAll(assignment)].flatMap(([, , rest = ""]) => {
       const fromRoot = /\brootProject\b|\brootDir\b/.test(rest);
-      const suffix = setting === "configDirectory" ? "/checkstyle.xml" : "";
       return [...rest.matchAll(/["']([^"']+)["']/g)].map(
-        ([, value = ""]) => `${fromRoot && !value.startsWith("$") ? "${rootDir}/" : ""}${value}${suffix}`,
+        ([, value = ""]) => `${fromRoot && !value.startsWith("$") ? "${rootDir}/" : ""}${value}`,
       );
     }),
   );
@@ -463,12 +444,10 @@ function committedGradleRoot(t: JavaTarget): string {
 }
 
 /**
- * Whether the plugin reads devguard's config, per the build files; "unknown" when devguard cannot tell. Defaults:
- * maven-checkstyle-plugin reads its bundled sun_checks.xml (3.x `configLocation`); Gradle's checkstyle plugin reads
- * `config/checkstyle/checkstyle.xml` of the root project (`configDirectory`, Gradle 4 through 8).
+ * Whether the plugin reads devguard's config, per the build files; "unknown" when devguard cannot tell.
  */
-function configPointing(t: JavaTarget, plugins: BuildPlugins, plugin: ConfiguredPlugin): Pointing {
-  const expected = configFile(t, plugin);
+function configPointing(t: JavaTarget, plugins: BuildPlugins): Pointing {
+  const expected = configFile(t);
   const base = t.component.dir;
   if (plugins.tool === "maven") {
     const roots = {
@@ -477,7 +456,7 @@ function configPointing(t: JavaTarget, plugins: BuildPlugins, plugin: Configured
       "maven.multiModuleProjectDirectory": mavenRoot(t),
       "session.executionRootDirectory": base,
     };
-    return pointsAt(mavenLocations(plugins, plugin), base, roots, expected);
+    return pointsAt(mavenLocations(plugins), base, roots, expected);
   }
   const rootDir = committedGradleRoot(t);
   const roots = {
@@ -487,40 +466,31 @@ function configPointing(t: JavaTarget, plugins: BuildPlugins, plugin: Configured
     projectDir: base,
     "project.projectDir": base,
   };
-  if (plugin === "checkstyle") {
-    const set = gradleLocations(plugins, ["configFile", "configDirectory"]);
-    const locations = set.length > 0 ? set : ["${rootDir}/config/checkstyle/checkstyle.xml"];
-    return pointsAt(locations, base, roots, expected);
-  }
   return pointsAt(gradleLocations(plugins, ["ruleSetFiles", "ruleSetConfig"]), base, roots, expected);
 }
 
 /** What the plugin does when it is not pointed at devguard's config; `{file}` is that config. */
 const NOT_POINTED: Record<BuildTool, Record<ConfiguredPlugin, string>> = {
   maven: {
-    checkstyle:
-      "maven-checkstyle-plugin 沒有以 configLocation 指向 {file}：Checkstyle 不會用 devguard 的設定（沒有設定時用內建的 sun_checks.xml）",
     pmd: "maven-pmd-plugin 的 rulesets 沒有指向 {file}：PMD 不會用 devguard 的規則集（沒有設定時用 plugin 的預設規則）",
   },
   gradle: {
-    checkstyle:
-      "checkstyle 的 configFile 沒有指向 {file}：Checkstyle 不會用 devguard 的設定（預設讀 config/checkstyle/checkstyle.xml）",
     pmd: "pmd 沒有以 ruleSetFiles 指向 {file}：PMD 不會用 devguard 的規則集（沒有設定時用 Gradle 的預設規則）",
   },
 };
 
 function configFinding(t: JavaTarget, file: string, tool: BuildTool, plugin: ConfiguredPlugin, kotlin: boolean) {
-  const message = `${file}：${NOT_POINTED[tool][plugin].replace("{file}", configFile(t, plugin))}`;
+  const message = `${file}：${NOT_POINTED[tool][plugin].replace("{file}", configFile(t))}`;
   const lines =
     tool === "maven"
-      ? [`在 ${JAVA_PLUGINS[plugin].maven} 的 <configuration> 加上：`, ...mavenConfigXml(t, plugin)]
-      : [`${plugin} {`, ...gradleConfigLines(t, plugin, kotlin), "}"];
+      ? [`在 ${JAVA_PLUGINS[plugin].maven} 的 <configuration> 加上：`, ...mavenConfigXml(t)]
+      : [`${plugin} {`, ...gradleConfigLines(t, kotlin), "}"];
   return snippetFinding(t, "settings/java-plugin-config", file, message, lines.join("\n"));
 }
 
 /**
- * The build must apply Spotless, Checkstyle and PMD, the plugins the code check runs (SPEC §6.4, #98); a plugin in a
- * parent POM in the repo counts. Checkstyle and PMD must read devguard's config files. Build files are only printed a
+ * The build must apply Spotless and PMD, the plugins the code check runs (SPEC §6.4, #98); a plugin in a
+ * parent POM in the repo counts. PMD must read devguard's config files. Build files are only printed a
  * snippet (§9.2). Nothing is reported when devguard cannot tell (`Applied` "unknown", an unresolvable location).
  */
 export async function checkBuildPlugins(t: JavaTarget): Promise<Finding[]> {
@@ -534,7 +504,7 @@ export async function checkBuildPlugins(t: JavaTarget): Promise<Finding[]> {
     missingFinding(t, own.path, tool, plugin, kotlin),
   );
   const misconfigured = CONFIGURED_PLUGINS.filter(
-    (p) => plugins.applied(p) === "yes" && configPointing(t, plugins, p) === "no",
+    (p) => plugins.applied(p) === "yes" && configPointing(t, plugins) === "no",
   ).map((plugin) => {
     const file = tool === "maven" ? (plugins.maven(plugin)[0]?.pom ?? own).path : own.path;
     return configFinding(t, file, tool, plugin, kotlin);

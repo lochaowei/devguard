@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { checkWrapper } from "../settings/java/build.ts";
-import { checkCheckstyle } from "../settings/java/checkstyle.ts";
 import type { JavaTarget } from "../settings/java/common.ts";
 import { checkPmd } from "../settings/java/pmd.ts";
 import { checkLombok } from "../settings/java/lombok.ts";
@@ -9,7 +8,7 @@ import { checkBuildPlugins } from "../settings/java/plugins.ts";
 import { checkJavaVersion } from "../settings/java/version.ts";
 import type { CheckLayer } from "./types.ts";
 
-/** Settings check for Java components: build wrapper, Checkstyle, PMD, the Java version and the build plugins (SPEC §6.4, §8). */
+/** Settings check for Java components: build wrapper, PMD, the Java version and the build plugins (SPEC §6.4, §8). */
 export const javaSettingsLayer: CheckLayer = {
   id: "settings-java",
   fixable: true,
@@ -26,7 +25,6 @@ export const javaSettingsLayer: CheckLayer = {
       findings.push(
         ...(await checkWrapper(t)),
         ...(await checkJavaVersion(t)),
-        ...(await checkCheckstyle(t)),
         ...(await checkPmd(t)),
         ...(await checkLombok(t)),
         ...(await checkBuildPlugins(t)),

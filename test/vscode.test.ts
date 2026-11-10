@@ -145,18 +145,11 @@ describe("VS Code workspace settings are generated for the languages in use (SPE
     expect(readJson(dir, ".vscode/extensions.json").recommendations).toEqual(["golang.go"]);
   });
 
-  it("Java: no format on save, Checkstyle as the build pins it, and a Spotless task", async () => {
-    const pom = `<project><build><plugins><plugin>
-  <artifactId>maven-checkstyle-plugin</artifactId><version>3.6.0</version>
-  <dependencies><dependency><groupId>com.puppycrawl.tools</groupId><artifactId>checkstyle</artifactId><version>10.21.0</version></dependency></dependencies>
-</plugin></plugins></build></project>`;
+  it("Java: no format on save, and a Spotless task", async () => {
+    const pom = "<project/>";
     const dir = repo({ ".devguard.yaml": decl(component("./svc", "java")), "svc/pom.xml": pom });
     await fix(dir);
-    expect(readJson(dir, ".vscode/settings.json")).toMatchObject({
-      "[java]": { "editor.formatOnSave": false },
-      "java.checkstyle.configuration": "${workspaceFolder}/svc/checkstyle.xml",
-      "java.checkstyle.version": "10.21.0",
-    });
+    expect(readJson(dir, ".vscode/settings.json")).toMatchObject({ "[java]": { "editor.formatOnSave": false } });
     const tasks = readJson(dir, ".vscode/tasks.json").tasks as Json[];
     expect(tasks.find((t) => t.label === "standards: format (Spotless)")).toMatchObject({
       type: "process",

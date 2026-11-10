@@ -94,7 +94,7 @@ describe("pinnedVersions", () => {
   it("reads Maven plugin versions from pom.xml, resolving properties", () => {
     const pom = `<project>
   <properties>
-    <checkstyle.plugin.version>3.6.0</checkstyle.plugin.version>
+    <pmd.plugin.version>3.26.0</pmd.plugin.version>
   </properties>
   <dependencies>
     <dependency><groupId>org.junit</groupId><artifactId>junit-bom</artifactId><version>5.11.0</version></dependency>
@@ -103,10 +103,10 @@ describe("pinnedVersions", () => {
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-checkstyle-plugin</artifactId>
-        <version>\${checkstyle.plugin.version}</version>
+        <artifactId>maven-pmd-plugin</artifactId>
+        <version>\${pmd.plugin.version}</version>
         <dependencies>
-          <dependency><artifactId>checkstyle</artifactId><version>10.21.0</version></dependency>
+          <dependency><artifactId>pmd-java</artifactId><version>7.9.0</version></dependency>
         </dependencies>
       </plugin>
       <plugin>
@@ -114,7 +114,7 @@ describe("pinnedVersions", () => {
         <artifactId>spotless-maven-plugin</artifactId>
         <version>2.44.0</version>
       </plugin>
-      <plugin><artifactId>maven-pmd-plugin</artifactId><version>\${missing}</version></plugin>
+      <plugin><artifactId>maven-enforcer-plugin</artifactId><version>\${missing}</version></plugin>
       <plugin><artifactId>jacoco-maven-plugin</artifactId></plugin>
     </plugins>
   </build>
@@ -122,7 +122,7 @@ describe("pinnedVersions", () => {
     const pinned = pinnedVersions("java", "api/", files({ "api/pom.xml": pom }));
     expect(pinned?.file).toBe("api/pom.xml");
     expect(Object.fromEntries(pinned?.versions ?? [])).toEqual({
-      "maven-checkstyle-plugin": "3.6.0",
+      "maven-pmd-plugin": "3.26.0",
       "spotless-maven-plugin": "2.44.0",
     });
   });
@@ -130,11 +130,11 @@ describe("pinnedVersions", () => {
   it("reads Gradle plugin versions and the toolVersion of the built-in code quality plugins", () => {
     const kts = `plugins {
     java
-    checkstyle
+    pmd
     id("com.diffplug.spotless") version "7.0.2"
 }
-checkstyle {
-    toolVersion = "10.21.0"
+pmd {
+    toolVersion = "7.9.0"
 }
 jacoco { toolVersion = "0.8.12" }
 `;
@@ -149,7 +149,7 @@ pmd {
     expect(fromKts?.file).toBe("build.gradle.kts");
     expect(Object.fromEntries(fromKts?.versions ?? [])).toEqual({
       "com.diffplug.spotless": "7.0.2",
-      checkstyle: "10.21.0",
+      pmd: "7.9.0",
       jacoco: "0.8.12",
     });
     const fromGroovy = pinnedVersions("java", "", files({ "build.gradle": groovy }));
@@ -267,31 +267,30 @@ pmd {
 
 describe("Gradle tool versions from dependencies and subprojects (#103)", () => {
   it("reads the version of a tool configuration's dependency, Groovy and Kotlin DSL", () => {
-    const groovy =
-      "dependencies {\n    checkstyle 'com.puppycrawl.tools:checkstyle:10.4'\n    pmd 'net.sourceforge.pmd:pmd-java:6.55.0'\n}";
+    const groovy = "dependencies {\n    pmd 'net.sourceforge.pmd:pmd-java:6.55.0'\n}";
     const kts =
-      'dependencies {\n    checkstyle("com.puppycrawl.tools:checkstyle:10.4")\n    pmd("net.sourceforge.pmd:pmd-core:6.55.0")\n    spotbugs("com.github.spotbugs:spotbugs:4.8.6")\n}';
-    expect(Object.fromEntries(readGradleBuild(groovy))).toEqual({ checkstyle: "10.4", pmd: "6.55.0" });
-    expect(Object.fromEntries(readGradleBuild(kts))).toEqual({ checkstyle: "10.4", pmd: "6.55.0", spotbugs: "4.8.6" });
+      'dependencies {\n    pmd("net.sourceforge.pmd:pmd-core:6.55.0")\n    spotbugs("com.github.spotbugs:spotbugs:4.8.6")\n}';
+    expect(Object.fromEntries(readGradleBuild(groovy))).toEqual({ pmd: "6.55.0" });
+    expect(Object.fromEntries(readGradleBuild(kts))).toEqual({ pmd: "6.55.0", spotbugs: "4.8.6" });
   });
 
   it("prefers the dependency over toolVersion, and ignores other artifacts and unresolved versions", () => {
     const text =
-      "checkstyle { toolVersion = '9.0' }\ndependencies {\n    checkstyle 'com.puppycrawl.tools:checkstyle:10.4'\n    pmd 'other:thing:1.0'\n    pmd 'net.sourceforge.pmd:pmd-java:$v'\n}";
-    expect(Object.fromEntries(readGradleBuild(text))).toEqual({ checkstyle: "10.4" });
+      "pmd { toolVersion = '6.0.0' }\ndependencies {\n    pmd 'other:thing:1.0'\n    pmd 'net.sourceforge.pmd:pmd-java:$v'\n    pmd 'net.sourceforge.pmd:pmd-core:6.55.0'\n}";
+    expect(Object.fromEntries(readGradleBuild(text))).toEqual({ pmd: "6.55.0" });
   });
 
   it("returns the build file of the component and of each included subproject", async () => {
     const files: Record<string, string> = {
       "settings.gradle": "include ':lib'",
       "build.gradle": "plugins { id 'java' }",
-      "lib/build.gradle": "checkstyle { toolVersion '10.0' }",
+      "lib/build.gradle": "pmd { toolVersion '7.0.0' }",
     };
     const subdirs = () => Promise.resolve(["lib"]);
     const builds = await pinnedBuilds("java", "", (p) => files[p], subdirs);
     expect(builds.map((b) => [b.file, Object.fromEntries(b.versions)])).toEqual([
       ["build.gradle", {}],
-      ["lib/build.gradle", { checkstyle: "10.0" }],
+      ["lib/build.gradle", { pmd: "7.0.0" }],
     ]);
   });
 

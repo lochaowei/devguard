@@ -1,66 +1,11 @@
 import type { Repair } from "../../fix/repair.ts";
 import type { JavaTarget } from "./common.ts";
-import {
-  DEVGUARD_MODULES_MARK,
-  GOOGLE_CHECKS_BODY,
-  GOOGLE_CHECKS_URL,
-  GOOGLE_CHECKS_VERSION,
-} from "./google-checks.ts";
-
-const xmlAttr = (s: string): string =>
-  s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 function declared(t: JavaTarget, key: string): unknown {
   return t.component.effective[key]?.value ?? t.defs[key]?.value;
 }
 
-const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
-
 const indent = (lines: readonly string[], by: string): string[] => lines.map((l) => by + l);
-
-/** The Checkstyle modules devguard generates under `TreeWalker`, as they appear there. */
-export type CheckstyleModule = "CyclomaticComplexity" | "IllegalImport";
-
-/**
- * One generated Checkstyle module element, unindented: CyclomaticComplexity at the declared limit, or IllegalImport
- * with the banned APIs (`sun.*` → illegalPkgs, a class name → illegalClasses).
- */
-export function checkstyleModule(t: JavaTarget, name: CheckstyleModule): string[] {
-  const prop = (key: string, value: string) => `  <property name="${key}" value="${xmlAttr(value)}"/>`;
-  if (name === "CyclomaticComplexity") {
-    return [`<module name="${name}">`, prop("max", String(declared(t, "complexity.cyclomatic"))), "</module>"];
-  }
-  const apis = strings(declared(t, "deps.bannedApis"));
-  const pkgs = apis.filter((a) => a.endsWith(".*")).map((a) => a.slice(0, -2));
-  const classes = apis.filter((a) => !a.endsWith(".*"));
-  return [
-    `<module name="${name}">`,
-    ...(pkgs.length > 0 ? [prop("illegalPkgs", pkgs.join(", "))] : []),
-    ...(classes.length > 0 ? [prop("illegalClasses", classes.join(", "))] : []),
-    "</module>",
-  ];
-}
-
-/**
- * The CLI-owned Checkstyle config (SPEC §9.2, #131): google_checks.xml without the layout modules palantir decides (see
- * `google-checks.ts`), with the CyclomaticComplexity and IllegalImport modules at the end of the TreeWalker.
- */
-export function checkstyleXml(t: JavaTarget): string {
-  const ours = [...checkstyleModule(t, "CyclomaticComplexity"), ...checkstyleModule(t, "IllegalImport")];
-  const body = GOOGLE_CHECKS_BODY.split("\n").flatMap((line) =>
-    line.trim() === DEVGUARD_MODULES_MARK ? indent(ours, "    ") : [line],
-  );
-  return [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<!DOCTYPE module PUBLIC "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN" "https://checkstyle.org/dtds/configuration_1_3.dtd">',
-    `<!-- 以 Checkstyle ${GOOGLE_CHECKS_VERSION} 的 google_checks.xml 為基礎（${GOOGLE_CHECKS_URL}，LGPL-2.1），`,
-    "     移除與 palantir-java-format 衝突的格式類 module，再加上 CyclomaticComplexity 與 IllegalImport -->",
-    '<module name="Checker">',
-    ...body,
-    "</module>",
-    "",
-  ].join("\n");
-}
 
 /** The generated PMD rule element for CognitiveComplexity at the declared limit, unindented. */
 export function pmdCognitiveRule(t: JavaTarget): string[] {
@@ -73,7 +18,58 @@ export function pmdCognitiveRule(t: JavaTarget): string[] {
   ];
 }
 
-/** The CLI-owned PMD ruleset: PMD's quickstart rules plus CognitiveComplexity at the declared limit. */
+/** The generated PMD rule element for CyclomaticComplexity at the declared limit, unindented. */
+export function pmdCyclomaticRule(t: JavaTarget): string[] {
+  return [
+    '<rule ref="category/java/design.xml/CyclomaticComplexity">',
+    "  <properties>",
+    `    <property name="methodReportLevel" value="${String(declared(t, "complexity.cyclomatic"))}"/>`,
+    "  </properties>",
+    "</rule>",
+  ];
+}
+
+/** The rule that carries the banned APIs; the checks look for it by this name. */
+export const BANNED_APIS_RULE = "BannedApis";
+
+/** The declared banned APIs (`deps.bannedApis`): `a.b.*` for a package, a class name otherwise. */
+export function bannedApis(t: JavaTarget): string[] {
+  const value = declared(t, "deps.bannedApis");
+  return Array.isArray(value) ? value.filter((x): x is string => typeof x === "string") : [];
+}
+
+/** The XPath conditions that match an import of the API: the package and what is under it, or the class. */
+function importMatches(api: string): string[] {
+  if (api.endsWith(".*")) {
+    const pkg = api.slice(0, -2);
+    return [`@ImportedName = '${pkg}'`, `starts-with(@ImportedName, '${pkg}.')`];
+  }
+  return [`@ImportedName = '${api}'`, `starts-with(@ImportedName, '${api}.')`];
+}
+
+/**
+ * The generated PMD rule that flags an import of any declared banned API (`deps.bannedApis`), unindented; none when
+ * nothing is banned. PMD has no built-in rule for this, so it is an XPath rule over the import declarations.
+ */
+export function pmdBannedApisRule(t: JavaTarget): string[] {
+  const apis = bannedApis(t);
+  if (apis.length === 0) return [];
+  const xpath = `//ImportDeclaration[${apis.flatMap(importMatches).join(" or ")}]`;
+  return [
+    `<rule name="${BANNED_APIS_RULE}" language="java" class="net.sourceforge.pmd.lang.rule.xpath.XPathRule"`,
+    '      message="Import of a banned API (deps.bannedApis)">',
+    "  <description>由 devguard 依 deps.bannedApis 產生</description>",
+    "  <priority>2</priority>",
+    "  <properties>",
+    '    <property name="xpath">',
+    `      <value><![CDATA[${xpath}]]></value>`,
+    "    </property>",
+    "  </properties>",
+    "</rule>",
+  ];
+}
+
+/** The CLI-owned PMD ruleset: PMD's quickstart rules plus the complexity limits and the banned APIs. */
 export function pmdRulesetXml(t: JavaTarget): string {
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
@@ -83,17 +79,19 @@ export function pmdRulesetXml(t: JavaTarget): string {
     "  <description>由 devguard 依宣告的標準產生</description>",
     '  <rule ref="rulesets/java/quickstart.xml"/>',
     ...indent(pmdCognitiveRule(t), "  "),
+    ...indent(pmdCyclomaticRule(t), "  "),
+    ...indent(pmdBannedApisRule(t), "  "),
     "</ruleset>",
     "",
   ].join("\n");
 }
 
-/** The whole content of a CLI-owned Java config file: the Checkstyle config or, otherwise, the PMD ruleset. */
-export function generatedContent(t: JavaTarget, file: string): string {
-  return /checkstyle\.xml$/.test(file) ? checkstyleXml(t) : pmdRulesetXml(t);
+/** The whole content of a CLI-owned Java config file: the PMD ruleset. */
+export function generatedContent(t: JavaTarget): string {
+  return pmdRulesetXml(t);
 }
 
 /** Regenerates a CLI-owned Java config file. */
 export function regenerate(t: JavaTarget, file: string): Repair[] {
-  return [{ op: "generate", file, content: generatedContent(t, file) }];
+  return [{ op: "generate", file, content: generatedContent(t) }];
 }

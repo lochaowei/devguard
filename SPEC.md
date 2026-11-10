@@ -161,7 +161,7 @@ ignore:                         # 選填：不歸屬任何元件、不受檢查�
   - 超過 `until`：再變回**錯誤**。
 - 覆寫不存在的項目、值的型別錯誤、重複宣告同一個元件：**錯誤**。
 - 同一個 repo 裡，同語言的元件風格不一致時：**提示**。
-- 覆寫鏡像與弱點掃描項目（頂層 `mirrors:`、`deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`、`tools.govulncheck`）：不論宣告哪個標準版本，都只是**提示**（`declaration/retired-item`），不判定收緊或放寬，也不算錯誤，因為 devguard 不再依它們做任何檢查（#64）；`standard upgrade` 到 `team@1.3.0` 會刪除它們。寫錯位置的（例如元件 `overrides` 中的 `mirrors.npm`）仍是不存在的項目，算**錯誤**。
+- 覆寫鏡像與弱點掃描項目（頂層 `mirrors:`、`deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`、`tools.govulncheck`）：不論宣告哪個標準版本，都只是**提示**（`declaration/retired-item`），不判定收緊或放寬，也不算錯誤，因為 devguard 不再依它們做任何檢查（#64）；`standard upgrade` 到 `team@1.3.0` 會刪除它們。寫錯位置的（例如元件 `overrides` 中的 `mirrors.npm`）仍是不存在的項目，算**錯誤**。Checkstyle 已從 Java 檢查移除（#193），所有標準版本都沒有 `tools.checkstyle`、`tools.maven-checkstyle-plugin`，Java 的 `lint.tool` 只允許 `pmd`：宣告這兩項工具版本，或把 `lint.tool` 寫成 `checkstyle+pmd`、`lint.rules` 含 `google_checks`，一樣只得到 `declaration/retired-item` **提示**（說明 Checkstyle 已移除，並建議刪除該項），不判定為錯誤。
 
 ### 4.3 沒有宣告時
 
@@ -229,7 +229,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | Python | `pycrypto`、`nose` | 空（Ruff TID251） |
 | Go | `github.com/pkg/errors`、`github.com/golang/protobuf`（gomodguard_v2） | `io/ioutil`（depguard） |
 | TypeScript | `moment`、`request`、`node-fetch` | 空（ESLint `no-restricted-imports`） |
-| Java | `log4j:log4j`、`junit:junit` | `sun.*`（Checkstyle `IllegalImport`） |
+| Java | `log4j:log4j`、`junit:junit` | `sun.*`（Java：PMD 的 `BannedApis` 規則，§6.4） |
 
 清單之後由團隊補充。
 
@@ -270,7 +270,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
   - 語言最低版本不變：`java.minVersion` 維持 17（新專案的標準，主流框架如 Spring Boot 3 的最低需求；需要 Java 8 的既有專案改用 `legacy@1.0.0`，§6.5）。`python.minVersion` 3.11（3.10 已於 2026-10-01 EOL）、`node.minVersion` 22（20 已於 2026-04-30 EOL）、`go.minVersion` 1.26（1.25 在 1.27.0 發佈時結束支援）都已是仍受支援的最舊版本。
   - Python：`tools.ruff` `>=0.17,<1`、`tools.pyright` `>=1.1.400,<2`。
   - TypeScript：`tools.vitest` `>=4.1,<6`（Vitest 4.1 仍會收到安全性修正）。
-  - Java：`tools.spotless-maven-plugin` `>=2.44,<4`、`tools.spotless-gradle-plugin` `>=7,<9`、`tools.checkstyle` `>=10.21,<15`。
+  - Java：`tools.spotless-maven-plugin` `>=2.44,<4`、`tools.spotless-gradle-plugin` `>=7,<9`。
   - 其餘工具範圍不變：ESLint 9（2026-08-06 EOL）、TypeScript 5、Jest 29、Biome 1、pytest 7、pytest-cov 6 之前、mypy 1.18 之前的版本線上游都不再發佈修正；Go 工具的現行版本已在範圍內。
 
 `team@1.2.0`（minor，§5.5）沿用 `team@1.1.0` 的所有項目，只有以下差異（#68）：
@@ -350,21 +350,21 @@ solution-style 的 `tsconfig.json`（`"files": []`、沒有 `include`、有 `ref
 | `java.minVersion` | 17（新專案建議 21 以上） | `maven.compiler.release` / Gradle toolchain |
 | `build.tool` | Maven 或 Gradle，必須提交 wrapper | CLI 一律透過 wrapper 呼叫，只執行該建置工具的 wrapper（`mvnw` 或 `gradlew`，元件目錄或上層），不會改用另一種。建置工具的判斷（設定、程式碼、測試、依賴各層共用）：宣告的 `build.tool` 優先；沒有宣告時，只有 `pom.xml` 是 maven，只有 Gradle 建置檔（`build.gradle(.kts)`、`settings.gradle(.kts)`）是 gradle；兩者都有時依提交的 wrapper，只有 `gradlew` 是 gradle，其餘（只有 `mvnw`、兩者都有或都沒有）是 maven |
 | `format.tool` | Spotless 搭配 palantir-java-format（4 空白、120 欄，風格） | `spotless:check` / `spotless:apply` |
-| `lint.tool` / `lint.rules` | Checkstyle（以 `google_checks.xml` 為基礎，移除與 palantir 衝突的格式類規則）+ PMD quickstart | `checkstyle.xml`、PMD ruleset（由 CLI 產生）。產生的 `checkstyle.xml` 內容是 Checkstyle **10.21**（`tools.checkstyle` 範圍的下限，範圍內每個版本都能載入；較新的 `google_checks.xml` 可能用到 10.21 不認得的 module）所附的 `google_checks.xml`（資料內附於 CLI，不在執行時下載；檔頭註明來源版本、URL 與 LGPL-2.1），移除與 palantir-java-format 衝突的格式類 module（`LineLength`、`Indentation`、`OperatorWrap`、`SeparatorWrap`、`WhitespaceAround`、`WhitespaceAfter`、`GenericWhitespace`、`MethodParamPad`、`NoWhitespaceBefore`、`NoWhitespaceBeforeCaseDefaultColon`、`ParenPad`、`LeftCurly`、`RightCurly`、`NoLineWrap`、`EmptyLineSeparator`、`RegexpSinglelineJava`、`CommentsIndentation`、`AnnotationLocation`、`CustomImportOrder`，以及只為它們存在的 suppression），命名、import、Javadoc 等其餘 module 保留。已用 `spotless:apply` 格式化的檔案跑這份設定不會有格式類違規。內建設定**不含**複雜度與 import 規則，產生時必須自行加入：Checkstyle 的 `IllegalImport`、`CyclomaticComplexity`（max 10），以及 PMD 的 `CognitiveComplexity`（reportLevel 15）。PMD quickstart 中的複雜度規則預設是註解掉的。 |
-| `complexity.cyclomatic` / `cognitive` | 10 / 15 | Checkstyle / PMD |
+| `lint.tool` / `lint.rules` | PMD quickstart | PMD ruleset（由 CLI 產生）。PMD quickstart 中的複雜度規則預設是註解掉的，產生時必須自行加入 PMD 的 `CognitiveComplexity`（`reportLevel` 15）與 `CyclomaticComplexity`（`methodReportLevel` 10），以及禁用 API 的規則。PMD 沒有內建的禁用 import 規則，所以產生一條名為 `BannedApis` 的 XPath 規則（`//ImportDeclaration[…]`）：`a.b.*` 比對該 package 與其底下的 import，類別名稱比對該類別（與其巢狀類別）。標準沒有禁用任何 API 時不產生也不要求這條規則。 |
+| `complexity.cyclomatic` / `cognitive` | 10 / 15 | PMD `CyclomaticComplexity`（`methodReportLevel`）/ `CognitiveComplexity`（`reportLevel`）；與宣告的值比對，沿用 PMD 的語意（達到門檻即回報） |
 | `test.tool` | JUnit 5 | — |
 | `coverage.lines` | JaCoCo BUNDLE 層級，LINE 與 BRANCH 都要 0.80；排除 Lombok 產生的程式碼 | `jacoco:check`；在 `lombok.config` 設定 `lombok.addLombokGeneratedAnnotation = true` |
 | `deps.lockfile` | Maven：Enforcer 的 `banDynamicVersions`（一條規則同時禁止版本範圍、LATEST / RELEASE 與 SNAPSHOT）加上 `dependencyConvergence`；Gradle：dependency locking 加上 `gradle.lockfile` | — |
 
-Maven 多模組建置（`pom.xml` 有 `<modules>`）的 lint 指令在 `checkstyle:check pmd:check` 之前加上 `test-compile` phase：只執行 plugin goal 時，reactor 解析不到尚未建置的兄弟模組（本機 `~/.m2` 沒有它們的 SNAPSHOT 時整個指令失敗），PMD 的型別解析也因此有 classpath。所以多模組的 lint 會先編譯，比較慢；編譯失敗時回報 `code/tool-failed`，訊息是建置輸出中的錯誤行。報告從各模組的 `target/` 讀取。單一模組的 Maven、Spotless 與 Gradle 不加 phase。
+Maven 多模組建置（`pom.xml` 有 `<modules>`）的 lint 指令在 `pmd:check` 之前加上 `test-compile` phase：只執行 plugin goal 時，reactor 解析不到尚未建置的兄弟模組（本機 `~/.m2` 沒有它們的 SNAPSHOT 時整個指令失敗），PMD 的型別解析也因此有 classpath。所以多模組的 lint 會先編譯，比較慢；編譯失敗時回報 `code/tool-failed`，訊息是建置輸出中的錯誤行。報告從各模組的 `target/` 讀取。單一模組的 Maven、Spotless 與 Gradle 不加 phase。
 
-建置檔的 plugin（#98）：設定層讀元件的建置檔（Maven `pom.xml` 的 `<build><plugins>` 與 `<pluginManagement>`；Gradle `build.gradle(.kts)` 的 `plugins {}`、`apply plugin`、`alias(libs.plugins.…)`；repo 中的 Maven parent POM 也算）。plugin 可能來自 devguard 讀不到的地方時（repo 外的 parent POM、`<profiles>`、Gradle convention plugin、`apply from`、上層 Gradle 建置、`apply false`）不回報，程式碼層照常執行。沒有 Spotless、Checkstyle 或 PMD 的 plugin 時各回報一筆 `settings/java-plugin-missing`；Checkstyle 沒有指向元件使用的 Checkstyle 設定檔（Maven `<configLocation>` 或 `checkstyle.config.location`；Gradle `configFile`／`configDirectory`，預設 `config/checkstyle/checkstyle.xml`），或 PMD 沒有指向元件使用的 ruleset（Maven `<rulesets>`；Gradle `ruleSetFiles`）時回報 `settings/java-plugin-config`，無法解析的路徑不回報。兩者依 §9.2 只印出片段（含 palantir-java-format，設定位置指向 devguard 的檔案），不修改建置檔。程式碼層不執行建置檔沒有 plugin 的工具；Gradle 的 Checkstyle 與 PMD task 分開執行，一個失敗不影響另一個的結果。JaCoCo 見 #99。
+建置檔的 plugin（#98）：設定層讀元件的建置檔（Maven `pom.xml` 的 `<build><plugins>` 與 `<pluginManagement>`；Gradle `build.gradle(.kts)` 的 `plugins {}`、`apply plugin`、`alias(libs.plugins.…)`；repo 中的 Maven parent POM 也算）。plugin 可能來自 devguard 讀不到的地方時（repo 外的 parent POM、`<profiles>`、Gradle convention plugin、`apply from`、上層 Gradle 建置、`apply false`）不回報，程式碼層照常執行。沒有 Spotless 或 PMD 的 plugin 時各回報一筆 `settings/java-plugin-missing`；PMD 沒有指向元件使用的 ruleset（Maven `<rulesets>`；Gradle `ruleSetFiles`）時回報 `settings/java-plugin-config`，無法解析的路徑不回報。依 §9.2 只印出片段（含 palantir-java-format，設定位置指向 devguard 的檔案），不修改建置檔。程式碼層不執行建置檔沒有 plugin 的工具。JaCoCo 見 #99。
 
-Gradle 的工具版本（#103）：工具版本一致性檢查（§5.2）讀 Checkstyle、PMD、SpotBugs 與 JaCoCo 的版本：`toolVersion`，以及 configuration 的 dependency（`checkstyle 'com.puppycrawl.tools:checkstyle:X'`、`pmd 'net.sourceforge.pmd:pmd-java:X'`（或 `pmd-core`）、`spotbugs 'com.github.spotbugs:spotbugs:X'`，Groovy 與 Kotlin DSL 都可）；同一個建置檔兩者都有時以 dependency 為準。多專案建置讀元件目錄與所有子專案（與 #101 的報告目錄相同）的建置檔；同一個工具在不同建置檔有超出範圍的版本時，各回報一筆 `tool-version/out-of-range`，指向該建置檔。version catalog（`libs.versions.toml`）宣告的版本與讀不到版本時的提示不在此範圍。
+Gradle 的工具版本（#103）：工具版本一致性檢查（§5.2）讀 PMD、SpotBugs 與 JaCoCo 的版本：`toolVersion`，以及 configuration 的 dependency（`pmd 'net.sourceforge.pmd:pmd-java:X'`（或 `pmd-core`）、`spotbugs 'com.github.spotbugs:spotbugs:X'`，Groovy 與 Kotlin DSL 都可）；同一個建置檔兩者都有時以 dependency 為準。多專案建置讀元件目錄與所有子專案（與 #101 的報告目錄相同）的建置檔；同一個工具在不同建置檔有超出範圍的版本時，各回報一筆 `tool-version/out-of-range`，指向該建置檔。version catalog（`libs.versions.toml`）宣告的版本與讀不到版本時的提示不在此範圍。
 
 JaCoCo 與測試（#99）：`check --full` 以同一份建置檔 plugin 讀取判斷專案有沒有 JaCoCo（Maven `jacoco-maven-plugin`；Gradle `jacoco` plugin）。`coverage.lines` ≤ 0（如 `legacy@1.0.0`）時，指令不帶 `jacoco:report`／`jacocoTestReport`，只跑測試，也不要求覆蓋率報告。有門檻但沒有 JaCoCo 時同樣只跑測試，照常回報 `test/failed`，另加一筆 `coverage/no-report`（附設定說明）。建置檔判斷不出來時（plugin 可能來自讀不到的地方）仍帶報告 goal；wrapper 以 `No plugin found for prefix 'jacoco'`（Maven）或 `Task 'jacocoTestReport' not found`（Gradle）結束時，改只跑測試再重跑一次，並比照沒有 JaCoCo 處理。
 
-Gradle 多專案建置（#101）：`settings.gradle(.kts)` 的 `include` 的子專案也各自寫報告，與 Maven 多模組相同，以元件目錄為一個元件。報告目錄是元件目錄加上 `include` 的子專案目錄（預設 `:a:b` 在 `a/b/`，支援 `project(':x').projectDir = file('lib')` 與 `File(settingsDir, "lib")`）；`include` 或 `projectDir` 的寫法讀不出來時，改掃描元件底下所有有 `build.gradle(.kts)` 的目錄（不含 `build/`、`.gradle/`、`buildSrc/`、`node_modules/`，以及有自己的 `settings.gradle(.kts)` 的獨立建置）。測試層從每個報告目錄讀 `build/reports/jacoco/test/jacocoTestReport.xml`，BUNDLE counter 加總後判定，一份都沒有才回報 `coverage/no-report`；程式碼層讀每個報告目錄的 `build/reports/checkstyle/{main,test}.xml` 與 `build/reports/pmd/{main,test}.xml`。建置前先刪除這些報告，只讀這次執行寫出的報告，不會讀到舊的。Checkstyle、PMD、Spotless、JaCoCo 只要元件目錄或任何一個子專案的建置檔套用就會執行。子專案建置檔中的 plugin 設定檢查不在此範圍（#98）。
+Gradle 多專案建置（#101）：`settings.gradle(.kts)` 的 `include` 的子專案也各自寫報告，與 Maven 多模組相同，以元件目錄為一個元件。報告目錄是元件目錄加上 `include` 的子專案目錄（預設 `:a:b` 在 `a/b/`，支援 `project(':x').projectDir = file('lib')` 與 `File(settingsDir, "lib")`）；`include` 或 `projectDir` 的寫法讀不出來時，改掃描元件底下所有有 `build.gradle(.kts)` 的目錄（不含 `build/`、`.gradle/`、`buildSrc/`、`node_modules/`，以及有自己的 `settings.gradle(.kts)` 的獨立建置）。測試層從每個報告目錄讀 `build/reports/jacoco/test/jacocoTestReport.xml`，BUNDLE counter 加總後判定，一份都沒有才回報 `coverage/no-report`；程式碼層讀每個報告目錄的 `build/reports/pmd/{main,test}.xml`。建置前先刪除這些報告，只讀這次執行寫出的報告，不會讀到舊的。PMD、Spotless、JaCoCo 只要元件目錄或任何一個子專案的建置檔套用就會執行。子專案建置檔中的 plugin 設定檢查不在此範圍（#98）。
 
 來源：[預設標準：Java](.scratch/coding-standards-guard/issues/11-default-standard-java.md)
 
@@ -381,7 +381,7 @@ Gradle 多專案建置（#101）：`settings.gradle(.kts)` 的 `include` 的子�
 | `deps.banned` | Python `pycrypto`；TypeScript `request`；Java `log4j:log4j`；Go 無 | 只保留有已知且不會修正的弱點的套件。JUnit 4（`junit:junit`）、`nose`、`moment`、`node-fetch`、`github.com/pkg/errors`、`github.com/golang/protobuf` 不再禁用 |
 | `java.minVersion` | 8 | `team@1.1.0` 是 17；`legacy@1.0.0` 明確寫為 8，讓 Java 8 的既有專案可以納管 |
 
-`java.minVersion` 是程式碼的**目標版本**（Maven `maven.compiler.release`、Gradle toolchain），不是執行工具用的 JDK。`legacy@1.0.0` 的 Java 工具版本範圍沿用 `team@1.1.0`，範圍內沒有能在 JDK 8 上執行的版本：執行 Java 工具至少需要 JDK 11（Checkstyle 10 起、spotless-maven-plugin 2.31 起、palantir-java-format 2.x）；使用 Spotless 3.x（Maven）或 8.x（Gradle）時需要 JDK 17。Java 8 的既有專案以 JDK 11 以上建置、以 release 8 為目標即可。有 Java 元件時，doctor 讀取 `java -version` 的主版本，低於 11 時給 `environment/java-runtime` 提示（不算錯誤；找不到 `java` 時不提示，工具執行失敗由 `check` 回報）。
+`java.minVersion` 是程式碼的**目標版本**（Maven `maven.compiler.release`、Gradle toolchain），不是執行工具用的 JDK。`legacy@1.0.0` 的 Java 工具版本範圍沿用 `team@1.1.0`，範圍內沒有能在 JDK 8 上執行的版本：執行 Java 工具至少需要 JDK 11（spotless-maven-plugin 2.31 起、palantir-java-format 2.x）；使用 Spotless 3.x（Maven）或 8.x（Gradle）時需要 JDK 17。Java 8 的既有專案以 JDK 11 以上建置、以 release 8 為目標即可。有 Java 元件時，doctor 讀取 `java -version` 的主版本，低於 11 時給 `environment/java-runtime` 提示（不算錯誤；找不到 `java` 時不提示，工具執行失敗由 `check` 回報）。
 
 升級到 `team@1.1.0` 時，預覽會列出這些項目收緊後專案新出現的錯誤。
 
@@ -415,7 +415,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 | Python | `ms-python.python`、`charliermarsh.ruff`、`ms-python.mypy-type-checker` | black-formatter、isort、flake8、pylint |
 | Go | `golang.go` | — |
 | TypeScript | `dbaeumer.vscode-eslint`、`esbenp.prettier-vscode`（使用 Biome 時改為 `biomejs.biome`）、`vitest.explorer` | 未選用的那一套 |
-| Java | `vscjava.vscode-java-pack`、`shengchen.vscode-checkstyle` | — |
+| Java | `vscjava.vscode-java-pack` | — |
 
 **`settings.json`**（只修改 CLI 管理的 key）
 - **Python**
@@ -431,7 +431,6 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
   - `js/ts.tsdk.path` 指向 `node_modules/typescript/lib`，並設定 `js/ts.tsdk.promptToUseWorkspaceVersion`（舊的 `typescript.tsdk` 已於 2026-05 棄用）。
   - `eslint.workingDirectories` 列出各 TS 元件。
 - **Java**
-  - `java.checkstyle.configuration` 與 `java.checkstyle.version` 與建置設定相同。
   - Java 檔案**關閉 `formatOnSave`**，因為 IDE 的格式化結果和 palantir 不一致。
 - **共通**：`files.eol: "\n"`。
 
@@ -494,7 +493,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 - **找不到 CLI**：擋下 commit。錯誤訊息附上安裝指令，並提示可用 `--no-verify` 暫時略過。
 - **部分 staged 的檔案**：不做 stash，也不還原任何檔案。
   - formatter 與單檔 linter 改用 `git show :<path>` 取出 **staged 版本**，再以 stdin 交給工具檢查，例如 `ruff check|format --stdin-filename`、`eslint --stdin --stdin-filename`、`prettier --stdin-filepath`、`biome format --stdin-file-path`，以及 Go 的格式檢查 `golangci-lint fmt --stdin`（套用設定中的 gofumpt、goimports）。這可以避免最常見的誤判：工作目錄已經格式化，但 commit 進去的版本沒有。
-  - 型別檢查（mypy、pyright、tsc）、golangci-lint 與 Java 工具（Spotless、Checkstyle、PMD）沒有 stdin 模式，而且本來就會讀磁碟上的其他檔案，所以仍然檢查工作目錄的版本。
+  - 型別檢查（mypy、pyright、tsc）、golangci-lint 與 Java 工具（Spotless、PMD）沒有 stdin 模式，而且本來就會讀磁碟上的其他檔案，所以仍然檢查工作目錄的版本。
   - `biome lint` 也檢查工作目錄的版本，與未 staged 的檔案一樣以檔案路徑執行：Biome 2.x 從 stdin 讀取時不回報任何 lint 診斷（不論內容，一律 exit 1 並只印出 `The contents aren't fixed`），`--write` 則會吞掉錯誤。不把 staged 內容寫成暫存檔再檢查，因為 Biome 依路徑套用 `includes` 與 `overrides`。
   - 印出的警告要說明哪些檢查用的是工作目錄版本。
 - **hook 只做檢查、不做修正**：失敗時印出 `devguard fix --code <files>`。`<files>` 只列出同時符合兩個條件的檔案：這次 commit 有 stage（刪除的檔案不算），而且至少有一個 `fix --code` 能修正的程式碼層 finding（`Finding.fixable`）。只有型別檢查（tsc、mypy、pyright、basedpyright）或其他需手動修正的 finding 的檔案不列入；沒有符合的檔案時不印這一行，commit 仍然被擋下。
@@ -518,7 +517,6 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 |---|---|
 | 專案鎖定的工具版本是否落在預設標準的範圍內。Python 的型別檢查器只檢查元件宣告的 `typecheck.tool` 那一個（#113，所有標準版本）：宣告 basedpyright 的專案即使 lockfile 中有 mypy，也不檢查 mypy 的範圍 | 錯誤 |
 | VS Code 是否使用專案的工具（Ruff 與 mypy 的 `fromEnvironment`、直譯器、`js/ts.tsdk.path`；舊的 `typescript.tsdk` 也接受） | 錯誤，可用 `fix` 修正 |
-| Checkstyle 擴充套件的版本與設定檔路徑，是否和建置設定相同 | 錯誤，可用 `fix` 修正 |
 | `.claude/` 與 `.vscode/` 中由 CLI 產生或管理的內容，是否和目前的標準相符 | 錯誤，可用 `fix` 修正 |
 | 工具設定檔的值與宣告不一致：設定檔較寬鬆 | 錯誤，`fix` 改回宣告的值 |
 | 工具設定檔的值與宣告不一致：設定檔較嚴格 | 提示，建議把宣告同步成設定檔的值 |
@@ -542,7 +540,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 | 類別 | 範例 | 做法 |
 |---|---|---|
-| CLI 全權產生 | `checkstyle.xml`、PMD ruleset、`.claude/rules/*`、`/standards-doctor` skill、git hook | 整份重新產生，檔頭標示「由 CLI 產生」。例外：檔案已存在、非空白、且沒有「由 CLI 產生」檔頭時，表示不是 devguard 產生的，一律不覆寫（`--yes` 也一樣），只印出要加入的內容：Checkstyle 設定與 PMD ruleset 印出缺少或要換掉的 module / rule，其餘印出完整的產生內容；`check` 也只提示手動修正。git hook 由 `install` / `fix` 以 hook 自己的標記判斷（§7.4） |
+| CLI 全權產生 | PMD ruleset、`.claude/rules/*`、`/standards-doctor` skill、git hook | 整份重新產生，檔頭標示「由 CLI 產生」。例外：檔案已存在、非空白、且沒有「由 CLI 產生」檔頭時，表示不是 devguard 產生的，一律不覆寫（`--yes` 也一樣），只印出要加入的內容：PMD ruleset 印出缺少或要換掉的 rule，其餘印出完整的產生內容；`check` 也只提示手動修正。git hook 由 `install` / `fix` 以 hook 自己的標記判斷（§7.4） |
 | 結構化的共用檔 | `pyproject.toml` 的 `[tool.*]`、golangci 設定檔（`.golangci.json` / `.toml` / `.yaml` / `.yml`）、`tsconfig.json`、`.prettierrc`、`.npmrc`（只有帳密引用，不寫 `registry=`）、`.vscode/*`、`.claude/settings.json` | 只修改 CLI 管理的 key，並保留註解與順序（YAML 用 `yaml`，JSONC 用 `jsonc-parser`，TOML 用 `@decimalturn/toml-patch`；`@shopify/toml-patch` 需要在執行時載入 wasm，可能無法打包進 Bun exe）。YAML（golangci 設定檔，以及 `install` 寫入的 `.pre-commit-config.yaml`、lefthook 設定）中修改沒有碰到的行逐字保留：flow collection 的寫法（`[a]` 或 `[ a ]`）、行尾註解前的對齊空白、引號都不變；新增或修改的 flow collection 不加內側空白（#87）。TOML 的修改結果無法解析時不寫入該檔，改為印出要套用的修改 |
 | 建置檔與程式碼形式的設定檔 | `pom.xml`、`build.gradle`、`settings.gradle`、`vitest.config.ts`、`eslint.config.js` | 不自動修改，只印出要套用的片段或 diff |
 

@@ -86,7 +86,7 @@ ignore:                         # 選填：排除的目錄、檔案或 glob
 | `versionRange`（版本範圍） | 範圍落在預設範圍內算收緊或相同；超出預設上下界算放寬 | `tools.ruff`、`tools.eslint`、`tools.golangci-lint` 等 |
 | `style`（風格項目） | 無嚴格或寬鬆之分，可直接寫值，不算偏離 | `format.*` |
 
-鏡像與弱點掃描項目（頂層 `mirrors:`、`deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`、`tools.govulncheck`）devguard 已不再使用（#64），`team@1.3.0` 移除了它們。不論宣告哪個標準版本，寫著它們只會得到 `declaration/retired-item` **提示**，不判定收緊或放寬；`devguard standard upgrade` 到 `team@1.3.0` 會把它們刪除。寫錯位置的（例如元件 `overrides` 中的 `mirrors.npm`）仍是不存在的項目，算錯誤。
+鏡像與弱點掃描項目（頂層 `mirrors:`、`deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`、`tools.govulncheck`）devguard 已不再使用（#64），`team@1.3.0` 移除了它們。不論宣告哪個標準版本，寫著它們只會得到 `declaration/retired-item` **提示**，不判定收緊或放寬；`devguard standard upgrade` 到 `team@1.3.0` 會把它們刪除。寫錯位置的（例如元件 `overrides` 中的 `mirrors.npm`）仍是不存在的項目，算錯誤。Java 的 Checkstyle 已移除（#193）：`tools.checkstyle`、`tools.maven-checkstyle-plugin`、`lint.tool: checkstyle+pmd` 與含 `google_checks` 的 `lint.rules` 同樣只得到 `declaration/retired-item` 提示，請刪除該項。
 
 ### 偏離（Deviation）與錯誤判定
 

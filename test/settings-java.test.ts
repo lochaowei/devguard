@@ -15,37 +15,30 @@ afterEach(() => {
 
 const JAVA_ROOT = "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: java\n";
 
-const CYCLOMATIC = '<module name="CyclomaticComplexity"><property name="max" value="10"/></module>';
-const ILLEGAL_IMPORT = '<module name="IllegalImport"/>';
+const COGNITIVE = `<rule ref="category/java/design.xml/CognitiveComplexity">
+    <properties><property name="reportLevel" value="15"/></properties>
+  </rule>`;
+const CYCLOMATIC = `<rule ref="category/java/design.xml/CyclomaticComplexity">
+    <properties><property name="methodReportLevel" value="10"/></properties>
+  </rule>`;
+/** A banned-APIs rule as devguard generates it, for the given XPath conditions. */
+const bannedRule = (conditions: string) => `<rule name="BannedApis" language="java" message="banned"
+      class="net.sourceforge.pmd.lang.rule.xpath.XPathRule">
+    <properties><property name="xpath"><value><![CDATA[//ImportDeclaration[${conditions}]]]></value></property></properties>
+  </rule>`;
+const SUN = "@ImportedName = 'sun' or starts-with(@ImportedName, 'sun.')";
+const BANNED = bannedRule(SUN);
 
-const checkstyle = (modules = ILLEGAL_IMPORT + CYCLOMATIC) => `<?xml version="1.0"?>
-<!DOCTYPE module PUBLIC "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN" "https://checkstyle.org/dtds/configuration_1_3.dtd">
-<module name="Checker">
-  <module name="TreeWalker">
-    ${modules}
-  </module>
-</module>
-`;
-const CHECKSTYLE = checkstyle();
-
-const PMD = `<?xml version="1.0"?>
-<ruleset name="team" xmlns="http://pmd.sourceforge.net/ruleset/2.0.0">
-  <rule ref="category/java/bestpractices.xml"/>
-  <rule ref="category/java/design.xml/CognitiveComplexity">
-    <properties>
-      <property name="reportLevel" value="15"/>
-    </properties>
-  </rule>
-</ruleset>
-`;
+const rulesetOf = (rules: string) =>
+  `<?xml version="1.0"?>\n<ruleset name="team" xmlns="http://pmd.sourceforge.net/ruleset/2.0.0">\n${rules}\n</ruleset>\n`;
+const PMD = rulesetOf(`<rule ref="category/java/bestpractices.xml"/>${COGNITIVE}${CYCLOMATIC}${BANNED}`);
 
 const plugin = (artifactId: string, configuration = "") =>
   `<plugin><artifactId>${artifactId}</artifactId><configuration>${configuration}</configuration></plugin>`;
 const SPOTLESS_PLUGIN = plugin("spotless-maven-plugin", "<java><palantirJavaFormat/></java>");
-const CHECKSTYLE_PLUGIN = plugin("maven-checkstyle-plugin", "<configLocation>checkstyle.xml</configLocation>");
 const PMD_PLUGIN = plugin("maven-pmd-plugin", "<rulesets><ruleset>pmd-ruleset.xml</ruleset></rulesets>");
-/** Spotless, Checkstyle and PMD, pointing at the configs of GOOD. */
-const PLUGINS = SPOTLESS_PLUGIN + CHECKSTYLE_PLUGIN + PMD_PLUGIN;
+/** Spotless and PMD, pointing at the config of GOOD. */
+const PLUGINS = SPOTLESS_PLUGIN + PMD_PLUGIN;
 
 const pom = (
   properties = "<maven.compiler.release>17</maven.compiler.release>",
@@ -60,14 +53,12 @@ const pom = (
 </project>
 `;
 
-/** A Gradle build script applying Spotless, Checkstyle and PMD, pointing at the configs of GOOD. */
+/** A Gradle build script applying Spotless and PMD, pointing at the config of GOOD. */
 const GRADLE_BUILD = `plugins {
     id 'java'
-    id 'checkstyle'
     id 'pmd'
     id 'com.diffplug.spotless' version '7.0.0'
 }
-checkstyle { configFile = file('checkstyle.xml') }
 pmd { ruleSetFiles = files('pmd-ruleset.xml') }
 `;
 
@@ -76,7 +67,6 @@ const GOOD: Record<string, string> = {
   "pom.xml": pom(),
   mvnw: "#!/bin/sh\n",
   "mvnw.cmd": "@echo off\n",
-  "checkstyle.xml": CHECKSTYLE,
   "pmd-ruleset.xml": PMD,
 };
 
@@ -115,7 +105,7 @@ describe("Java settings check", () => {
     expect(rules(await check({}, "standard: team@9.9.9\ncomponents: []\n"))).toEqual(["error:standard/newer-than-cli"]);
   });
 
-  it("passes a Maven project with wrapper, Checkstyle, PMD and a readable Java version", async () => {
+  it("passes a Maven project with wrapper, PMD and a readable Java version", async () => {
     expect(await check(GOOD)).toEqual([]);
   });
 
@@ -177,129 +167,32 @@ describe("Java settings check", () => {
     const files = {
       mvnw: "",
       "services/api/pom.xml": pom(),
-      "services/api/checkstyle.xml": CHECKSTYLE,
       "services/api/pmd-ruleset.xml": PMD,
     };
     expect(await check(files, decl)).toEqual([]);
   });
 });
 
-describe("Checkstyle settings", () => {
-  it("reports a missing CyclomaticComplexity module", async () => {
-    const findings = await check({ ...GOOD, "checkstyle.xml": checkstyle(ILLEGAL_IMPORT) });
-    expect(rules(findings)).toEqual(["error:settings/checkstyle-module-missing"]);
-    expect(findings[0]?.message).toContain("CyclomaticComplexity");
-    expect(findings[0]?.file).toBe("checkstyle.xml");
-    expect(findings[0]?.fix).toContain("devguard fix");
-  });
-
-  it("reports a missing IllegalImport module", async () => {
-    const findings = await check({ ...GOOD, "checkstyle.xml": checkstyle(CYCLOMATIC) });
-    expect(rules(findings)).toEqual(["error:settings/checkstyle-module-missing"]);
-    expect(findings[0]?.message).toContain("IllegalImport");
-  });
-
-  it("treats a module with severity ignore as missing", async () => {
-    const off = '<module name="IllegalImport"><property name="severity" value="ignore"/></module>';
-    expect(rules(await check({ ...GOOD, "checkstyle.xml": checkstyle(off + CYCLOMATIC) }))).toEqual([
-      "error:settings/checkstyle-module-missing",
-    ]);
-  });
-
-  it("reports a missing Checkstyle config", async () => {
-    const findings = await check({ ...GOOD, "checkstyle.xml": undefined });
-    expect(rules(findings)).toEqual(["error:settings/checkstyle-missing"]);
-  });
-
-  it("finds the config in Gradle's default location", async () => {
-    const at = plugin("maven-checkstyle-plugin", "<configLocation>config/checkstyle/checkstyle.xml</configLocation>");
-    const pomXml = pom(undefined, "", SPOTLESS_PLUGIN + at + PMD_PLUGIN);
-    const files = {
-      ...GOOD,
-      "pom.xml": pomXml,
-      "checkstyle.xml": undefined,
-      "config/checkstyle/checkstyle.xml": CHECKSTYLE,
-    };
-    expect(await check(files)).toEqual([]);
-  });
-
-  it("reports malformed XML with its line", async () => {
-    const findings = await check({
-      ...GOOD,
-      "checkstyle.xml": '<?xml version="1.0"?>\n<module name="Checker">\n<module>\n',
-    });
-    expect(rules(findings)).toEqual(["error:settings/config-unparseable"]);
-    expect(findings[0]?.line).toBeGreaterThan(1);
-  });
-
-  it("errors when CyclomaticComplexity max is looser than declared", async () => {
-    const decl = JAVA_ROOT + "    overrides: {complexity.cyclomatic: 8}\n";
-    const findings = await check(GOOD, decl);
-    expect(rules(findings)).toEqual(["error:settings/looser"]);
-    expect(findings[0]?.message).toContain("10");
-    expect(findings[0]?.message).toContain("8");
-    expect(findings[0]?.line).toBe(5);
-    expect(findings[0]?.fix).toContain("devguard fix");
-  });
-
-  it("hints when CyclomaticComplexity max is stricter than declared", async () => {
-    const strict = '<module name="CyclomaticComplexityCheck"><property name="max" value="7"/></module>';
-    const findings = await check({ ...GOOD, "checkstyle.xml": checkstyle(ILLEGAL_IMPORT + strict) });
-    expect(rules(findings)).toEqual(["hint:settings/stricter"]);
-    expect(findings[0]?.fix).toContain("complexity.cyclomatic");
-  });
-
-  it("uses Checkstyle's default max of 10 when none is set", async () => {
-    const bare = checkstyle(ILLEGAL_IMPORT + '<module name="CyclomaticComplexity"/>');
-    expect(await check({ ...GOOD, "checkstyle.xml": bare })).toEqual([]);
-    const decl = JAVA_ROOT + "    overrides: {complexity.cyclomatic: 8}\n";
-    expect(rules(await check({ ...GOOD, "checkstyle.xml": bare }, decl))).toEqual(["error:settings/looser"]);
-  });
-
-  it("hints instead of guessing when max is a property reference", async () => {
-    const ref = '<module name="CyclomaticComplexity"><property name="max" value="${cc.max}"/></module>';
-    expect(rules(await check({ ...GOOD, "checkstyle.xml": checkstyle(ILLEGAL_IMPORT + ref) }))).toEqual([
-      "hint:settings/config-value-unreadable",
-    ]);
-  });
-
-  it("errors when IllegalImport does not cover the banned APIs", async () => {
-    const narrow = '<module name="IllegalImport"><property name="illegalPkgs" value="com.legacy"/></module>';
-    const findings = await check({ ...GOOD, "checkstyle.xml": checkstyle(narrow + CYCLOMATIC) });
-    expect(rules(findings)).toEqual(["error:settings/banned-api-not-enforced"]);
-    expect(findings[0]?.message).toContain("sun.*");
-  });
-
-  it("checks added banned APIs against illegalPkgs and illegalClasses", async () => {
-    const decl = JAVA_ROOT + '    overrides: {deps.bannedApis: ["sun.*", "javax.xml.bind.*", "java.util.Date"]}\n';
-    const wide =
-      '<module name="IllegalImport"><property name="illegalPkgs" value="sun, javax.xml.bind"/>' +
-      '<property name="illegalClasses" value="java.util.Date"/></module>';
-    expect(await check({ ...GOOD, "checkstyle.xml": checkstyle(wide + CYCLOMATIC) }, decl)).toEqual([]);
-  });
-
-  it("hints when IllegalImport uses regular expressions", async () => {
-    const re = '<module name="IllegalImport"><property name="regexp" value="true"/></module>';
-    expect(rules(await check({ ...GOOD, "checkstyle.xml": checkstyle(re + CYCLOMATIC) }))).toEqual([
-      "hint:settings/config-value-unreadable",
-    ]);
-  });
-});
-
 describe("PMD settings", () => {
-  const ruleset = (rules: string) =>
-    `<?xml version="1.0"?>\n<ruleset name="team" xmlns="http://pmd.sourceforge.net/ruleset/2.0.0">\n${rules}\n</ruleset>\n`;
+  const ruleset = rulesetOf;
   const cognitive = (props = "") => `<rule ref="category/java/design.xml/CognitiveComplexity">${props}</rule>`;
+  const cyclomatic = (props = "") => `<rule ref="category/java/design.xml/CyclomaticComplexity">${props}</rule>`;
   const level = (v: string) => `<properties><property name="reportLevel" value="${v}"/></properties>`;
+  const methodLevel = (v: string) => `<properties><property name="methodReportLevel" value="${v}"/></properties>`;
 
-  it("reports a missing CognitiveComplexity rule", async () => {
-    const findings = await check({
-      ...GOOD,
-      "pmd-ruleset.xml": ruleset('<rule ref="category/java/bestpractices.xml"/>'),
-    });
-    expect(rules(findings)).toEqual(["error:settings/pmd-rule-missing"]);
-    expect(findings[0]?.message).toContain("CognitiveComplexity");
-    expect(findings[0]?.fix).toContain("devguard fix");
+  it("reports each missing rule: CognitiveComplexity, CyclomaticComplexity and BannedApis", async () => {
+    const check1 = (rules: string) => check({ ...GOOD, "pmd-ruleset.xml": ruleset(rules) });
+    const noCognitive = await check1(`${CYCLOMATIC}${BANNED}`);
+    expect(rules(noCognitive)).toEqual(["error:settings/pmd-rule-missing"]);
+    expect(noCognitive[0]?.message).toContain("CognitiveComplexity");
+    expect(noCognitive[0]?.fix).toContain("devguard fix");
+    const noCyclomatic = await check1(`${COGNITIVE}${BANNED}`);
+    expect(rules(noCyclomatic)).toEqual(["error:settings/pmd-rule-missing"]);
+    expect(noCyclomatic[0]?.message).toContain("CyclomaticComplexity");
+    const noBanned = await check1(`${COGNITIVE}${CYCLOMATIC}`);
+    expect(rules(noBanned)).toEqual(["error:settings/pmd-rule-missing"]);
+    expect(noBanned[0]?.message).toContain("BannedApis");
+    expect(rules(await check1(""))).toHaveLength(3);
   });
 
   it("reports a missing PMD ruleset", async () => {
@@ -308,13 +201,13 @@ describe("PMD settings", () => {
 
   it("finds the ruleset in Gradle's default location", async () => {
     const at = plugin("maven-pmd-plugin", "<rulesets><ruleset>config/pmd/ruleset.xml</ruleset></rulesets>");
-    const pomXml = pom(undefined, "", SPOTLESS_PLUGIN + CHECKSTYLE_PLUGIN + at);
+    const pomXml = pom(undefined, "", SPOTLESS_PLUGIN + at);
     const files = { ...GOOD, "pom.xml": pomXml, "pmd-ruleset.xml": undefined, "config/pmd/ruleset.xml": PMD };
     expect(await check(files)).toEqual([]);
   });
 
   it("errors when reportLevel is looser than declared", async () => {
-    const findings = await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(level("25"))) });
+    const findings = await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(level("25")) + CYCLOMATIC + BANNED) });
     expect(rules(findings)).toEqual(["error:settings/looser"]);
     expect(findings[0]?.file).toBe("pmd-ruleset.xml");
   });
@@ -322,35 +215,105 @@ describe("PMD settings", () => {
   it("judges reportLevel against the declared cognitive limit", async () => {
     const decl = JAVA_ROOT + "    overrides:\n      complexity.cognitive: 12\n";
     expect(rules(await check(GOOD, decl))).toEqual(["error:settings/looser"]);
-    const strict = { ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(level("10"))) };
+    const strict = { ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(level("10")) + CYCLOMATIC + BANNED) };
     expect(rules(await check(strict, decl))).toEqual(["hint:settings/stricter"]);
   });
 
   it("accepts reportLevel written as a value element, and PMD's default of 15", async () => {
     const nested = '<properties><property name="reportLevel"><value>15</value></property></properties>';
-    expect(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(nested)) })).toEqual([]);
-    expect(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive()) })).toEqual([]);
+    expect(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(nested) + CYCLOMATIC + BANNED) })).toEqual([]);
+    expect(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive() + CYCLOMATIC + BANNED) })).toEqual([]);
   });
 
   it("counts the whole design category unless CognitiveComplexity is excluded", async () => {
     const whole = '<rule ref="category/java/design.xml"/>';
-    expect(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(whole) })).toEqual([]);
+    expect(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(whole + BANNED) })).toEqual([]);
     const excluded = '<rule ref="category/java/design.xml"><exclude name="CognitiveComplexity"/></rule>';
-    expect(rules(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(excluded) }))).toEqual([
-      "error:settings/pmd-rule-missing",
-    ]);
+    const findings = await check({ ...GOOD, "pmd-ruleset.xml": ruleset(excluded + BANNED) });
+    expect(rules(findings)).toEqual(["error:settings/pmd-rule-missing"]);
+    expect(findings[0]?.message).toContain("CognitiveComplexity");
   });
 
   it("hints instead of guessing when reportLevel is not a number", async () => {
-    expect(rules(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(level("${lvl}"))) }))).toEqual([
-      "hint:settings/config-value-unreadable",
-    ]);
+    const files = { ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(level("${lvl}")) + CYCLOMATIC + BANNED) };
+    expect(rules(await check(files))).toEqual(["hint:settings/config-value-unreadable"]);
   });
 
   it("reports a malformed ruleset", async () => {
     expect(rules(await check({ ...GOOD, "pmd-ruleset.xml": "<ruleset>" }))).toEqual([
       "error:settings/config-unparseable",
     ]);
+  });
+
+  describe("CyclomaticComplexity", () => {
+    const withCyclomatic = (rule: string) => ({
+      ...GOOD,
+      "pmd-ruleset.xml": ruleset(COGNITIVE + rule + BANNED),
+    });
+
+    it("errors when methodReportLevel is looser than declared, hints when it is stricter", async () => {
+      const loose = await check(withCyclomatic(cyclomatic(methodLevel("25"))));
+      expect(rules(loose)).toEqual(["error:settings/looser"]);
+      expect(loose[0]?.message).toContain("25");
+      expect(loose[0]?.fix).toContain("devguard fix");
+      expect(rules(await check(withCyclomatic(cyclomatic(methodLevel("7")))))).toEqual(["hint:settings/stricter"]);
+    });
+
+    it("judges methodReportLevel against the declared cyclomatic limit", async () => {
+      const decl = JAVA_ROOT + "    overrides: {complexity.cyclomatic: 8}\n";
+      expect(rules(await check(GOOD, decl))).toEqual(["error:settings/looser"]);
+      expect(await check(withCyclomatic(cyclomatic(methodLevel("8"))), decl)).toEqual([]);
+    });
+
+    it("accepts a value element and PMD's default of 10", async () => {
+      const nested = '<properties><property name="methodReportLevel"><value>10</value></property></properties>';
+      expect(await check(withCyclomatic(cyclomatic(nested)))).toEqual([]);
+      expect(await check(withCyclomatic(cyclomatic()))).toEqual([]);
+      const decl = JAVA_ROOT + "    overrides: {complexity.cyclomatic: 8}\n";
+      expect(rules(await check(withCyclomatic(cyclomatic()), decl))).toEqual(["error:settings/looser"]);
+    });
+
+    it("hints instead of guessing when methodReportLevel is a property reference", async () => {
+      expect(rules(await check(withCyclomatic(cyclomatic(methodLevel("${cc}")))))).toEqual([
+        "hint:settings/config-value-unreadable",
+      ]);
+    });
+  });
+
+  describe("banned APIs", () => {
+    const withBanned = (rule: string, decl?: string) =>
+      check({ ...GOOD, "pmd-ruleset.xml": ruleset(COGNITIVE + CYCLOMATIC + rule) }, decl);
+
+    it("errors when the BannedApis rule does not cover the banned APIs", async () => {
+      const findings = await withBanned(bannedRule("@ImportedName = 'com.legacy'"));
+      expect(rules(findings)).toEqual(["error:settings/banned-api-not-enforced"]);
+      expect(findings[0]?.message).toContain("sun.*");
+      expect(findings[0]?.fix).toContain("devguard fix");
+    });
+
+    it("checks added banned APIs, packages and classes, against the rule's XPath", async () => {
+      const decl = JAVA_ROOT + '    overrides: {deps.bannedApis: ["sun.*", "javax.xml.bind.*", "java.util.Date"]}\n';
+      const some = await withBanned(BANNED, decl);
+      expect(rules(some)).toEqual(["error:settings/banned-api-not-enforced"]);
+      expect(some[0]?.message).toContain("javax.xml.bind.*、java.util.Date");
+      expect(some[0]?.message).not.toContain("sun.*");
+      const all = bannedRule(
+        `${SUN} or starts-with(@ImportedName, 'javax.xml.bind.') or @ImportedName = 'java.util.Date'`,
+      );
+      expect(await withBanned(all, decl)).toEqual([]);
+    });
+
+    it("treats a BannedApis rule without an XPath as covering nothing", async () => {
+      const bare = '<rule name="BannedApis" language="java" message="x" class="a.B"/>';
+      expect(rules(await withBanned(bare))).toEqual(["error:settings/banned-api-not-enforced"]);
+    });
+
+    it("needs no rule when the standard bans nothing", async () => {
+      const decl =
+        JAVA_ROOT + '    overrides:\n      deps.bannedApis: {value: [], reason: "legacy", until: 2999-01-01}\n';
+      const none = await check({ ...GOOD, "pmd-ruleset.xml": ruleset(COGNITIVE + CYCLOMATIC) }, decl);
+      expect(rules(none)).toEqual(["deviation:declaration/deviation"]);
+    });
   });
 });
 
@@ -471,9 +434,8 @@ describe("build plugins (#98)", () => {
   const missing = (findings: Finding[]) => findings.filter((f) => f.rule === "settings/java-plugin-missing");
 
   it("reports each tool whose plugin the root pom lacks, with the snippet to add, in a multi-module build", async () => {
-    // pf4j: a multi-module Maven build with Checkstyle only.
     const modules = "<packaging>pom</packaging><modules><module>core</module></modules>";
-    const files = { ...GOOD, "pom.xml": pom(undefined, modules, CHECKSTYLE_PLUGIN), "core/pom.xml": pom() };
+    const files = { ...GOOD, "pom.xml": pom(undefined, modules, ""), "core/pom.xml": pom() };
     const found = await check(files);
     expect(rules(found)).toEqual(["error:settings/java-plugin-missing", "error:settings/java-plugin-missing"]);
     const [spotless, pmd] = found;
@@ -491,38 +453,25 @@ describe("build plugins (#98)", () => {
   const config = (findings: Finding[]) => findings.filter((f) => f.rule === "settings/java-plugin-config");
   const withPlugins = (plugins: string, properties?: string) => ({ ...GOOD, "pom.xml": pom(properties, "", plugins) });
 
-  it("reports Maven Checkstyle and PMD plugins that do not point at devguard's configs", async () => {
-    const found = await check(
-      withPlugins(SPOTLESS_PLUGIN + plugin("maven-checkstyle-plugin") + plugin("maven-pmd-plugin")),
-    );
-    expect(rules(found)).toEqual(["error:settings/java-plugin-config", "error:settings/java-plugin-config"]);
-    const [checkstyle, pmd] = found;
-    expect(checkstyle?.message).toContain("checkstyle.xml");
-    expect(checkstyle?.message).toContain("sun_checks.xml");
-    expect(checkstyle?.repairs?.[0]).toMatchObject({ op: "snippet", file: "pom.xml" });
-    expect(snippetOf(checkstyle)).toContain(
-      "<configLocation>${maven.multiModuleProjectDirectory}/checkstyle.xml</configLocation>",
-    );
-    expect(pmd?.message).toContain("pmd-ruleset.xml");
-    const wrong = plugin("maven-checkstyle-plugin", "<configLocation>google_checks.xml</configLocation>");
-    expect(rules(await check(withPlugins(SPOTLESS_PLUGIN + wrong + PMD_PLUGIN)))).toEqual([
-      "error:settings/java-plugin-config",
-    ]);
+  it("reports a Maven PMD plugin that does not point at devguard's ruleset", async () => {
+    const found = await check(withPlugins(SPOTLESS_PLUGIN + plugin("maven-pmd-plugin")));
+    expect(rules(found)).toEqual(["error:settings/java-plugin-config"]);
+    expect(found[0]?.message).toContain("pmd-ruleset.xml");
+    expect(found[0]?.repairs?.[0]).toMatchObject({ op: "snippet", file: "pom.xml" });
+    expect(snippetOf(found[0])).toContain("<ruleset>${maven.multiModuleProjectDirectory}/pmd-ruleset.xml</ruleset>");
+    const wrong = plugin("maven-pmd-plugin", "<rulesets><ruleset>other.xml</ruleset></rulesets>");
+    expect(rules(await check(withPlugins(SPOTLESS_PLUGIN + wrong)))).toEqual(["error:settings/java-plugin-config"]);
   });
 
-  it("accepts the config through basedir properties, the user property or pluginManagement", async () => {
+  it("accepts the ruleset through basedir properties or pluginManagement", async () => {
     const at = (location: string) =>
-      plugin("maven-checkstyle-plugin", `<configLocation>${location}</configLocation>`) + SPOTLESS_PLUGIN + PMD_PLUGIN;
-    expect(config(await check(withPlugins(at("${project.basedir}/checkstyle.xml"))))).toEqual([]);
-    expect(config(await check(withPlugins(at("${maven.multiModuleProjectDirectory}/checkstyle.xml"))))).toEqual([]);
-    const property =
-      "<maven.compiler.release>17</maven.compiler.release><checkstyle.config.location>checkstyle.xml</checkstyle.config.location>";
-    const bare = plugin("maven-checkstyle-plugin") + SPOTLESS_PLUGIN + PMD_PLUGIN;
-    expect(config(await check(withPlugins(bare, property)))).toEqual([]);
-    const managed = `${SPOTLESS_PLUGIN}${plugin("maven-checkstyle-plugin")}${plugin("maven-pmd-plugin")}</plugins><pluginManagement><plugins>${CHECKSTYLE_PLUGIN}${PMD_PLUGIN}</plugins></pluginManagement><plugins>`;
+      plugin("maven-pmd-plugin", `<rulesets><ruleset>${location}</ruleset></rulesets>`) + SPOTLESS_PLUGIN;
+    expect(config(await check(withPlugins(at("${project.basedir}/pmd-ruleset.xml"))))).toEqual([]);
+    expect(config(await check(withPlugins(at("${maven.multiModuleProjectDirectory}/pmd-ruleset.xml"))))).toEqual([]);
+    const managed = `${SPOTLESS_PLUGIN}${plugin("maven-pmd-plugin")}</plugins><pluginManagement><plugins>${PMD_PLUGIN}</plugins></pluginManagement><plugins>`;
     expect(config(await check(withPlugins(managed)))).toEqual([]);
     // A location devguard cannot resolve is left alone.
-    expect(config(await check(withPlugins(at("${config.dir}/checkstyle.xml"))))).toEqual([]);
+    expect(config(await check(withPlugins(at("${config.dir}/pmd-ruleset.xml"))))).toEqual([]);
   });
 
   it("checks the location against the config devguard found", async () => {
@@ -546,14 +495,8 @@ describe("build plugins (#98)", () => {
       expect(plugins(await check(gradle({ "build.gradle": GRADLE_BUILD })))).toEqual([]);
     });
 
-    it("reports PMD and Spotless missing from a build with Checkstyle only", async () => {
-      // LMAX-Exchange/disruptor: the checkstyle plugin with its default config location.
-      const build = "plugins {\n    id 'java'\n    id 'checkstyle'\n}\n";
-      const files = gradle({
-        "build.gradle": build,
-        "config/checkstyle/checkstyle.xml": CHECKSTYLE,
-      });
-      const found = plugins(await check({ ...files, "checkstyle.xml": undefined }));
+    it("reports PMD and Spotless missing from a build with neither", async () => {
+      const found = plugins(await check(gradle({ "build.gradle": "plugins {\n    id 'java'\n}\n" })));
       expect(found.map((f) => [f.rule, f.message.includes("PMD") ? "PMD" : "Spotless"])).toEqual([
         ["settings/java-plugin-missing", "Spotless"],
         ["settings/java-plugin-missing", "PMD"],
@@ -563,19 +506,16 @@ describe("build plugins (#98)", () => {
       expect(snippetOf(found[1])).toContain("ruleSets = []");
     });
 
-    it("reports Checkstyle reading its default location while devguard's config is elsewhere", async () => {
-      const build = 'plugins {\n    checkstyle\n    pmd\n    id("com.diffplug.spotless") version "7.0.0"\n}\n';
+    it("reports PMD that is not pointed at devguard's ruleset", async () => {
+      const build = 'plugins {\n    pmd\n    id("com.diffplug.spotless") version "7.0.0"\n}\n';
       const found = plugins(await check(gradle({ "build.gradle.kts": build })));
-      expect(rules(found)).toEqual(["error:settings/java-plugin-config", "error:settings/java-plugin-config"]);
-      expect(found[0]?.message).toContain("checkstyle.xml");
-      expect(found[0]?.repairs?.[0]).toMatchObject({
-        text: 'checkstyle {\n    configFile = file("checkstyle.xml")\n}',
-      });
-      expect(snippetOf(found[1])).toContain("ruleSets = listOf()");
+      expect(rules(found)).toEqual(["error:settings/java-plugin-config"]);
+      expect(found[0]?.message).toContain("pmd-ruleset.xml");
+      expect(snippetOf(found[0])).toContain("ruleSets = listOf()");
     });
 
     it("reads a root-relative location and ignores commented-out plugins", async () => {
-      const build = `${GRADLE_BUILD.replace("file('checkstyle.xml')", 'rootProject.file("checkstyle.xml")')}// id 'jacoco'\n`;
+      const build = `${GRADLE_BUILD.replace("files('pmd-ruleset.xml')", 'files(rootProject.file("pmd-ruleset.xml"))')}// id 'jacoco'\n`;
       expect(plugins(await check(gradle({ "build.gradle": build })))).toEqual([]);
       const commented = GRADLE_BUILD.replace("id 'pmd'", "// id 'pmd'");
       expect(rules(plugins(await check(gradle({ "build.gradle": commented }))))).toEqual([
@@ -585,8 +525,14 @@ describe("build plugins (#98)", () => {
 
     it("keeps string literals that look like comments, and reads .set(…) and Groovy call forms", async () => {
       const glob = "spotless { java { target 'src/**/*.java' } }\n";
-      const set = GRADLE_BUILD.replace("configFile = file('checkstyle.xml')", 'configFile.set(file("checkstyle.xml"))');
-      const call = GRADLE_BUILD.replace("configFile = file('checkstyle.xml')", "configFile file('checkstyle.xml')");
+      const set = GRADLE_BUILD.replace(
+        "ruleSetFiles = files('pmd-ruleset.xml')",
+        'ruleSetFiles.set(files("pmd-ruleset.xml"))',
+      );
+      const call = GRADLE_BUILD.replace(
+        "ruleSetFiles = files('pmd-ruleset.xml')",
+        "ruleSetFiles files('pmd-ruleset.xml')",
+      );
       for (const build of [`${glob}${GRADLE_BUILD}${glob}`, set, call])
         expect(plugins(await check(gradle({ "build.gradle": build })))).toEqual([]);
     });
@@ -604,7 +550,7 @@ describe("build plugins (#98)", () => {
       const bare = "plugins {\n    id 'java'\n}\n";
       // Declared for the subprojects only, a convention plugin, or a script plugin.
       const applyFalse = "plugins {\n    id 'com.diffplug.spotless' version '7.0.0' apply false\n}\n";
-      expect(missing(await check(gradle({ "build.gradle": applyFalse + bare })))).toHaveLength(2);
+      expect(missing(await check(gradle({ "build.gradle": applyFalse + bare })))).toHaveLength(1);
       expect(missing(await check(gradle({ "build.gradle": applyFalse + bare })))[0]?.message).not.toContain("Spotless");
       expect(missing(await check(gradle({ "build.gradle": bare, "buildSrc/build.gradle": "" })))).toEqual([]);
       const settings = "includeBuild('build-logic')\n";
@@ -619,7 +565,6 @@ describe("build plugins (#98)", () => {
     const svc = (pomXml: string, root?: string) => ({
       mvnw: "",
       "svc/pom.xml": pomXml,
-      "svc/checkstyle.xml": CHECKSTYLE,
       "svc/pmd-ruleset.xml": PMD,
       "pom.xml": root,
     });
@@ -630,17 +575,17 @@ describe("build plugins (#98)", () => {
         "",
         SPOTLESS_PLUGIN + PMD_PLUGIN.replace("pmd-ruleset.xml", "svc/pmd-ruleset.xml"),
       );
-      const child = pom(undefined, PARENT, CHECKSTYLE_PLUGIN);
+      const child = pom(undefined, PARENT, "");
       expect(missing(await check(svc(child, parentPlugins), decl))).toEqual([]);
-      const unrelated = pom(undefined, "", CHECKSTYLE_PLUGIN);
+      const unrelated = pom(undefined, "", "");
       expect(rules(missing(await check(svc(unrelated, parentPlugins), decl)))).toHaveLength(2);
     });
 
     it("reports nothing for plugins that may come from a parent outside the repo or a profile", async () => {
       const external = PARENT.replace("</parent>", "<relativePath/></parent>");
-      expect(missing(await check(svc(pom(undefined, external, CHECKSTYLE_PLUGIN)), decl))).toEqual([]);
+      expect(missing(await check(svc(pom(undefined, external, "")), decl))).toEqual([]);
       const profile = `<profiles><profile><id>q</id><build><plugins>${SPOTLESS_PLUGIN}${PMD_PLUGIN}</plugins></build></profile></profiles>`;
-      expect(missing(await check(svc(pom(undefined, profile, CHECKSTYLE_PLUGIN)), decl))).toEqual([]);
+      expect(missing(await check(svc(pom(undefined, profile, "")), decl))).toEqual([]);
     });
   });
 });

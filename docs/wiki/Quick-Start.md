@@ -320,10 +320,9 @@ components:
 
 #### 設定檔產生與建置檔設定片段
 1. 執行 `devguard install` 會**自動產生或修補**：
-   - `checkstyle.xml`（`generated`）：由 CLI 全權產生，內容是 Checkstyle 10.21 的 `google_checks.xml`（移除與 palantir 衝突的格式類 module），再加上 `CyclomaticComplexity`（上限 10）與 `IllegalImport`（禁用 `sun.*`）
-   - `pmd-ruleset.xml`（`generated`）：由 CLI 全權產生，引用 `rulesets/java/quickstart.xml` 並設定 `CognitiveComplexity`（`reportLevel = 15`）
+   - `pmd-ruleset.xml`（`generated`）：由 CLI 全權產生，引用 `rulesets/java/quickstart.xml` 並設定 `CognitiveComplexity`（`reportLevel = 15`）、`CyclomaticComplexity`（`methodReportLevel = 10`）與禁用 `sun.*` 的 `BannedApis` 規則
    - `lombok.config`（`managed`，當專案使用 Lombok 時）：自動加上 `lombok.addLombokGeneratedAnnotation = true`，讓 JaCoCo 排除 Lombok 產生的程式碼
-   - `.vscode/`（`managed`）：關閉 `[java].editor.formatOnSave`（避免 IDE 格式化與 Spotless Palantir 衝突）、將 `java.checkstyle.configuration` 與 `java.checkstyle.version` 同步至建置設定，並在 `tasks.json` 加入 `standards: format (Spotless)`
+   - `.vscode/`（`managed`）：關閉 `[java].editor.formatOnSave`（避免 IDE 格式化與 Spotless Palantir 衝突），並在 `tasks.json` 加入 `standards: format (Spotless)`
 2. **手動加入建置檔（`snippet`）**：`pom.xml` 與 `build.gradle(.kts)` 為建置檔，CLI 不會自動修改，只會印出提示片段。以 Maven `pom.xml` 為例，需設定：
    ```xml
    <properties>
@@ -339,15 +338,6 @@ components:
          <version>2.44.2</version>
          <configuration>
            <java><palantirJavaFormat/></java>
-         </configuration>
-       </plugin>
-       <!-- Checkstyle：指向 CLI 產生的 checkstyle.xml -->
-       <plugin>
-         <groupId>org.apache.maven.plugins</groupId>
-         <artifactId>maven-checkstyle-plugin</artifactId>
-         <version>3.6.0</version>
-         <configuration>
-           <configLocation>checkstyle.xml</configLocation>
          </configuration>
        </plugin>
        <!-- PMD：指向 CLI 產生的 pmd-ruleset.xml -->
@@ -390,13 +380,13 @@ components:
      </plugins>
    </build>
    ```
-   > **Gradle 專案**：在 `build.gradle(.kts)` 套用 `com.diffplug.spotless`（`>=7,<8`）、`checkstyle`（`toolVersion` `>=10.21,<11`）、`pmd`（`toolVersion` `>=7,<8`）、`jacoco`（`toolVersion` `>=0.8.12,<0.9`，開啟 `xml.required = true`），並啟用 `dependencyLocking { lockAllConfigurations() }` 提交 `gradle.lockfile`。
+   > **Gradle 專案**：在 `build.gradle(.kts)` 套用 `com.diffplug.spotless`（`>=7,<8`）、`pmd`（`toolVersion` `>=7,<8`）、`jacoco`（`toolVersion` `>=0.8.12,<0.9`，開啟 `xml.required = true`），並啟用 `dependencyLocking { lockAllConfigurations() }` 提交 `gradle.lockfile`。
 
 #### 檢查與修正指令
 | 指令 | 實際執行的動作 |
 |---|---|
-| `devguard check` | 檢查 Wrapper、`pom.xml` / `build.gradle(.kts)` 版本與鎖定規則、`checkstyle.xml`、`pmd-ruleset.xml`、`lombok.config`、禁用依賴（`log4j:log4j`、`junit:junit`），並透過 Wrapper 執行 `spotless:check`、`checkstyle:check`、`pmd:check`（或 Gradle 對應 tasks）解析 XML 報告 |
-| `devguard fix` | 重新產生 `checkstyle.xml`、`pmd-ruleset.xml`（專案自己寫、沒有「由 CLI 產生」檔頭的不覆寫，只印出要加入的 module）、`.mvn/`，修補 `lombok.config`、`.vscode/`、`.claude/`，並印出建置檔需手動修改的片段 |
+| `devguard check` | 檢查 Wrapper、`pom.xml` / `build.gradle(.kts)` 版本與鎖定規則、`pmd-ruleset.xml`、`lombok.config`、禁用依賴（`log4j:log4j`、`junit:junit`），並透過 Wrapper 執行 `spotless:check`、`pmd:check`（或 Gradle 對應 tasks）解析 XML 報告 |
+| `devguard fix` | 重新產生 `pmd-ruleset.xml`（專案自己寫、沒有「由 CLI 產生」檔頭的不覆寫，只印出要加入的 rule）、`.mvn/`，修補 `lombok.config`、`.vscode/`、`.claude/`，並印出建置檔需手動修改的片段 |
 | `devguard fix --code` | 透過 Wrapper 執行 `spotless:apply`（或 `spotlessApply`）格式化 Java 程式碼 |
 | `devguard check --full` | 執行 `mvnw test jacoco:report`（或 `gradlew test jacocoTestReport`），解析 `jacoco.xml` 驗證 `LINE` 與 `BRANCH` 覆蓋率各自 `>= 80%` |
 
