@@ -1,7 +1,7 @@
 import { cliInstallHint } from "../distribution.ts";
 import type { Finding, Level } from "../report/finding.ts";
 import { BUNDLED_STANDARDS, findStandard } from "../standard/registry.ts";
-import { isRetired } from "../standard/retired.ts";
+import { isRetired, isRetiredValue, retiredMessage, retiredValueMessage } from "../standard/retired.ts";
 import { LANGUAGE_LABEL, LANGUAGES, type ItemDef, type Language, type Standard } from "../standard/types.ts";
 import { compareToDefault, type Status } from "./compare.ts";
 import { coversDirectory } from "./ignore.ts";
@@ -150,8 +150,18 @@ class Resolver {
       const item = defs[override.key];
       if (isRetired(scope, override.key)) {
         // Not judged: nothing reads it, so neither a deviation nor an error would mean anything (#64).
-        const message = `「${override.key}」沒有作用：devguard 不再檢查內部鏡像，也不再執行弱點掃描`;
-        this.add("hint", "declaration/retired-item", message, { ...at, fix: `從 ${this.file} 刪除這一項` });
+        this.add("hint", "declaration/retired-item", retiredMessage(override.key), {
+          ...at,
+          fix: `從 ${this.file} 刪除這一項`,
+        });
+        continue;
+      }
+      if (item && isRetiredValue(override.key, unwrap(override.raw).value)) {
+        // The value is one no standard offers any more; judging it would call the project looser or invalid (#193).
+        this.add("hint", "declaration/retired-item", retiredValueMessage(override.key), {
+          ...at,
+          fix: `從 ${this.file} 刪除這一項，標準的預設值就是 PMD`,
+        });
         continue;
       }
       if (!item) {

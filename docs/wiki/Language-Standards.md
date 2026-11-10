@@ -19,6 +19,8 @@
 
 較舊的版本仍保留這些項目，但 devguard 不再依它們做任何檢查：不論宣告哪個版本，寫著它們只會得到 `declaration/retired-item` 提示；執行 `devguard standard upgrade` 到 `team@1.3.0` 或更新的版本會把它們從宣告中刪除。
 
+Checkstyle 已從 Java 檢查移除（#193），所有版本都沒有 `tools.checkstyle`、`tools.maven-checkstyle-plugin`，Java 的 `lint.tool` 只剩 `pmd`、`lint.rules` 只剩 `pmd-quickstart`。舊宣告若還寫著這些項目，或 `lint.tool: checkstyle+pmd`、含 `google_checks` 的 `lint.rules`，同樣只得到 `declaration/retired-item` 提示，請刪除該項。
+
 `team@1.4.0`（定義於 [`src/standard/team-1.4.0.ts`](../../src/standard/team-1.4.0.ts)）是 CLI 內建的最新版本，`devguard draft` 寫入、`doctor` 建議升級到的都是它。它沿用 `team@1.3.0` 的所有項目，只放寬一個版本範圍並多允許一個套件管理工具（minor，見 [SPEC §6](../../SPEC.md)，#113、#138）：
 
 - Python 的 `tools.mypy` 改為 `>=1.18,<3`，允許 mypy 2.x。2026-11-08 查證 PyPI：1.x 最後一版是 1.20.2（2026-04-21），2.0.0 於 2026-05-06 發佈、目前最新是 2.4.1，2.0 之後 1.x 沒有修補版；下限維持。
@@ -210,12 +212,12 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 | `build.tool` | `"maven"` | 允許替代：`gradle`；必須提交 `./mvnw` 或 `./gradlew` wrapper |
 | `format.tool` | `"palantir-java-format"` | 透過 Spotless 執行 |
 | `lint.tool` / `lint.rules` | `"pmd"` / `["pmd-quickstart"]` | CLI 產生並檢查 `pmd-ruleset.xml` |
-| `complexity.cyclomatic` / `cognitive` | `10` / `15` | cyclomatic：Java 沒有檢查（Checkstyle 移除後沒有工具檢查，#193）/ PMD `CognitiveComplexity` |
+| `complexity.cyclomatic` / `cognitive` | `10` / `15` | PMD `CyclomaticComplexity`（`methodReportLevel`）/ `CognitiveComplexity`（`reportLevel`） |
 | `test.tool` | `"junit5"` | JUnit 5 |
 | `coverage.lines` | `80` | JaCoCo `LINE` 與 `BRANCH` 皆須達 80%；使用 Lombok 時須設定 `lombok.addLombokGeneratedAnnotation = true` |
 | `deps.lockfile` | `true` | Maven：`maven-enforcer-plugin` 的 `banDynamicVersions` + `dependencyConvergence`；Gradle：`gradle.lockfile` |
 | `deps.banned` | `["log4j:log4j", "junit:junit"]` | 直接依賴禁用套件 |
-| `deps.bannedApis` | `["sun.*"]` | Java 沒有檢查（Checkstyle 移除後沒有工具檢查，#193） |
+| `deps.bannedApis` | `["sun.*"]` | PMD `BannedApis` 規則：`a.b.*` 比對該 package 與其底下的 import，類別名稱比對該類別；沒有禁用任何 API 時不要求這條規則 |
 
 ### 執行方式
 

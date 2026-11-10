@@ -79,7 +79,7 @@ devguard fix --code [檔案…] [--yes] [--cwd <dir>]
 
 `generated` 類的檔案已經存在、內容不是空白、卻沒有 `由 CLI 產生` 檔頭時，表示是專案自己寫的。`fix` 不會覆寫它，加上 `--yes` 也一樣，只印出要加入的內容，其他檔案照常處理：
 
-- PMD ruleset：印出 `CognitiveComplexity` 的 `<rule>`。
+- PMD ruleset：印出缺少或要換掉的 `<rule>`：`CognitiveComplexity`、`CyclomaticComplexity` 與（標準有禁用 API 時）`BannedApis`，內含宣告的值。
 - `.claude/rules/*`、`/standards-doctor` skill：印出完整的產生內容，請自行比對。
 
 ```text
@@ -91,6 +91,13 @@ pmd-ruleset.xml：這份檔案不是 devguard 產生的，不會覆寫；請自�
         <property name="reportLevel" value="15"/>
       </properties>
     </rule>
+    加在 ruleset 底下：
+    <rule ref="category/java/design.xml/CyclomaticComplexity">
+      <properties>
+        <property name="methodReportLevel" value="10"/>
+      </properties>
+    </rule>
+    （BannedApis 規則同樣印出，此處省略）
 ```
 
 **建立 `tsconfig.json` 時排除子元件：** TypeScript 元件沒有 `tsconfig.json`、底下又有其他 TypeScript 元件（例如宣告了 monorepo 根目錄 `./` 與 `packages/*`）時，`fix` 建立的 `tsconfig.json` 加上 `exclude`，列出子元件的目錄與 `node_modules`，讓 `tsc` 不把子元件與依賴的檔案算進這個元件（#125）。沒有子元件時不寫 `exclude`。

@@ -15,16 +15,23 @@ afterEach(() => {
 
 const JAVA_ROOT = "standard: team@1.0.0\ncomponents:\n  - path: ./\n    language: java\n";
 
-const PMD = `<?xml version="1.0"?>
-<ruleset name="team" xmlns="http://pmd.sourceforge.net/ruleset/2.0.0">
-  <rule ref="category/java/bestpractices.xml"/>
-  <rule ref="category/java/design.xml/CognitiveComplexity">
-    <properties>
-      <property name="reportLevel" value="15"/>
-    </properties>
-  </rule>
-</ruleset>
-`;
+const COGNITIVE = `<rule ref="category/java/design.xml/CognitiveComplexity">
+    <properties><property name="reportLevel" value="15"/></properties>
+  </rule>`;
+const CYCLOMATIC = `<rule ref="category/java/design.xml/CyclomaticComplexity">
+    <properties><property name="methodReportLevel" value="10"/></properties>
+  </rule>`;
+/** A banned-APIs rule as devguard generates it, for the given XPath conditions. */
+const bannedRule = (conditions: string) => `<rule name="BannedApis" language="java" message="banned"
+      class="net.sourceforge.pmd.lang.rule.xpath.XPathRule">
+    <properties><property name="xpath"><value><![CDATA[//ImportDeclaration[${conditions}]]]></value></property></properties>
+  </rule>`;
+const SUN = "@ImportedName = 'sun' or starts-with(@ImportedName, 'sun.')";
+const BANNED = bannedRule(SUN);
+
+const rulesetOf = (rules: string) =>
+  `<?xml version="1.0"?>\n<ruleset name="team" xmlns="http://pmd.sourceforge.net/ruleset/2.0.0">\n${rules}\n</ruleset>\n`;
+const PMD = rulesetOf(`<rule ref="category/java/bestpractices.xml"/>${COGNITIVE}${CYCLOMATIC}${BANNED}`);
 
 const plugin = (artifactId: string, configuration = "") =>
   `<plugin><artifactId>${artifactId}</artifactId><configuration>${configuration}</configuration></plugin>`;
@@ -167,19 +174,25 @@ describe("Java settings check", () => {
 });
 
 describe("PMD settings", () => {
-  const ruleset = (rules: string) =>
-    `<?xml version="1.0"?>\n<ruleset name="team" xmlns="http://pmd.sourceforge.net/ruleset/2.0.0">\n${rules}\n</ruleset>\n`;
+  const ruleset = rulesetOf;
   const cognitive = (props = "") => `<rule ref="category/java/design.xml/CognitiveComplexity">${props}</rule>`;
+  const cyclomatic = (props = "") => `<rule ref="category/java/design.xml/CyclomaticComplexity">${props}</rule>`;
   const level = (v: string) => `<properties><property name="reportLevel" value="${v}"/></properties>`;
+  const methodLevel = (v: string) => `<properties><property name="methodReportLevel" value="${v}"/></properties>`;
 
-  it("reports a missing CognitiveComplexity rule", async () => {
-    const findings = await check({
-      ...GOOD,
-      "pmd-ruleset.xml": ruleset('<rule ref="category/java/bestpractices.xml"/>'),
-    });
-    expect(rules(findings)).toEqual(["error:settings/pmd-rule-missing"]);
-    expect(findings[0]?.message).toContain("CognitiveComplexity");
-    expect(findings[0]?.fix).toContain("devguard fix");
+  it("reports each missing rule: CognitiveComplexity, CyclomaticComplexity and BannedApis", async () => {
+    const check1 = (rules: string) => check({ ...GOOD, "pmd-ruleset.xml": ruleset(rules) });
+    const noCognitive = await check1(`${CYCLOMATIC}${BANNED}`);
+    expect(rules(noCognitive)).toEqual(["error:settings/pmd-rule-missing"]);
+    expect(noCognitive[0]?.message).toContain("CognitiveComplexity");
+    expect(noCognitive[0]?.fix).toContain("devguard fix");
+    const noCyclomatic = await check1(`${COGNITIVE}${BANNED}`);
+    expect(rules(noCyclomatic)).toEqual(["error:settings/pmd-rule-missing"]);
+    expect(noCyclomatic[0]?.message).toContain("CyclomaticComplexity");
+    const noBanned = await check1(`${COGNITIVE}${CYCLOMATIC}`);
+    expect(rules(noBanned)).toEqual(["error:settings/pmd-rule-missing"]);
+    expect(noBanned[0]?.message).toContain("BannedApis");
+    expect(rules(await check1(""))).toHaveLength(3);
   });
 
   it("reports a missing PMD ruleset", async () => {
@@ -194,7 +207,7 @@ describe("PMD settings", () => {
   });
 
   it("errors when reportLevel is looser than declared", async () => {
-    const findings = await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(level("25"))) });
+    const findings = await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(level("25")) + CYCLOMATIC + BANNED) });
     expect(rules(findings)).toEqual(["error:settings/looser"]);
     expect(findings[0]?.file).toBe("pmd-ruleset.xml");
   });
@@ -202,35 +215,105 @@ describe("PMD settings", () => {
   it("judges reportLevel against the declared cognitive limit", async () => {
     const decl = JAVA_ROOT + "    overrides:\n      complexity.cognitive: 12\n";
     expect(rules(await check(GOOD, decl))).toEqual(["error:settings/looser"]);
-    const strict = { ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(level("10"))) };
+    const strict = { ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(level("10")) + CYCLOMATIC + BANNED) };
     expect(rules(await check(strict, decl))).toEqual(["hint:settings/stricter"]);
   });
 
   it("accepts reportLevel written as a value element, and PMD's default of 15", async () => {
     const nested = '<properties><property name="reportLevel"><value>15</value></property></properties>';
-    expect(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(nested)) })).toEqual([]);
-    expect(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive()) })).toEqual([]);
+    expect(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(nested) + CYCLOMATIC + BANNED) })).toEqual([]);
+    expect(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive() + CYCLOMATIC + BANNED) })).toEqual([]);
   });
 
   it("counts the whole design category unless CognitiveComplexity is excluded", async () => {
     const whole = '<rule ref="category/java/design.xml"/>';
-    expect(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(whole) })).toEqual([]);
+    expect(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(whole + BANNED) })).toEqual([]);
     const excluded = '<rule ref="category/java/design.xml"><exclude name="CognitiveComplexity"/></rule>';
-    expect(rules(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(excluded) }))).toEqual([
-      "error:settings/pmd-rule-missing",
-    ]);
+    const findings = await check({ ...GOOD, "pmd-ruleset.xml": ruleset(excluded + BANNED) });
+    expect(rules(findings)).toEqual(["error:settings/pmd-rule-missing"]);
+    expect(findings[0]?.message).toContain("CognitiveComplexity");
   });
 
   it("hints instead of guessing when reportLevel is not a number", async () => {
-    expect(rules(await check({ ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(level("${lvl}"))) }))).toEqual([
-      "hint:settings/config-value-unreadable",
-    ]);
+    const files = { ...GOOD, "pmd-ruleset.xml": ruleset(cognitive(level("${lvl}")) + CYCLOMATIC + BANNED) };
+    expect(rules(await check(files))).toEqual(["hint:settings/config-value-unreadable"]);
   });
 
   it("reports a malformed ruleset", async () => {
     expect(rules(await check({ ...GOOD, "pmd-ruleset.xml": "<ruleset>" }))).toEqual([
       "error:settings/config-unparseable",
     ]);
+  });
+
+  describe("CyclomaticComplexity", () => {
+    const withCyclomatic = (rule: string) => ({
+      ...GOOD,
+      "pmd-ruleset.xml": ruleset(COGNITIVE + rule + BANNED),
+    });
+
+    it("errors when methodReportLevel is looser than declared, hints when it is stricter", async () => {
+      const loose = await check(withCyclomatic(cyclomatic(methodLevel("25"))));
+      expect(rules(loose)).toEqual(["error:settings/looser"]);
+      expect(loose[0]?.message).toContain("25");
+      expect(loose[0]?.fix).toContain("devguard fix");
+      expect(rules(await check(withCyclomatic(cyclomatic(methodLevel("7")))))).toEqual(["hint:settings/stricter"]);
+    });
+
+    it("judges methodReportLevel against the declared cyclomatic limit", async () => {
+      const decl = JAVA_ROOT + "    overrides: {complexity.cyclomatic: 8}\n";
+      expect(rules(await check(GOOD, decl))).toEqual(["error:settings/looser"]);
+      expect(await check(withCyclomatic(cyclomatic(methodLevel("8"))), decl)).toEqual([]);
+    });
+
+    it("accepts a value element and PMD's default of 10", async () => {
+      const nested = '<properties><property name="methodReportLevel"><value>10</value></property></properties>';
+      expect(await check(withCyclomatic(cyclomatic(nested)))).toEqual([]);
+      expect(await check(withCyclomatic(cyclomatic()))).toEqual([]);
+      const decl = JAVA_ROOT + "    overrides: {complexity.cyclomatic: 8}\n";
+      expect(rules(await check(withCyclomatic(cyclomatic()), decl))).toEqual(["error:settings/looser"]);
+    });
+
+    it("hints instead of guessing when methodReportLevel is a property reference", async () => {
+      expect(rules(await check(withCyclomatic(cyclomatic(methodLevel("${cc}")))))).toEqual([
+        "hint:settings/config-value-unreadable",
+      ]);
+    });
+  });
+
+  describe("banned APIs", () => {
+    const withBanned = (rule: string, decl?: string) =>
+      check({ ...GOOD, "pmd-ruleset.xml": ruleset(COGNITIVE + CYCLOMATIC + rule) }, decl);
+
+    it("errors when the BannedApis rule does not cover the banned APIs", async () => {
+      const findings = await withBanned(bannedRule("@ImportedName = 'com.legacy'"));
+      expect(rules(findings)).toEqual(["error:settings/banned-api-not-enforced"]);
+      expect(findings[0]?.message).toContain("sun.*");
+      expect(findings[0]?.fix).toContain("devguard fix");
+    });
+
+    it("checks added banned APIs, packages and classes, against the rule's XPath", async () => {
+      const decl = JAVA_ROOT + '    overrides: {deps.bannedApis: ["sun.*", "javax.xml.bind.*", "java.util.Date"]}\n';
+      const some = await withBanned(BANNED, decl);
+      expect(rules(some)).toEqual(["error:settings/banned-api-not-enforced"]);
+      expect(some[0]?.message).toContain("javax.xml.bind.*、java.util.Date");
+      expect(some[0]?.message).not.toContain("sun.*");
+      const all = bannedRule(
+        `${SUN} or starts-with(@ImportedName, 'javax.xml.bind.') or @ImportedName = 'java.util.Date'`,
+      );
+      expect(await withBanned(all, decl)).toEqual([]);
+    });
+
+    it("treats a BannedApis rule without an XPath as covering nothing", async () => {
+      const bare = '<rule name="BannedApis" language="java" message="x" class="a.B"/>';
+      expect(rules(await withBanned(bare))).toEqual(["error:settings/banned-api-not-enforced"]);
+    });
+
+    it("needs no rule when the standard bans nothing", async () => {
+      const decl =
+        JAVA_ROOT + '    overrides:\n      deps.bannedApis: {value: [], reason: "legacy", until: 2999-01-01}\n';
+      const none = await check({ ...GOOD, "pmd-ruleset.xml": ruleset(COGNITIVE + CYCLOMATIC) }, decl);
+      expect(rules(none)).toEqual(["deviation:declaration/deviation"]);
+    });
   });
 });
 

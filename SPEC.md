@@ -161,7 +161,7 @@ ignore:                         # 選填：不歸屬任何元件、不受檢查�
   - 超過 `until`：再變回**錯誤**。
 - 覆寫不存在的項目、值的型別錯誤、重複宣告同一個元件：**錯誤**。
 - 同一個 repo 裡，同語言的元件風格不一致時：**提示**。
-- 覆寫鏡像與弱點掃描項目（頂層 `mirrors:`、`deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`、`tools.govulncheck`）：不論宣告哪個標準版本，都只是**提示**（`declaration/retired-item`），不判定收緊或放寬，也不算錯誤，因為 devguard 不再依它們做任何檢查（#64）；`standard upgrade` 到 `team@1.3.0` 會刪除它們。寫錯位置的（例如元件 `overrides` 中的 `mirrors.npm`）仍是不存在的項目，算**錯誤**。
+- 覆寫鏡像與弱點掃描項目（頂層 `mirrors:`、`deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`、`tools.govulncheck`）：不論宣告哪個標準版本，都只是**提示**（`declaration/retired-item`），不判定收緊或放寬，也不算錯誤，因為 devguard 不再依它們做任何檢查（#64）；`standard upgrade` 到 `team@1.3.0` 會刪除它們。寫錯位置的（例如元件 `overrides` 中的 `mirrors.npm`）仍是不存在的項目，算**錯誤**。Checkstyle 已從 Java 檢查移除（#193），所有標準版本都沒有 `tools.checkstyle`、`tools.maven-checkstyle-plugin`，Java 的 `lint.tool` 只允許 `pmd`：宣告這兩項工具版本，或把 `lint.tool` 寫成 `checkstyle+pmd`、`lint.rules` 含 `google_checks`，一樣只得到 `declaration/retired-item` **提示**（說明 Checkstyle 已移除，並建議刪除該項），不判定為錯誤。
 
 ### 4.3 沒有宣告時
 
@@ -229,7 +229,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | Python | `pycrypto`、`nose` | 空（Ruff TID251） |
 | Go | `github.com/pkg/errors`、`github.com/golang/protobuf`（gomodguard_v2） | `io/ioutil`（depguard） |
 | TypeScript | `moment`、`request`、`node-fetch` | 空（ESLint `no-restricted-imports`） |
-| Java | `log4j:log4j`、`junit:junit` | `sun.*`（Java 沒有檢查，#193 移除 Checkstyle 後沒有工具檢查） |
+| Java | `log4j:log4j`、`junit:junit` | `sun.*`（Java：PMD 的 `BannedApis` 規則，§6.4） |
 
 清單之後由團隊補充。
 
@@ -350,8 +350,8 @@ solution-style 的 `tsconfig.json`（`"files": []`、沒有 `include`、有 `ref
 | `java.minVersion` | 17（新專案建議 21 以上） | `maven.compiler.release` / Gradle toolchain |
 | `build.tool` | Maven 或 Gradle，必須提交 wrapper | CLI 一律透過 wrapper 呼叫，只執行該建置工具的 wrapper（`mvnw` 或 `gradlew`，元件目錄或上層），不會改用另一種。建置工具的判斷（設定、程式碼、測試、依賴各層共用）：宣告的 `build.tool` 優先；沒有宣告時，只有 `pom.xml` 是 maven，只有 Gradle 建置檔（`build.gradle(.kts)`、`settings.gradle(.kts)`）是 gradle；兩者都有時依提交的 wrapper，只有 `gradlew` 是 gradle，其餘（只有 `mvnw`、兩者都有或都沒有）是 maven |
 | `format.tool` | Spotless 搭配 palantir-java-format（4 空白、120 欄，風格） | `spotless:check` / `spotless:apply` |
-| `lint.tool` / `lint.rules` | PMD quickstart | PMD ruleset（由 CLI 產生）。PMD quickstart 中的複雜度規則預設是註解掉的，產生時必須自行加入 PMD 的 `CognitiveComplexity`（reportLevel 15）。 |
-| `complexity.cyclomatic` / `cognitive` | 10 / 15 | cognitive：PMD；cyclomatic：Java 沒有檢查（Checkstyle 移除後沒有工具檢查，#193） |
+| `lint.tool` / `lint.rules` | PMD quickstart | PMD ruleset（由 CLI 產生）。PMD quickstart 中的複雜度規則預設是註解掉的，產生時必須自行加入 PMD 的 `CognitiveComplexity`（`reportLevel` 15）與 `CyclomaticComplexity`（`methodReportLevel` 10），以及禁用 API 的規則。PMD 沒有內建的禁用 import 規則，所以產生一條名為 `BannedApis` 的 XPath 規則（`//ImportDeclaration[…]`）：`a.b.*` 比對該 package 與其底下的 import，類別名稱比對該類別（與其巢狀類別）。標準沒有禁用任何 API 時不產生也不要求這條規則。 |
+| `complexity.cyclomatic` / `cognitive` | 10 / 15 | PMD `CyclomaticComplexity`（`methodReportLevel`）/ `CognitiveComplexity`（`reportLevel`）；與宣告的值比對，沿用 PMD 的語意（達到門檻即回報） |
 | `test.tool` | JUnit 5 | — |
 | `coverage.lines` | JaCoCo BUNDLE 層級，LINE 與 BRANCH 都要 0.80；排除 Lombok 產生的程式碼 | `jacoco:check`；在 `lombok.config` 設定 `lombok.addLombokGeneratedAnnotation = true` |
 | `deps.lockfile` | Maven：Enforcer 的 `banDynamicVersions`（一條規則同時禁止版本範圍、LATEST / RELEASE 與 SNAPSHOT）加上 `dependencyConvergence`；Gradle：dependency locking 加上 `gradle.lockfile` | — |

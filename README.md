@@ -235,7 +235,7 @@ devguard doctor         # 檢查 VS Code 擴充套件、git hook、Claude Code �
    devguard install
    ```
    - **CLI 全權產生（`generated`）**：
-     - `pmd-ruleset.xml`：引用 `rulesets/java/quickstart.xml` 並啟用 `CognitiveComplexity`（`reportLevel = 15`）
+     - `pmd-ruleset.xml`：引用 `rulesets/java/quickstart.xml` 並啟用 `CognitiveComplexity`（`reportLevel = 15`）、`CyclomaticComplexity`（`methodReportLevel = 10`）與禁用 API 的 `BannedApis` 規則（預設禁用 `sun.*`）
    - **結構化設定（`managed`）**：
      - `lombok.config`（若偵測到使用 Lombok）：自動補上 `lombok.addLombokGeneratedAnnotation = true`，避免 Lombok 產生的程式碼拉低 JaCoCo 覆蓋率
      - `.vscode/settings.json`：關閉 Java `editor.formatOnSave`（避免 IDE 格式化與 Palantir 衝突）；同時在 `.vscode/tasks.json` 產生 `standards: format (Spotless)` task

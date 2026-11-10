@@ -294,8 +294,14 @@ extend-select = [
       "pmd-ruleset.xml": '<!-- 由 CLI 產生（devguard） -->\n<ruleset name="old"/>',
     });
     const after = await fixesEverything(dir);
-    expect(read(dir, "pmd-ruleset.xml")).toContain("CognitiveComplexity");
-    expect(read(dir, "pmd-ruleset.xml")).toContain("由 CLI 產生");
+    const ruleset = read(dir, "pmd-ruleset.xml");
+    expect(ruleset).toContain("由 CLI 產生");
+    expect(ruleset).toContain('<property name="reportLevel" value="15"/>');
+    expect(ruleset).toContain('<property name="methodReportLevel" value="10"/>');
+    // The banned APIs (#193): `sun.*` matches the package itself and anything under it.
+    expect(ruleset).toContain('<rule name="BannedApis" language="java"');
+    expect(ruleset).toContain("//ImportDeclaration[@ImportedName = 'sun' or starts-with(@ImportedName, 'sun.')]");
+    expect(after.filter((f) => f.file === "pmd-ruleset.xml")).toEqual([]);
     expect(read(dir, "pom.xml")).toBe(pom);
     expect(after.map((f) => f.rule)).toContain("settings/looser");
     // The build plugins are only printed as snippets (#98).
@@ -314,7 +320,11 @@ extend-select = [
     });
     const own = (f: Finding) => f.file === "pmd-ruleset.xml";
     const before = (await check(dir)).filter(own);
-    expect(before.map((f) => f.rule)).toEqual(["settings/pmd-rule-missing"]);
+    expect(before.map((f) => f.message)).toEqual([
+      expect.stringContaining("CognitiveComplexity"),
+      expect.stringContaining("CyclomaticComplexity"),
+      expect.stringContaining("BannedApis"),
+    ]);
     expect(before.filter(fixable)).toEqual([]);
     expect(before[0]?.fix).toContain("不是 devguard 產生的");
     let out = "";
@@ -323,6 +333,8 @@ extend-select = [
     expect(read(dir, "pmd-ruleset.xml")).toBe(pmd);
     expect(out).toContain("pmd-ruleset.xml：這份檔案不是 devguard 產生的，不會覆寫");
     expect(out).toContain('    <rule ref="category/java/design.xml/CognitiveComplexity">');
+    expect(out).toContain('    <rule ref="category/java/design.xml/CyclomaticComplexity">');
+    expect(out).toContain('    <rule name="BannedApis" language="java"');
     expect(out).not.toContain("<!DOCTYPE");
   });
 
