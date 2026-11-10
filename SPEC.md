@@ -250,7 +250,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
   - 需要調整的工具版本
   - 需要執行的套件管理指令
 
-  新標準移除的項目，宣告中的覆寫會列為多餘並在 `--apply` 時刪除；刪除後空了的 `overrides:` 與頂層 `mirrors:` 也一併刪除。
+  新標準移除的項目，以及 Java `lint.tool` / `lint.rules` 的 Checkstyle 時期舊值（#197），宣告中的覆寫會列為多餘並在 `--apply` 時刪除；刪除後空了的 `overrides:` 與頂層 `mirrors:` 也一併刪除。
 
   目標版本：同一個標準的較新版本；`legacy` 另外可以升級到它指定的 `team` 版本（`legacy@1.0.0` → `team@1.1.0`）及該 `team` 的較新版本。沒有指定目標時，取同一個標準的最新版本，沒有的話取 `legacy` 指定的 `team` 版本。其他目標（例如從 `team` 升到 `legacy`，或從 `legacy@1.0.0` 升到 `team@1.0.0`）以 `2` 結束。
 - **基線標準 `legacy`**（§6.5）：給既有專案先納管用，最終要升級到 `team`。`legacy` → `team` 會收緊，不是 minor 更新，所以 doctor 不會建議；`devguard draft` 一律寫入 `team` 的最新版本，`team` 也不會升級到 `legacy`。

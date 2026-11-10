@@ -19,7 +19,7 @@
 
 較舊的版本仍保留這些項目，但 devguard 不再依它們做任何檢查：不論宣告哪個版本，寫著它們只會得到 `declaration/retired-item` 提示；執行 `devguard standard upgrade` 到 `team@1.3.0` 或更新的版本會把它們從宣告中刪除。
 
-Checkstyle 已從 Java 檢查移除（#193），所有版本都沒有 `tools.checkstyle`、`tools.maven-checkstyle-plugin`，Java 的 `lint.tool` 只剩 `pmd`、`lint.rules` 只剩 `pmd-quickstart`。舊宣告若還寫著這些項目，或 `lint.tool: checkstyle+pmd`、含 `google_checks` 的 `lint.rules`，同樣只得到 `declaration/retired-item` 提示，請刪除該項。
+Checkstyle 已從 Java 檢查移除（#193），所有版本都沒有 `tools.checkstyle`、`tools.maven-checkstyle-plugin`，Java 的 `lint.tool` 只剩 `pmd`、`lint.rules` 只剩 `pmd-quickstart`。舊宣告若還寫著這些項目，或 `lint.tool: checkstyle+pmd`、含 `google_checks` 的 `lint.rules`，同樣只得到 `declaration/retired-item` 提示；`devguard standard upgrade --apply` 會把 `lint.tool`、`lint.rules` 的舊值刪除（回到預設值 `pmd` / `pmd-quickstart`）。
 
 `team@1.4.0`（定義於 [`src/standard/team-1.4.0.ts`](../../src/standard/team-1.4.0.ts)）是 CLI 內建的最新版本，`devguard draft` 寫入、`doctor` 建議升級到的都是它。它沿用 `team@1.3.0` 的所有項目，只放寬一個版本範圍並多允許一個套件管理工具（minor，見 [SPEC §6](../../SPEC.md)，#113、#138）：
 
