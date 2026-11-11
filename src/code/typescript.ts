@@ -136,6 +136,9 @@ function tscFinding(target: CodeTarget, ctx: CodeCheckContext, line: string): Fi
  * `tsc --noEmit` always checks the whole project: it reads tsconfig.json and cannot take a file list. A solution-style
  * tsconfig.json checks no files itself, so each tsconfig it references is checked with `-p`, and an error found
  * through several of them is reported once (#124).
+ *
+ * In staged mode (pre-commit, `check --staged`) only an error in a staged file blocks the commit: an error in any other
+ * file, or one that belongs to no file, is reported as a hint (#202). A full check reports every error as an error.
  */
 async function typecheck(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
   const references = await referencedTsconfigs(`${target.dir}tsconfig.json`, ctx.readText);
@@ -149,7 +152,14 @@ async function typecheck(target: CodeTarget, ctx: CodeCheckContext): Promise<Fin
     if (found.length === 0) found.push(toolFailed(target, "tsc", result));
     for (const f of found) findings.set(JSON.stringify([f.rule, f.file, f.line, f.column, f.message]), f);
   }
-  return [...findings.values()];
+  return Promise.all([...findings.values()].map((f) => demoteUnstaged(ctx, f)));
+}
+
+/** In staged mode, a tsc error outside the staged files is a hint; a failed run stays an error. */
+async function demoteUnstaged(ctx: CodeCheckContext, finding: Finding): Promise<Finding> {
+  if (ctx.staged === undefined || finding.level !== "error" || !finding.rule.startsWith("tsc/")) return finding;
+  const inStaged = finding.file !== undefined && (await ctx.staged(finding.file)) !== undefined;
+  return inStaged ? finding : { ...finding, level: "hint" };
 }
 
 /**
