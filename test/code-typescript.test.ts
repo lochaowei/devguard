@@ -163,6 +163,51 @@ describe("typescript checker: tsc", () => {
     expect(findings[0]?.file).toBeUndefined();
   });
 
+  describe("staged mode (#202)", () => {
+    const stdout = [
+      "src/a.ts(3,7): error TS2322: Type 'string' is not assignable to type 'number'.",
+      "src/other.ts(1,1): error TS2304: Cannot find name 'x'.",
+      "error TS5057: Cannot find a tsconfig.json file.",
+      "",
+    ].join("\n");
+    const stagedCtx = (tools: ToolRunner) => ({
+      cwd: CWD,
+      tools,
+      readText: () => Promise.resolve(undefined),
+      staged: (p: string) => Promise.resolve(p === "web/src/a.ts" ? "let a = 1;\n" : undefined),
+    });
+    const summary = (found: { level: string; rule: string; file?: string }[]) =>
+      found.map((f) => `${f.level} ${f.rule} ${f.file ?? "-"}`);
+
+    it("only errors in staged files are errors; other files and file-less errors are hints", async () => {
+      const { tools } = fakeTools({ tsc: { code: 2, stdout } });
+      const t = target({ categories: only("typecheck"), files: ["src/a.ts"] });
+      const findings = await typescriptChecker.check(t, stagedCtx(tools));
+      expect(summary(findings)).toEqual([
+        "error tsc/TS2322 web/src/a.ts",
+        "hint tsc/TS2304 web/src/other.ts",
+        "hint tsc/TS5057 -",
+      ]);
+    });
+
+    it("a full check (nothing staged) reports every tsc error as an error", async () => {
+      const { tools } = fakeTools({ tsc: { code: 2, stdout } });
+      const findings = await check(target({ categories: only("typecheck") }), tools);
+      expect(summary(findings)).toEqual([
+        "error tsc/TS2322 web/src/a.ts",
+        "error tsc/TS2304 web/src/other.ts",
+        "error tsc/TS5057 -",
+      ]);
+    });
+
+    it("a tsc run that fails without recognisable errors stays an error in staged mode", async () => {
+      const { tools } = fakeTools({ tsc: { code: 1, stderr: "node: out of memory" } });
+      const t = target({ categories: only("typecheck"), files: ["src/a.ts"] });
+      const findings = await typescriptChecker.check(t, stagedCtx(tools));
+      expect(summary(findings)).toEqual(["error code/tool-failed -"]);
+    });
+  });
+
   it("reports a failing run without recognisable errors as a failed run", async () => {
     const { tools } = fakeTools({ tsc: { code: 1, stderr: "node: out of memory" } });
     const findings = await check(target({ categories: only("typecheck") }), tools);

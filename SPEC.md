@@ -496,6 +496,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 - **部分 staged 的檔案**：不做 stash，也不還原任何檔案。
   - formatter 與單檔 linter 改用 `git show :<path>` 取出 **staged 版本**，再以 stdin 交給工具檢查，例如 `ruff check|format --stdin-filename`、`eslint --stdin --stdin-filename`、`prettier --stdin-filepath`、`biome format --stdin-file-path`，以及 Go 的格式檢查 `golangci-lint fmt --stdin`（套用設定中的 gofumpt、goimports）。這可以避免最常見的誤判：工作目錄已經格式化，但 commit 進去的版本沒有。
   - 型別檢查（mypy、pyright、tsc）、golangci-lint 與 Java 工具（Spotless、PMD）沒有 stdin 模式，而且本來就會讀磁碟上的其他檔案，所以仍然檢查工作目錄的版本。
+  - TypeScript 的 `tsc` 仍檢查整個專案，但 staged 模式（pre-commit hook、`check --staged`）只有檔案在 staged 清單內的 `tsc` 錯誤才是錯誤並擋下 commit；其他檔案的錯誤與不屬於任何檔案的 `error TSxxxx` 降為提示（hint），不擋 commit（#202）。完整的 `devguard check` 與 CI 照舊把所有 `tsc` 錯誤當錯誤回報。
   - `biome lint` 也檢查工作目錄的版本，與未 staged 的檔案一樣以檔案路徑執行：Biome 2.x 從 stdin 讀取時不回報任何 lint 診斷（不論內容，一律 exit 1 並只印出 `The contents aren't fixed`），`--write` 則會吞掉錯誤。不把 staged 內容寫成暫存檔再檢查，因為 Biome 依路徑套用 `includes` 與 `overrides`。
   - 印出的警告要說明哪些檢查用的是工作目錄版本。
 - **hook 只做檢查、不做修正**：失敗時印出 `devguard fix --code <files>`。`<files>` 只列出同時符合兩個條件的檔案：這次 commit 有 stage（刪除的檔案不算），而且至少有一個 `fix --code` 能修正的程式碼層 finding（`Finding.fixable`）。只有型別檢查（tsc、mypy、pyright、basedpyright）或其他需手動修正的 finding 的檔案不列入；沒有符合的檔案時不印這一行，commit 仍然被擋下。
