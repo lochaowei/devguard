@@ -1,7 +1,7 @@
 import { posix } from "node:path";
 import type { Finding } from "../report/finding.ts";
 import { golangciRequest, type ToolResult } from "../tools/runner.ts";
-import { codeFinding, firstDifferentLine, runBatched, splitStaged, toolFailed, toRepoPath } from "./support.ts";
+import { codeFinding, firstDifferentLine, runBatched, stagedVersions, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeCategory, CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
 
 interface GolangciIssue {
@@ -109,7 +109,7 @@ export const goChecker: CodeChecker = {
     const findings = results.flatMap((r) => issueFindings(target, ctx, r));
     if (target.files === undefined) return findings;
     const staged = target.categories.has("format")
-      ? (await splitStaged(target, ctx)).staged.filter((s) => s.file.endsWith(".go"))
+      ? (await stagedVersions(target, ctx)).filter((s) => s.file.endsWith(".go"))
       : [];
     const stagedPaths = new Set(staged.map((s) => toRepoPath(ctx.cwd, target.dir, s.file)));
     // Other files of the same packages are not what was asked for; a staged file's format is judged from stdin.

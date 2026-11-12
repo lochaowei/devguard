@@ -462,6 +462,7 @@ web/ (TypeScript)
 | `npm run build:exe [-- <arch>\|<os>-<arch> …]` | 用 Bun（≥ 1.2.23）打包成 `dist/devguard-<os>-<arch>`（Windows 加 `.exe`）。不帶參數時打包這台機器作業系統的 x64 與 arm64；`<os>` 是 `windows`、`linux` 或 `macos`。Windows 執行檔含圖示與版本資訊，但交叉編譯時沒有（Bun 的限制） |
 | `npm run smoke:exe [-- <執行檔>]` | 從 PATH 移除 Node 後，對執行檔跑 `--version` 與 `check`（範例專案）；預設是這台機器對應的 `dist/devguard-<os>-<arch>` |
 | `npm run t2:probe` / `build:t2-probe` | SPEC §13 T2：子程序行為探測，先在 Node 下跑基準，再打包成 `dist/t2-probe-<os>-<arch>` 執行比對 |
+| `npm run bench:staged [-- [--partial] <檔案數>…]` | 在這個 repo 暫時 stage N 個新檔案（預設 1、5、10；用另一份 index，不動真正的 index），計時 `check --staged`（#205）。`--partial` 讓每個檔案另有未 staged 的修改，量測逐檔走 stdin 的情況 |
 
 devguard 本身也遵守 SPEC §6.3 的 TypeScript 預設標準，並以 [.devguard.yaml](.devguard.yaml) 宣告自己（`team@1.1.0`）。`team@1.1.0` 不要求 `eslint-plugin-sonarjs`（LGPL-3.0-only，SPEC §12 第 8 項），所以 ESLint 只檢查循環複雜度，認知複雜度不檢查。
 
