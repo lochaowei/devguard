@@ -18,6 +18,7 @@
 | `npm run build:exe [-- <arch>\|<os>-<arch> …]` | 使用 Bun `--compile` 打包成單一 `dist/devguard-<os>-<arch>`（Windows 加 `.exe`）。不帶參數時打包這台機器作業系統的 x64 與 arm64；`<os>` 是 `windows`、`linux` 或 `macos` |
 | `npm run smoke:exe [-- <執行檔>]` | 將 Node 從 `PATH` 移除後，對打包出的執行檔（預設是這台機器對應的那個）執行 `--version` 與範例專案 `check` |
 | `npm run t2:probe` / `npm run build:t2-probe` | SPEC §13 T2：Windows 子程序行為探測（測試 `.cmd` shim、stdin 管線、大量 stdout、中文路徑等） |
+| `npm run bench:staged [-- [--partial] <檔案數>…]` | 在這個 repo 暫時 stage N 個新檔案（預設 1、5、10；用另一份 index，不動真正的 index），計時 `check --staged`（#205）。`--partial` 讓每個檔案另有未 staged 的修改，量測逐檔走 stdin 的情況 |
 
 ---
 

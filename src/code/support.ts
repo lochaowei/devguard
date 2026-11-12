@@ -73,24 +73,40 @@ export async function runBatched(
 }
 
 export interface StagedSplit {
-  /** Files (relative to the target directory) whose staged version is known, with that version. */
+  /** Files (relative to the target directory) whose staged version differs from the file on disk, with that version. */
   staged: { file: string; text: string }[];
   /** The other files, checked on disk; undefined means the whole directory, [] means none. */
   onDisk: readonly string[] | undefined;
 }
 
-/** Splits the target's files into those checked through stdin (staged version known) and those checked on disk. */
+/**
+ * Splits the target's files into those checked through stdin and those checked on disk. Only a file whose staged
+ * version differs from the working tree (partially staged, or deleted after staging) needs stdin, which costs one tool
+ * run per file. A staged version identical to the file on disk is checked there, so all such files share one run
+ * (#205): the tool reads the same text either way.
+ */
 export async function splitStaged(target: CodeTarget, ctx: CodeCheckContext): Promise<StagedSplit> {
+  if (ctx.staged === undefined || target.files === undefined) return { staged: [], onDisk: target.files };
+  const versions = await stagedVersions(target, ctx);
+  const differs = await Promise.all(
+    versions.map(async ({ file, text }) => text !== (await ctx.readText(target.dir + file))),
+  );
+  const staged = versions.filter((_, i) => differs[i] === true);
+  const viaStdin = new Set(staged.map((s) => s.file));
+  return { staged, onDisk: target.files.filter((file) => !viaStdin.has(file)) };
+}
+
+/** The target's files whose staged version is known, with that version, whatever the working tree holds. */
+export async function stagedVersions(target: CodeTarget, ctx: CodeCheckContext): Promise<StagedSplit["staged"]> {
   const { staged: read } = ctx;
-  if (read === undefined || target.files === undefined) return { staged: [], onDisk: target.files };
-  const staged: StagedSplit["staged"] = [];
-  const onDisk: string[] = [];
+  if (read === undefined || target.files === undefined) return [];
+  const versions: StagedSplit["staged"] = [];
+  // One at a time: a read may start a git process.
   for (const file of target.files) {
     const text = await read(target.dir + file);
-    if (text === undefined) onDisk.push(file);
-    else staged.push({ file, text });
+    if (text !== undefined) versions.push({ file, text });
   }
-  return { staged, onDisk };
+  return versions;
 }
 
 /** 1-based number of the first line where `actual` and `expected` differ (1 when they are equal). */

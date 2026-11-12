@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -65,13 +65,26 @@ const unusedImport = (filename: string, safe: boolean) => ({
   fix: safe ? { applicability: "safe" } : null,
 });
 
-/** `ruff check` on one staged file's stdin: F401 when it contains "import os", plus `ruffAlso`. */
-function ruffCheck(req: ToolRequest, options: FakeOptions): ToolResult {
+/**
+ * What Ruff is given to check: the staged text on stdin, or the `.py` files named in its arguments, read from the
+ * repo this test made last (a staged file that is the same in the working tree is checked there, #205).
+ */
+function ruffInputs(req: ToolRequest): { file: string; text: string }[] {
   const args = req.args ?? [];
-  const file = args[args.indexOf("--stdin-filename") + 1] ?? "app.py";
-  const unused = req.stdin?.includes("import os") === true;
+  if (req.stdin !== undefined) {
+    return [{ file: args[args.indexOf("--stdin-filename") + 1] ?? "app.py", text: req.stdin }];
+  }
+  const root = dirs.at(-1) ?? "";
+  return args
+    .filter((a) => a.endsWith(".py"))
+    .map((file) => ({ file, text: readFileSync(join(root, req.dir, file), "utf8") }));
+}
+
+/** `ruff check`: F401 for each file given (stdin or disk) that contains "import os", plus `ruffAlso`. */
+function ruffCheck(req: ToolRequest, options: FakeOptions): ToolResult {
+  const unused = ruffInputs(req).filter((input) => input.text.includes("import os"));
   const diagnostics = [
-    ...(unused ? [unusedImport(file, options.safeFix === true)] : []),
+    ...unused.map(({ file }) => unusedImport(file, options.safeFix === true)),
     ...(options.ruffAlso ?? []).map((f) => unusedImport(f, true)),
   ];
   return { code: diagnostics.length > 0 ? 1 : 0, stdout: JSON.stringify(diagnostics), stderr: "" };

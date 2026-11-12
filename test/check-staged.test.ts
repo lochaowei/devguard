@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -36,19 +36,27 @@ function repo() {
   return { dir, git, write };
 }
 
-/** Ruff reports F401 for any stdin containing "import os"; everything else is clean. */
+/** What Ruff is given to check: the text on stdin, or the `.py` files named in its arguments, read from `dir`. */
+function ruffInputs(req: ToolRequest, dir: string): { file: string; text: string }[] {
+  const args = req.args ?? [];
+  if (req.stdin !== undefined) {
+    return [{ file: args[args.indexOf("--stdin-filename") + 1] ?? "app.py", text: req.stdin }];
+  }
+  return args.filter((a) => a.endsWith(".py")).map((file) => ({ file, text: readFileSync(join(dir, file), "utf8") }));
+}
+
+/** Ruff reports F401 for any file (on stdin or on disk under `dir`) containing "import os"; all else is clean. */
 function fakeTools(dir = "C:/x") {
   const calls: ToolRequest[] = [];
   const tools: ToolRunner = {
     run(req) {
       calls.push(req);
-      const unused = req.stdin?.includes("import os") === true && req.args?.[0] === "check";
-      const filename = join(dir, "app.py");
-      const stdout =
-        req.args?.[0] === "check"
-          ? JSON.stringify(unused ? [{ code: "F401", message: "unused", filename, location: { row: 1 } }] : [])
-          : (req.stdin ?? "");
-      return Promise.resolve({ code: unused ? 1 : 0, stdout, stderr: "" });
+      if (req.args?.[0] !== "check") return Promise.resolve({ code: 0, stdout: req.stdin ?? "", stderr: "" });
+      const diagnostics = ruffInputs(req, dir)
+        .filter((input) => input.text.includes("import os"))
+        .map(({ file }) => ({ code: "F401", message: "unused", filename: join(dir, file), location: { row: 1 } }));
+      const stdout = JSON.stringify(diagnostics);
+      return Promise.resolve({ code: diagnostics.length > 0 ? 1 : 0, stdout, stderr: "" });
     },
   };
   return { tools, calls };
@@ -74,6 +82,7 @@ describe("devguard check --staged (SPEC §3.2): the pre-commit hook's checks", (
     const { dir, git, write } = repo();
     write("app.py", "import os\n");
     git("add", "app.py");
+    write("app.py", "x = 3\n");
     write("other.py", "import os\n");
     const { tools, calls } = fakeTools(dir);
     const r = await cli(dir, ["check", "--staged", "--format", "json"], tools);
@@ -81,6 +90,65 @@ describe("devguard check --staged (SPEC §3.2): the pre-commit hook's checks", (
     const report = JSON.parse(r.out) as { findings: { rule: string; file?: string }[] };
     expect(report.findings.map((f) => f.file)).toEqual(["app.py"]);
     expect(calls.find((c) => c.args?.[0] === "check")?.stdin).toBe("import os\n");
+  });
+
+  describe("how many tool runs the staged files cost (#205)", () => {
+    const ruffChecks = (calls: readonly ToolRequest[]) =>
+      calls
+        .filter((c) => c.tool === "ruff" && c.args?.[0] === "check")
+        .map((c) => ({ files: c.args?.filter((a) => a.endsWith(".py")), stdin: c.stdin }));
+    const findingFiles = (out: string) =>
+      (JSON.parse(out) as { findings: { file?: string }[] }).findings.map((f) => f.file);
+
+    it("checks every staged file that is the same in the working tree in one run, and reports the same findings", async () => {
+      const { dir, git, write } = repo();
+      const names = ["a.py", "b.py", "c.py", "d.py"];
+      for (const name of names) write(name, name === "c.py" ? "import os\n" : "x = 1\n");
+      git("add", ...names);
+      const { tools, calls } = fakeTools(dir);
+      const r = await cli(dir, ["check", "--staged", "--format", "json"], tools);
+      expect(ruffChecks(calls)).toEqual([{ files: names, stdin: undefined }]);
+      expect(findingFiles(r.out)).toEqual(["c.py"]);
+      expect(r.code).toBe(1);
+    });
+
+    it("still feeds the staged version of a partially staged file through stdin, next to the one run for the rest", async () => {
+      const { dir, git, write } = repo();
+      for (const name of ["a.py", "b.py", "c.py"]) write(name, "x = 1\n");
+      write("b.py", "import os\n");
+      git("add", "a.py", "b.py", "c.py");
+      write("b.py", "x = 2\n");
+      const { tools, calls } = fakeTools(dir);
+      const r = await cli(dir, ["check", "--staged", "--format", "json"], tools);
+      expect(ruffChecks(calls)).toEqual([
+        { files: ["a.py", "c.py"], stdin: undefined },
+        { files: ["b.py"], stdin: "import os\n" },
+      ]);
+      expect(findingFiles(r.out)).toEqual(["b.py"]);
+    });
+
+    it("feeds the staged LF version through stdin when the working tree holds it with CRLF", async () => {
+      const { dir, git, write } = repo();
+      write(".gitattributes", "* text=auto\n");
+      write("a.py", "x = 2\n");
+      git("add", ".gitattributes", "a.py");
+      write("a.py", "x = 2\r\n");
+      expect(git("diff", "--name-only")).toBe("");
+      const { tools, calls } = fakeTools(dir);
+      await cli(dir, ["check", "--staged"], tools);
+      expect(ruffChecks(calls)).toEqual([{ files: ["a.py"], stdin: "x = 2\n" }]);
+    });
+
+    it("feeds the staged version through stdin when the file was deleted from the working tree after staging", async () => {
+      const { dir, git, write } = repo();
+      write("a.py", "import os\n");
+      git("add", "a.py");
+      rmSync(join(dir, "a.py"));
+      const { tools, calls } = fakeTools(dir);
+      const r = await cli(dir, ["check", "--staged", "--format", "json"], tools);
+      expect(ruffChecks(calls)).toEqual([{ files: ["a.py"], stdin: "import os\n" }]);
+      expect(findingFiles(r.out)).toEqual(["a.py"]);
+    });
   });
 
   describe(
