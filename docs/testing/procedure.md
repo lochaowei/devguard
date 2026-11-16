@@ -1,6 +1,6 @@
 # 實際專案測試流程
 
-每一輪實際專案測試（[Round 1](../real-project-test-report.md)、[Round 2](round-2-report.md)、[Round 3](round-3-report.md)）都照這份流程。報告寫成 `docs/testing/round-<n>-report.md`。
+每一輪實際專案測試（[Round 1](../real-project-test-report.md)、[Round 2](round-2-report.md)、[Round 3](round-3-report.md)、[Round 4](round-4-report.md)）都照這份流程。報告寫成 `docs/testing/round-<n>-report.md`。
 
 ## 選專案
 
@@ -55,4 +55,4 @@ draft → check → fix --yes → check → check --full → install → doctor 
 
 - 片段與報告不寫本機絕對路徑（clone、log、工具的安裝位置），用「本機 bare remote」「使用者範圍」這類描述。
 - 用詞依 `GLOSSARY.md`（例如「基線標準」「元件」）。
-- 報告結構參照 [Round 3](round-3-report.md)：方法、專案總覽、跨語言主題、issue 索引、結論、各語言詳細紀錄。
+- 報告結構參照 [Round 3](round-3-report.md)：方法、專案總覽、跨語言主題、issue 索引、結論、各語言詳細紀錄。Round 4 起另加「效能」一節（見 [Round 4](round-4-report.md)）。
