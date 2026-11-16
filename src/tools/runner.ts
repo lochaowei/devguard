@@ -309,8 +309,21 @@ function python(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
   return { ok: true, command: { ...manager.runTool(bin, req.tool, req.args ?? []), cwd } };
 }
 
+/**
+ * Node itself, from PATH, to call the API of a package in the project's node_modules (#209). Only a real executable:
+ * a `.cmd` shim could not take a script as an argument through cmd.exe.
+ */
+function node(args: readonly string[], cwd: string, env: Env): Resolved {
+  const exe = onPath("node", env);
+  if (!exe || /\.(cmd|bat)$/i.test(exe)) {
+    return { ok: false, message: "找不到 node", install: "scoop install nodejs-lts" };
+  }
+  return { ok: true, command: { file: exe, args: [...args], cwd } };
+}
+
 function typescript(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
   const cwd = dirs[0] ?? "";
+  if (req.tool === "node") return node(req.args ?? [], cwd, env);
   // npm, pnpm and Yarn write a `.cmd` shim on Windows; Bun 1.x writes `.exe` (and `.bunx`), checked on 1.4.4 (#122).
   // The nearest directory wins; within one, `.cmd` does, as before.
   const names = env.windows ? [".cmd", ".exe"].map((ext) => req.tool + ext) : [req.tool];
