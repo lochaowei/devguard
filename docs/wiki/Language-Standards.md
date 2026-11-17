@@ -240,6 +240,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 - **建置檔的 plugin（設定層）**：讀元件的建置檔（Maven：`pom.xml` 的 `<build><plugins>` 與 `<pluginManagement>`；Gradle：`build.gradle(.kts)` 的 `plugins {}`、`apply plugin`、版本目錄的 `alias(libs.plugins.…)`）；Maven 的 parent POM 在 repo 中時（`<relativePath>`，預設 `../pom.xml`）也算。plugin 可能來自 devguard 讀不到的地方時（repo 外的 parent POM、`<profiles>`、Gradle 的 buildSrc／`includeBuild` convention plugin、`apply from`、上層 Gradle 建置、根建置的 `apply false`）不回報，程式碼層照常執行該工具。建置檔不會被修改，`fix` 只印出要加入的片段。
   - `settings/java-plugin-missing`：沒有 Spotless（`spotless-maven-plugin` / `com.diffplug.spotless`）或 PMD（`maven-pmd-plugin` / `pmd`）plugin，各一筆錯誤；片段含 palantir-java-format，PMD 的片段指向 devguard 的設定檔。
   - `settings/java-plugin-config`：PMD 沒有指向元件使用的 ruleset（Maven `<rulesets>`；Gradle `ruleSetFiles`）。路徑可以用 `${project.basedir}`、`${maven.multiModuleProjectDirectory}`、`$rootDir`、`rootProject.file(…)` 等；其他無法解析的寫法不回報。
+  - `settings/rat-excludes`：pom 宣告 `apache-rat-plugin`（`build/plugins` 或 `pluginManagement`，repo 內的 parent POM 也算），但排除設定（`<excludes>`／`<inputExcludes>`）沒有涵蓋 `.devguard.yaml`（元件在 repo 根目錄時）與 PMD 設定檔（例如 `pmd-ruleset.xml`）。這些檔案沒有授權標頭，RAT 會讓 `mvn test` 在執行測試前失敗。片段是可貼進 plugin `<configuration>` 的排除清單（plugin 版本低於 0.17 用 `<excludes>`，其餘用 `<inputExcludes>`），`fix` 只印出。排除來自檔案、標準集合或 `%regex` 時，以及 plugin 來自 repo 外的 parent POM 時不回報；devguard 不產生授權標頭。Gradle 的 RAT 不在範圍。
 - **程式碼檢查（`code` 層）**：
   - 建置檔沒有某個工具的 plugin 時不執行那個工具（由設定層回報），不會產生 `code/tool-failed`。
   - `format`：`mvnw -B -ntp spotless:check`（或 Gradle `spotlessCheck --console=plain -q`）
