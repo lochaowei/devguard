@@ -565,4 +565,12 @@ describe("deps layer: unsupported Python lockfile (#213)", () => {
     });
     expect(findings).toEqual([]);
   });
+
+  it("never tells a PDM project to run uv add, even when a uv.lock sits further up", async () => {
+    const { findings } = await check({
+      declaration: decl("python", "svc/"),
+      files: { "svc/requirements.txt": "regex\n", "svc/pdm.lock": "", "uv.lock": lockOf("ruff") },
+    });
+    expect(findings.map((f) => f.fix ?? "")).not.toContainEqual(expect.stringContaining("uv "));
+  });
 });

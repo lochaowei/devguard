@@ -1,6 +1,7 @@
 import { fixText } from "../../fix/category.ts";
 import type { Repair } from "../../fix/repair.ts";
 import type { Finding } from "../../report/finding.ts";
+import { globSource } from "../../shared/glob.ts";
 import { descendants, type XmlEl } from "../../xml/parse.ts";
 import { componentBuildTool } from "./build.ts";
 import { finding, findConfig, type JavaTarget } from "./common.ts";
@@ -9,27 +10,21 @@ import { pomPlugins, readBuildPlugins } from "./plugins.ts";
 
 const RAT = "apache-rat-plugin";
 
-/** Exclude elements: the 0.17+ names, and the older ones they replaced. */
+/**
+ * Exclude elements inside the plugin's `<configuration>`: `<excludes><exclude>` (every release up to 0.18) and
+ * `<inputExcludes><inputExclude>` (0.17 and 0.18). Checked by running `mvn apache-rat-plugin:check` on 0.16.1, 0.17
+ * and 0.18 with an unlicensed file excluded each way (#218, fixtures `test/fixtures/maven/rat-*-pom.xml`): 0.16.1
+ * only honoured `<excludes>`; 0.17 and 0.18 honoured both. Releases after 0.18 were not run.
+ */
 const EXCLUDES = new Set(["excludes", "exclude", "inputExcludes", "inputExclude"]);
 /** Settings that exclude files from somewhere devguard does not read (a file, a standard collection, SCM ignores). */
 const UNREADABLE =
   /^(excludeFile|inputExcludeFile|inputExcludeStds?|inputExcludeParsedScms?|parseSCMIgnoresAsExcludes)$/;
 
-/** An Ant-style path pattern as a regular expression. */
+/** An Ant-style path pattern as a regular expression: a leading `./` is dropped, and a trailing `/` means `/**`. */
 function antRegex(pattern: string): RegExp {
-  let p = pattern.replace(/\\/g, "/").replace(/^\.?\//, "");
-  if (p.endsWith("/")) p += "**";
-  const body = p
-    .split(/(\*\*\/|\*\*|\*|\?)/)
-    .map((part) => {
-      if (part === "**/") return "(?:.*/)?";
-      if (part === "**") return ".*";
-      if (part === "*") return "[^/]*";
-      if (part === "?") return "[^/]";
-      return part.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-    })
-    .join("");
-  return new RegExp(`^${body}$`);
+  const path = pattern.replace(/\\/g, "/").replace(/^\.?\//, "");
+  return new RegExp(`^${globSource(path.endsWith("/") ? `${path}**` : path)}$`);
 }
 
 /** The exclude patterns of the RAT plugin declarations; undefined when some come from where devguard cannot read. */
@@ -48,8 +43,8 @@ function excludePatterns(plugins: readonly { element: XmlEl }[]): string[] | und
   return found.some((p) => /^[%!]|\$/.test(p)) ? undefined : found;
 }
 
-/** Whether the declared plugin version is below 0.17, which names its excludes `<excludes>`. */
-function oldNames(plugins: readonly { element: XmlEl }[]): boolean {
+/** Whether the declared plugin version is below 0.17, the first that reads `<inputExcludes>`. */
+function declaresBeforeInputExcludes(plugins: readonly { element: XmlEl }[]): boolean {
   const version = plugins.flatMap((p) => p.element.children.filter((c) => c.name === "version")).at(0)?.text;
   const match = /^0\.(\d+)/.exec(version ?? "");
   return match !== null && Number(match[1]) < 17;
@@ -81,7 +76,9 @@ export async function checkRatExcludes(t: JavaTarget): Promise<Finding[]> {
   const regexes = patterns.map(antRegex);
   const uncovered = devguardFiles(t).filter((f) => !regexes.some((r) => r.test(f)));
   if (uncovered.length === 0) return [];
-  const [outer, inner] = oldNames(declared) ? ["excludes", "exclude"] : ["inputExcludes", "inputExclude"];
+  const [outer, inner] = declaresBeforeInputExcludes(declared)
+    ? ["excludes", "exclude"]
+    : ["inputExcludes", "inputExclude"];
   const text = [
     `在 ${RAT} 的 <configuration> 加上：`,
     `<${outer}>`,

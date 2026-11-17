@@ -134,6 +134,17 @@ extend-select = [
     expect(existsSync(join(dir, "ml/uv.lock"))).toBe(false);
   });
 
+  it("Python: no uv add hint for a project whose lockfile is pdm.lock (#213)", async () => {
+    const dir = repo({
+      ".devguard.yaml": decl("python", "ml/"),
+      "ml/requirements.txt": "regex\n",
+      "ml/pdm.lock": "",
+    });
+    const out: string[] = [];
+    expect(await runFix({ cwd: dir, today: TODAY, io: { ...YES, write: (t) => out.push(t) } })).toBe(0);
+    expect(out.join("")).not.toContain("uv ");
+  });
+
   it("Python: no import hint without requirements.txt, or when pyproject.toml already exists", async () => {
     const cases: Record<string, string>[] = [
       {},

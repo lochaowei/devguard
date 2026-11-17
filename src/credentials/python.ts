@@ -1,4 +1,4 @@
-import { readToml } from "./toml.ts";
+import { readToml } from "../shared/toml.ts";
 import { hasUrlCredential, type CredentialProblem } from "./types.ts";
 import { isRecord } from "../shared/guards.ts";
 

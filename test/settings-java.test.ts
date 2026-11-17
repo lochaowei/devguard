@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -659,6 +659,23 @@ describe("build plugins (#98)", () => {
       expect(await ratFindings(withRat(rat(both("inputExcludes", "inputExclude"))))).toEqual([]);
       const single = "<inputExclude>.devguard.yaml</inputExclude><inputExclude>pmd-ruleset.xml</inputExclude>";
       expect(await ratFindings(withRat(rat(single)))).toEqual([]);
+    });
+
+    // These poms are the projects `mvn org.apache.rat:apache-rat-plugin:<version>:check` passed on with `.devguard.yaml`
+    // unlicensed and excluded (#218): 0.16.1 only knows <excludes>, 0.17 and 0.18 also <inputExcludes>.
+    it.each([
+      ["0.16.1", "excludes", "exclude"],
+      ["0.17", "inputExcludes", "inputExclude"],
+      ["0.18", "inputExcludes", "inputExclude"],
+    ])("reads the excludes of the pom RAT %s ran on, and answers in its element names", async (v, outer, inner) => {
+      const fixture = readFileSync(new URL(`./fixtures/maven/rat-${v}-pom.xml`, import.meta.url), "utf8");
+      const found = await ratFindings({ ...GOOD, "pom.xml": fixture });
+      expect(snippetOf(found[0])).toBe(
+        `在 apache-rat-plugin 的 <configuration> 加上：
+<${outer}>
+  <${inner}>pmd-ruleset.xml</${inner}>
+</${outer}>`,
+      );
     });
 
     it("reports nothing without a RAT plugin", async () => {

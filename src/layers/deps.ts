@@ -109,7 +109,9 @@ async function pythonLockfile(s: Scope, emit: Emit): Promise<void> {
     expected,
     note,
   );
-  if (text !== undefined && lock !== undefined) await requirementsLocked(s, emit, requirements, text, lock);
+  // A project locked by PDM or PEP 751 is never told to `uv add` into a uv.lock that is not its own (#213).
+  if (text !== undefined && lock !== undefined && unsupported === undefined)
+    await requirementsLocked(s, emit, requirements, text, lock);
 }
 
 /** The most packages a finding names before it counts the rest. */

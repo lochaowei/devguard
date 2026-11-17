@@ -18,6 +18,7 @@ import { workingTreeCrlfLayer } from "./layers/working-tree-crlf.ts";
 import type { Finding } from "./report/finding.ts";
 import type { ReportInput } from "./report/render.ts";
 import { listRepoFiles } from "./repo/files.ts";
+import { repeated, toolMissingFinding, withoutDuplicateWrapper } from "./layers/missing-tool.ts";
 import { createToolRunner, ToolMissingError, type ToolRunner } from "./tools/runner.ts";
 
 export type { CheckLayer, CheckScope, LayerContext, LayerResult } from "./layers/types.ts";
@@ -63,12 +64,7 @@ export interface CheckOptions {
   stagedText?: (repoPath: string) => Promise<string | undefined>;
 }
 
-export const TOOL_MISSING_RULE = "environment/tool-missing";
-
-/** A tool that is not installed, as doctor and the hooks report it (SPEC §5.2: the install command, never a download). */
-export function toolMissingFinding(e: ToolMissingError): Finding {
-  return { level: "error", layer: "environment", rule: TOOL_MISSING_RULE, message: e.message, fix: e.install };
-}
+export { TOOL_MISSING_RULE, toolMissingFinding } from "./layers/missing-tool.ts";
 
 /** The context the layers share; `resolution` is filled in once the declaration layer has run. */
 export function layerContext(options: CheckOptions): LayerContext {
@@ -85,32 +81,14 @@ export function layerContext(options: CheckOptions): LayerContext {
   };
 }
 
-/** The tool-missing findings that are only a Java build wrapper that is not there; `settings/wrapper-missing` says it. */
-const wrapperFindings = new WeakSet<Finding>();
-
 /** One layer's result; a tool that is not installed becomes a finding, so the other layers still run (SPEC §11). */
 async function runLayer(layer: CheckLayer, ctx: LayerContext): Promise<LayerResult> {
   try {
     return await layer.run(ctx);
   } catch (e) {
     if (!(e instanceof ToolMissingError)) throw e;
-    const missing = toolMissingFinding(e);
-    if (e.javaWrapper) wrapperFindings.add(missing);
-    return { findings: [missing] };
+    return { findings: [toolMissingFinding(e)] };
   }
-}
-
-/** The same missing tool reported by another layer is reported once. */
-const repeated = (f: Finding, seen: readonly Finding[]) =>
-  f.rule === TOOL_MISSING_RULE && seen.some((g) => g.rule === f.rule && g.message === f.message);
-
-/**
- * A missing Java wrapper reported as `settings/wrapper-missing` is not reported again as a missing tool: the two would
- * say the same thing with different fix commands (#217). Without the settings finding (e.g. `--only lint`) it stays.
- */
-function withoutDuplicateWrapper(findings: Finding[]): Finding[] {
-  if (!findings.some((f) => f.rule === "settings/wrapper-missing")) return findings;
-  return findings.filter((f) => !wrapperFindings.has(f));
 }
 
 /** Runs the layers in order and merges their findings into one report. */
@@ -122,7 +100,7 @@ export async function runCheck(
   const findings: Finding[] = [];
   for (const layer of layers) {
     const result = await runLayer(layer, ctx);
-    findings.push(...result.findings.filter((f) => !repeated(f, findings)));
+    for (const f of result.findings) if (!repeated(f, findings)) findings.push(f);
     if (result.resolution) ctx.resolution = result.resolution;
   }
   const { resolution } = ctx;

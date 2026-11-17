@@ -8,7 +8,8 @@ import { goEnv } from "./go-env.ts";
 import { PYTHON_MANAGERS, pythonManager, unsupportedPythonLock, type PythonManager } from "./python-manager.ts";
 import { isEnoent, readIfExistsSync } from "../shared/fs.ts";
 import { pyName, pyprojectDependencies } from "../deps/manifests.ts";
-import { parseConfigText } from "../fix/edit.ts";
+import { globSource } from "../shared/glob.ts";
+import { readToml } from "../shared/toml.ts";
 import { isRecord } from "../shared/guards.ts";
 import { typescriptInstall } from "./typescript-install.ts";
 
@@ -207,26 +208,12 @@ function managerAt(dir: string, root: string, env: Env): PythonManager {
 }
 
 /** A glob of `[tool.uv.workspace]` (`*`, `?`, `**`) over a path relative to the workspace root, `/`-separated. */
-function workspaceGlob(pattern: string): RegExp {
-  const source = pattern
-    .replace(/^\.\//, "")
-    .replace(/\/+$/, "")
-    .split("/")
-    .map((part) =>
-      part === "**"
-        ? ".*"
-        : part
-            .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-            .replace(/\*/g, "[^/]*")
-            .replace(/\?/g, "[^/]"),
-    )
-    .join("/");
-  return new RegExp(`^${source}$`);
-}
+const workspaceGlob = (pattern: string): RegExp =>
+  new RegExp(`^${globSource(pattern.replace(/^\.\//, "").replace(/\/+$/, ""))}$`);
 
 /** Whether the pyproject.toml `text` is a uv workspace root whose `members` (minus `exclude`) cover `member`. */
 function coversMember(text: string, member: string): boolean {
-  const doc = parseConfigText("pyproject.toml", text);
+  const doc = readToml(text);
   const tool = isRecord(doc) && isRecord(doc.tool) ? doc.tool : {};
   const uv = isRecord(tool.uv) ? tool.uv : {};
   const workspace = isRecord(uv.workspace) ? uv.workspace : undefined;

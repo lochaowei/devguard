@@ -304,7 +304,7 @@ devguard 不再執行弱點掃描（#64）。原本的設計是四種語言預�
 | `test.tool` | pytest + pytest-cov | — |
 | `coverage.lines` | 行覆蓋率與分支覆蓋率**各自**都要達到 80%（`branch = true`），與 TS、Java 一致 | CLI 執行 `coverage json`，從 `totals` 分別計算行與分支的覆蓋率並自行判定。不使用 `fail_under`，因為它在 branch 模式下檢查的是行加分支的合併總數。 |
 | `deps.manager` | `uv`；允許替代工具 `poetry` | 決定 `deps.lockfile` 要求哪個 lockfile；PDM（`pdm.lock`）與 PEP 751（`pylock.toml`）不支援（§5.2）。執行工具（§5.2）與 `standard upgrade`（§5.5）不讀這個項目，只看最近的 Python lockfile：`poetry.lock` 時用 Poetry，否則用 uv |
-| `deps.lockfile` | `uv.lock`（或 `poetry.lock`）必須提交；只有不帶 hash 的 `requirements.txt` 不算 lockfile。元件目錄的 `requirements.txt` 不帶 hash 而有 lockfile 時，`requirements.txt` 列出的套件（略過註解、空行、`-r`／`-c`／`--index-url` 等選項行、`-e`、URL 與本機路徑；名稱依 PEP 503 正規化：小寫、`_` 與 `.` 換成 `-`）都必須在 lockfile 的 `[[package]]` 中，否則回報錯誤 `deps/requirements-unlocked`，列出缺少的套件（最多 5 個，其餘只計數），修正提示為在元件目錄執行 `uv add -r requirements.txt`（`poetry.lock` 時為 `poetry add <套件…>`）。只比對名稱，不比對版本範圍；只看元件目錄的 `requirements.txt`，不看 `docs/requirements.txt`、`requirements-dev.txt` 等其他檔案（#137） | CLI 檢查 |
+| `deps.lockfile` | `uv.lock`（或 `poetry.lock`）必須提交；只有不帶 hash 的 `requirements.txt` 不算 lockfile。元件目錄的 `requirements.txt` 不帶 hash 而有 lockfile 時，`requirements.txt` 列出的套件（略過註解、空行、`-r`／`-c`／`--index-url` 等選項行、`-e`、URL 與本機路徑；名稱依 PEP 503 正規化：小寫、`_` 與 `.` 換成 `-`）都必須在 lockfile 的 `[[package]]` 中，否則回報錯誤 `deps/requirements-unlocked`，列出缺少的套件（最多 5 個，其餘只計數），修正提示為在元件目錄執行 `uv add -r requirements.txt`（`poetry.lock` 時為 `poetry add <套件…>`）。最近的 lockfile 是 `pdm.lock`／`pylock.toml` 的元件不做這項比對，也不會被叫去執行 `uv add`。只比對名稱，不比對版本範圍；只看元件目錄的 `requirements.txt`，不看 `docs/requirements.txt`、`requirements-dev.txt` 等其他檔案（#137） | CLI 檢查 |
 
 來源：[預設標準：Python](.scratch/coding-standards-guard/issues/08-default-standard-python.md)
 
@@ -538,7 +538,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 
 - `devguard fix`：修正**設定**，包括工具設定檔、`.claude/`、`.vscode/`、git hook（重新產生被修改過的 devguard hook；尚未安裝的 hook 由 `install` 安裝），以及 `.gitattributes`、`.gitignore`、`lombok.config` 中屬於標準的規則。
 - `devguard fix --code [files]`：修正**程式碼**，包括 `ruff format`、`gofumpt`、`prettier --write`、`spotless:apply`，以及 `ruff check --fix`、`eslint --fix`、`golangci-lint run --fix`。
-- `fix` 建立元件的 `pyproject.toml`、而元件目錄有 `requirements.txt` 時，套用後多印一行，提示在元件目錄執行 `uv add -r requirements.txt`，把執行期依賴匯入 `pyproject.toml` 與 `uv.lock`；`fix` 不會自己執行（#137）。
+- `fix` 建立元件的 `pyproject.toml`、而元件目錄有 `requirements.txt` 時（最近的 lockfile 是 `pdm.lock`／`pylock.toml` 的元件除外，不印這行，`uv add` 不是它們加依賴的方式），套用後多印一行，提示在元件目錄執行 `uv add -r requirements.txt`，把執行期依賴匯入 `pyproject.toml` 與 `uv.lock`；`fix` 不會自己執行（#137）。
 - **使用者層級的設定一律不修改**，只印出修改說明，例如 `~/.m2/settings.xml`、使用者的 `.npmrc`、`go env`、環境變數。
 
 ### 9.2 依檔案類別決定修改方式
@@ -604,8 +604,8 @@ devguard 不檢查也不寫入套件從哪裡下載（#64；npm 的部分先於 
 - `0`：通過（只有偏離或提示時也算通過）。
 - `1`：有錯誤。
 - `2`：CLI 本身出錯，例如參數錯誤、內部例外。
-  - 找不到工具**不是** exit 2（#217）：所有執行檢查的指令（`check`、`check --staged`、`check --full`、指定檔案、`doctor`、各 hook）都把它回報成一項**錯誤**（`environment/tool-missing`，環境層，附安裝指令），其餘檢查照常執行，所以剛 clone 的專案也能看到缺少的 hook 與 `devguard install` 提示（§7.3、§7.4），exit code 為 `1`。同一個缺少的工具只回報一次，各輸出格式依各自既有的規則包含這筆 finding。
-  - 缺少 Java 建置 wrapper（`mvnw`／`gradlew`）時，`settings/wrapper-missing` 已說明同一件事，不再另外回報 `environment/tool-missing`，使用者只看到一筆。只跑程式碼或測試而沒有設定層時（例如 `--only lint`）沒有 `settings/wrapper-missing`，仍回報 `environment/tool-missing`。
+  - 找不到工具**不是** exit 2（#217）：所有執行檢查的指令（`check`、`check --staged`、`check --full`、指定檔案、`doctor`、各 hook）都把它回報成一項**錯誤**（`environment/tool-missing`，環境層，附安裝指令），其餘檢查照常執行。程式碼與測試檢查以元件的檢查類別（lint、format、typecheck）為單位：缺 eslint 只讓該元件的 lint 少掉，同一元件的 format、typecheck 與其他元件的結果照常輸出；一個元件的測試缺工具不影響其他元件。每筆 `environment/tool-missing` 附上所屬元件，兩個元件缺同一個工具但安裝指令不同時各列一筆，所以剛 clone 的專案也能看到缺少的 hook 與 `devguard install` 提示（§7.3、§7.4），exit code 為 `1`。同一個缺少的工具只回報一次，各輸出格式依各自既有的規則包含這筆 finding。
+  - 缺少 Java 建置 wrapper（`mvnw`／`gradlew`）時，同一元件的 `settings/wrapper-missing` 已說明同一件事，不再另外回報 `environment/tool-missing`，使用者只看到一筆。只跑程式碼或測試而沒有設定層時（例如 `--only lint`）沒有 `settings/wrapper-missing`，仍回報 `environment/tool-missing`。
   - 例外：會執行工具來修改檔案的指令（`fix --code`、`standard upgrade`）沒有工具就無法完成，仍以 `2` 結束並印出安裝指令。
 - 加上 `--strict` 時，偏離也算失敗，回傳 `1`。
 - 會修改檔案的指令沒有套用待寫入的變更時也回傳 `1`：`fix`、`fix --code`、`install` 被拒絕或在非互動環境沒有 `--yes`；`standard upgrade` 沒有 `--apply` 而有變更待套用（只預覽、不詢問，讓 CI 能偵測「需要升級」）。
