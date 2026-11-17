@@ -22,6 +22,7 @@
     "smoke:exe": "node scripts/smoke-exe.ts",
     "t2:probe": "node scripts/t2-probe.ts",
     "bench:staged": "node scripts/bench-staged.ts",
+    "bench:format": "node scripts/bench-format.ts",
     "build:t2-probe": "node scripts/build-exe.ts --entry scripts/t2-probe.ts --name t2-probe"
   },
   "dependencies": {

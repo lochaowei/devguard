@@ -411,6 +411,21 @@ describe("tool runner: TypeScript", () => {
     expect(started).toEqual([{ file: bin, args: ["--stdin-filepath", "a.ts"], cwd: "C:\\repo", stdin: "x" }]);
   });
 
+  it("runs node itself from PATH, in the component directory (#209)", async () => {
+    const exe = "C:\\scoop\\shims\\node.exe";
+    const { runner, started } = fakeRunner({ [exe]: "" });
+    await runner.run(req({ language: "typescript", tool: "node", dir: "web/", args: ["-e", "1"], stdin: "[]" }));
+    expect(started).toEqual([{ file: exe, args: ["-e", "1"], cwd: "C:\\repo\\web", stdin: "[]" }]);
+  });
+
+  it("reports node as missing when PATH has none, or only a .cmd shim that cannot take a script", async () => {
+    const node = req({ language: "typescript", tool: "node", args: ["-e", "1"] });
+    expect((await missing(fakeRunner({}).runner.run(node))).message).toBe("找不到 node");
+    const shim = fakeRunner({ "C:\\bin\\node.cmd": "" });
+    expect((await missing(shim.runner.run(node))).message).toBe("找不到 node");
+    expect(shim.started).toEqual([]);
+  });
+
   it("asks for npm ci when node_modules lacks the tool", async () => {
     const { runner } = fakeRunner({ "C:\\repo\\package-lock.json": "{}" });
     expect((await missing(runner.run(req({ language: "typescript", tool: "eslint" })))).install).toBe("npm ci");

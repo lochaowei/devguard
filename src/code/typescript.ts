@@ -5,6 +5,7 @@ import { referencedTsconfigs } from "../settings/typescript/tsconfig.ts";
 import { reportingMissingTool } from "../tools/missing.ts";
 import { typescriptToolRequest, type ToolResult } from "../tools/runner.ts";
 import { eslintIgnoreFlags } from "./eslint-flags.ts";
+import { prettierFirstLines } from "./prettier-lines.ts";
 import { codeFinding, firstDifferentLine, runBatched, splitStaged, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
 
@@ -63,16 +64,6 @@ async function lint(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[
   return results.flatMap((r) => eslintFindings(target, ctx, r));
 }
 
-/** Prettier only lists unformatted files; formatting each one again locates the first changed line. */
-async function prettierLine(target: CodeTarget, ctx: CodeCheckContext, file: string, repoPath: string) {
-  const [original, formatted] = await Promise.all([
-    ctx.readText(repoPath),
-    ctx.tools.run({ ...typescriptToolRequest(target, "prettier"), args: [file] }),
-  ]);
-  if (original === undefined || formatted.code !== 0) return 1;
-  return firstDifferentLine(original, formatted.stdout);
-}
-
 /** Whether Prettier has a parser for `file`: `prettier --file-info` reports `inferredParser: null` when it has none. */
 async function prettierHandles(target: CodeTarget, ctx: CodeCheckContext, file: string): Promise<boolean> {
   const request = { ...typescriptToolRequest(target, "prettier"), args: ["--file-info", file] };
@@ -98,6 +89,7 @@ async function formatStaged(target: CodeTarget, ctx: CodeCheckContext, file: str
 async function format(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
   const request = typescriptToolRequest(target, "prettier");
   const findings: Finding[] = [];
+  const listed: { file: string; repoPath: string }[] = [];
   const { staged, onDisk } = await splitStaged(target, ctx);
   for (const { file, text } of staged) findings.push(...(await formatStaged(target, ctx, file, text)));
   for (const result of await runBatched(ctx.tools, request, ["--list-different", "--ignore-unknown"], onDisk)) {
@@ -105,14 +97,16 @@ async function format(target: CodeTarget, ctx: CodeCheckContext): Promise<Findin
       findings.push(toolFailed(target, "prettier", result));
       continue;
     }
-    for (const listed of result.stdout.split(/\r?\n/).filter((l) => l.trim() !== "")) {
-      const file = listed.trim().replace(/\\/g, "/");
-      const repoPath = toRepoPath(ctx.cwd, target.dir, file);
-      const line = await prettierLine(target, ctx, file, repoPath);
-      findings.push(
-        codeFinding(target, { rule: "prettier/format", message: "格式不符合 Prettier", file: repoPath, line }),
-      );
+    for (const line of result.stdout.split(/\r?\n/).filter((l) => l.trim() !== "")) {
+      const file = line.trim().replace(/\\/g, "/");
+      listed.push({ file, repoPath: toRepoPath(ctx.cwd, target.dir, file) });
     }
+  }
+  // One run locates the first changed line of every listed file (#209).
+  const lines = await prettierFirstLines(target, ctx, listed);
+  for (const [i, { repoPath }] of listed.entries()) {
+    const at = { file: repoPath, line: lines[i] ?? 1 };
+    findings.push(codeFinding(target, { rule: "prettier/format", message: "格式不符合 Prettier", ...at }));
   }
   return findings;
 }

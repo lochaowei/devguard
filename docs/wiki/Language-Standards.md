@@ -194,7 +194,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
   - `tools.vitest`：`>=5,<6`（`team@1.1.0`：`>=4.1,<6`）、`tools.jest`：`>=30,<31`
 - **程式碼檢查（`code` 層）**：
   - `lint`：`eslint --format json`（`--staged` 時透過 `--stdin` 讀取 staged 內容；或 `biome lint --reporter=github`，Biome 2.x 從 stdin 不回報 lint 診斷，所以 `--staged` 時也檢查工作目錄版本）
-  - `format`：`prettier --list-different`（或 `biome format --reporter=github`；`--staged` 時分別透過 `--stdin-filepath` 與 `--stdin-file-path` 讀取 staged 內容）
+  - `format`：`prettier --list-different`（或 `biome format --reporter=github`；`--staged` 時分別透過 `--stdin-filepath` 與 `--stdin-file-path` 讀取 staged 內容）。Prettier 只列出檔名，行號（第一個差異行）由 PATH 上的 `node` 以一個行程、透過專案的 Prettier API 一次算出所有檔案的；找不到 `node` 時行號為 1（#209）
   - `typecheck`：`tsc --noEmit --pretty false`；solution-style 的 `tsconfig.json`（見下）本身不檢查任何檔案，改對每個被參照的 tsconfig 各執行一次 `tsc --noEmit --pretty false -p <ref>`，同一筆錯誤只回報一次
 - **自動修正程式碼（`fix --code`）**：
   - `eslint --fix` + `prettier --write`（或 `biome lint --write` + `biome format --write`）

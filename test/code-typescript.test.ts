@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { CodeCategory, CodeTarget } from "../src/code/types.ts";
 import { typescriptChecker } from "../src/code/typescript.ts";
-import type { ToolRequest, ToolResult, ToolRunner } from "../src/tools/runner.ts";
+import { ToolMissingError, type ToolRequest, type ToolResult, type ToolRunner } from "../src/tools/runner.ts";
 
 const CWD = process.platform === "win32" ? "C:\\repo" : "/repo";
 const abs = (...parts: string[]) => [CWD, ...parts].join(process.platform === "win32" ? "\\" : "/");
@@ -357,13 +357,13 @@ describe("typescript checker: Prettier", () => {
   const unformatted = "const a = 1;\nlet  b=2\n";
   const formatted = "const a = 1;\nlet b = 2;\n";
 
+  /** Answers `--list-different` with `listed`, and the one Node run that formats the listed files with `node`. */
+  const prettierProject = (listed: string, node: Reply | (() => never)) =>
+    fakeTools({ prettier: (req) => (req.args?.includes("--list-different") ? { code: 1, stdout: listed } : {}), node });
+
   it("reports each unformatted file at its first differing line", async () => {
-    const { tools, calls } = fakeTools({
-      prettier: (req) =>
-        req.args?.includes("--list-different") ? { code: 1, stdout: "src\\a.ts\n" } : { code: 0, stdout: formatted },
-    });
+    const { tools } = prettierProject("src\\a.ts\n", { stdout: JSON.stringify([formatted]) });
     const findings = await check(target({ categories: only("format") }), tools, { "web/src/a.ts": unformatted });
-    expect(calls.map((c) => c.args)).toEqual([["--list-different", "--ignore-unknown", "."], ["src/a.ts"]]);
     expect(findings).toEqual([
       {
         level: "error",
@@ -379,12 +379,56 @@ describe("typescript checker: Prettier", () => {
     ]);
   });
 
+  it("starts the same number of processes however many files are unformatted (#209)", async () => {
+    const names = Array.from({ length: 25 }, (_, i) => `src/f${String(i)}.ts`);
+    // File i is unformatted from line i + 1 on.
+    const texts = names.map((_, i) => "const a = 1;\n".repeat(i) + "let  b=2\n");
+    const formattedTexts = names.map((_, i) => "const a = 1;\n".repeat(i) + "let b = 2;\n");
+    const project = (count: number) => {
+      const faked = prettierProject(names.slice(0, count).join("\n") + "\n", {
+        stdout: JSON.stringify(formattedTexts.slice(0, count)),
+      });
+      const onDisk = Object.fromEntries(names.map((name, i) => [`web/${name}`, texts[i] ?? ""]));
+      return { ...faked, run: () => check(target({ categories: only("format") }), faked.tools, onDisk) };
+    };
+
+    const one = project(1);
+    await one.run();
+    const many = project(25);
+    const findings = await many.run();
+
+    expect(findings.map((f) => `${f.file ?? ""}:${String(f.line)}`)).toEqual(
+      names.map((name, i) => `web/${name}:${String(i + 1)}`),
+    );
+    expect(many.calls.length).toBe(one.calls.length);
+    // The files to format go to that one run on stdin, relative to the component directory.
+    expect(many.calls.filter((c) => c.tool === "node").map((c) => c.stdin)).toEqual([JSON.stringify(names)]);
+  });
+
   it("falls back to line 1 when the difference cannot be located", async () => {
-    const { tools } = fakeTools({
-      prettier: (req) => (req.args?.includes("--list-different") ? { code: 1, stdout: "a.ts\n" } : { code: 2 }),
-    });
-    const findings = await check(target({ categories: only("format") }), tools);
-    expect(findings).toEqual([expect.objectContaining({ rule: "prettier/format", file: "web/a.ts", line: 1 })]);
+    const locate = async (node: Reply | (() => never), texts: Record<string, string> = { "web/a.ts": unformatted }) => {
+      const { tools } = prettierProject("a.ts\nb.ts\n", node);
+      const findings = await check(target({ categories: only("format") }), tools, {
+        "web/b.ts": unformatted,
+        ...texts,
+      });
+      return findings.map((f) => `${f.rule} ${f.file ?? ""}:${String(f.line)}`);
+    };
+    const both = JSON.stringify([formatted, formatted]);
+    const atLine1 = ["prettier/format web/a.ts:1", "prettier/format web/b.ts:1"];
+    // The run failed, printed something else, or Node is not on PATH.
+    expect(await locate({ code: 1, stdout: both })).toEqual(atLine1);
+    expect(await locate({ stdout: "Debugger attached." })).toEqual(atLine1);
+    expect(await locate({ stdout: '{"not":"a list"}' })).toEqual(atLine1);
+    expect(
+      await locate(() => {
+        throw new ToolMissingError("找不到 node", "scoop install nodejs-lts");
+      }),
+    ).toEqual(atLine1);
+    // One file could not be formatted (null), or cannot be read: the others keep their line.
+    const bOnly = ["prettier/format web/a.ts:1", "prettier/format web/b.ts:2"];
+    expect(await locate({ stdout: JSON.stringify([null, formatted]) })).toEqual(bOnly);
+    expect(await locate({ stdout: both }, {})).toEqual(bOnly);
   });
 
   it("checks only the given files", async () => {

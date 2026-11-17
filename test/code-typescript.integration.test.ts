@@ -59,6 +59,25 @@ describe("TypeScript code checks with the real tools", { timeout: 120_000 }, () 
     expect(findings.every((f) => f.layer === "code" && f.component === "./ (TypeScript)")).toBe(true);
   });
 
+  it("locates the first changed line of every unformatted file, each with its own Prettier config (#209)", async () => {
+    // Clean under the root .prettierrc; nested/.prettierrc asks for single quotes, so line 3 of each has to change.
+    const text = 'export const a = 1;\nexport const b = 2;\nexport const c = "three";\n';
+    mkdirSync(join(dir, "nested"));
+    try {
+      writeFileSync(join(dir, "nested", ".prettierrc"), '{ "singleQuote": true }\n');
+      writeFileSync(join(dir, "nested", "one.ts"), text);
+      writeFileSync(join(dir, "nested", "two.ts"), "\n" + text);
+      const findings = await check({ only: "format", full: false });
+      expect(brief(findings).sort()).toEqual([
+        "prettier/format messy.ts:2",
+        "prettier/format nested/one.ts:3",
+        "prettier/format nested/two.ts:1",
+      ]);
+    } finally {
+      rmSync(join(dir, "nested"), { recursive: true, force: true });
+    }
+  });
+
   it("checks the staged version of a file through stdin when one is given (SPEC §7.4)", async () => {
     const staged = (path: string) => Promise.resolve(path === "clean.ts" ? "let  unstaged = 2;\n" : undefined);
     const listFiles = () => Promise.resolve(["clean.ts"]);
