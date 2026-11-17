@@ -18,10 +18,11 @@ import { workingTreeCrlfLayer } from "./layers/working-tree-crlf.ts";
 import type { Finding } from "./report/finding.ts";
 import type { ReportInput } from "./report/render.ts";
 import { listRepoFiles } from "./repo/files.ts";
-import { repeated, toolMissingFinding, withoutDuplicateWrapper } from "./layers/missing-tool.ts";
-import { createToolRunner, ToolMissingError, type ToolRunner } from "./tools/runner.ts";
+import { reportingMissingTool, withoutRepeatedMissingTools } from "./tools/missing.ts";
+import { createToolRunner, type ToolRunner } from "./tools/runner.ts";
 
 export type { CheckLayer, CheckScope, LayerContext, LayerResult } from "./layers/types.ts";
+export { TOOL_MISSING_RULE, toolMissingFinding } from "./tools/missing.ts";
 
 export interface CheckResult extends ReportInput {
   resolution?: Resolution;
@@ -64,8 +65,6 @@ export interface CheckOptions {
   stagedText?: (repoPath: string) => Promise<string | undefined>;
 }
 
-export { TOOL_MISSING_RULE, toolMissingFinding } from "./layers/missing-tool.ts";
-
 /** The context the layers share; `resolution` is filled in once the declaration layer has run. */
 export function layerContext(options: CheckOptions): LayerContext {
   const { cwd, today } = options;
@@ -81,17 +80,11 @@ export function layerContext(options: CheckOptions): LayerContext {
   };
 }
 
-/** One layer's result; a tool that is not installed becomes a finding, so the other layers still run (SPEC §11). */
-async function runLayer(layer: CheckLayer, ctx: LayerContext): Promise<LayerResult> {
-  try {
-    return await layer.run(ctx);
-  } catch (e) {
-    if (!(e instanceof ToolMissingError)) throw e;
-    return { findings: [toolMissingFinding(e)] };
-  }
-}
-
-/** Runs the layers in order and merges their findings into one report. */
+/**
+ * Runs the layers in order and merges their findings into one report. A tool that is not installed is an error with
+ * its install command, reported once, and the remaining checks still run (SPEC §11): the layers that run tools report
+ * it per check (`reportingMissingTool`), and one that does not loses only its own findings to it.
+ */
 export async function runCheck(
   options: CheckOptions,
   layers: readonly CheckLayer[] = CHECK_LAYERS,
@@ -99,15 +92,20 @@ export async function runCheck(
   const ctx = layerContext(options);
   const findings: Finding[] = [];
   for (const layer of layers) {
-    const result = await runLayer(layer, ctx);
-    for (const f of result.findings) if (!repeated(f, findings)) findings.push(f);
-    if (result.resolution) ctx.resolution = result.resolution;
+    let found: LayerResult | undefined;
+    findings.push(
+      ...(await reportingMissingTool(async () => {
+        found = await layer.run(ctx);
+        return found.findings;
+      })),
+    );
+    if (found?.resolution) ctx.resolution = found.resolution;
   }
   const { resolution } = ctx;
   return {
     standard: resolution?.standard?.id,
     components: resolution?.components ?? [],
-    findings: withoutDuplicateWrapper(findings),
+    findings: withoutRepeatedMissingTools(findings),
     resolution,
   };
 }

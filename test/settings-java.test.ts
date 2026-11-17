@@ -113,7 +113,7 @@ describe("Java settings check", () => {
     const findings = await check({ ...GOOD, mvnw: undefined, "mvnw.cmd": undefined });
     expect(rules(findings)).toEqual(["error:settings/wrapper-missing"]);
     expect(findings[0]?.component).toBe("./ (Java)");
-    expect(findings[0]?.fix).toContain("mvn wrapper:wrapper");
+    expect(findings[0]?.fix).toBe("在專案根目錄執行 mvn -N wrapper:wrapper，並提交 mvnw、mvnw.cmd 與 .mvn/wrapper/");
   });
 
   it("asks for the Gradle wrapper when the component builds with Gradle", async () => {

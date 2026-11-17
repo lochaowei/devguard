@@ -13,9 +13,8 @@ import { findOwner } from "../declaration/lookup.ts";
 import { assignFiles, type OwnedFile } from "../repo/files.ts";
 import { defaultStandard } from "../standard/registry.ts";
 import type { Language, Standard } from "../standard/types.ts";
+import { reportingMissingTool, withoutRepeatedMissingTools } from "../tools/missing.ts";
 import { scopedFiles, type CheckScope, type LayerContext, type CheckLayer } from "./types.ts";
-import { ToolMissingError } from "../tools/runner.ts";
-import { orMissingTool } from "./missing-tool.ts";
 import { repoReader } from "../shared/fs.ts";
 
 interface Group {
@@ -151,45 +150,24 @@ export function codeCheckContext(ctx: Pick<LayerContext, "cwd" | "tools" | "stag
   return ctx.stagedText ? { ...base, staged: ctx.stagedText } : base;
 }
 
-/** Runs each target's checker in order, keeping a finding that names a file only under the target that owns it. */
+/**
+ * Runs each target's checker in order, keeping a finding that names a file only under the target that owns it. A
+ * target whose tool is not installed reports that and the next ones still run; a checker with one tool per category
+ * reports it per category itself.
+ */
 export async function checkTargets(targets: readonly PlannedTarget[], ctx: CodeCheckContext): Promise<Finding[]> {
   const findings: Finding[] = [];
   for (const { checker, target, keeps } of targets) {
-    const found = await checker.check(target, ctx);
+    const found = await reportingMissingTool(() => checker.check(target, ctx));
     findings.push(...found.filter((f) => f.file === undefined || keeps(f.file)));
   }
-  return findings;
-}
-
-/**
- * `checkTargets` for `check`: a tool that is not installed becomes a finding of its target instead of aborting the layer
- * (#217). A target that fails is run again one category at a time, so the categories whose tools are installed still
- * report; the tools that already ran are repeated only in this failure case.
- */
-async function checkTargetsReportingMissing(
-  targets: readonly PlannedTarget[],
-  ctx: CodeCheckContext,
-): Promise<Finding[]> {
-  const findings: Finding[] = [];
-  for (const planned of targets) {
-    const { target } = planned;
-    const one = (t: CodeTarget) =>
-      orMissingTool(() => checkTargets([{ ...planned, target: t }], ctx), target.component);
-    try {
-      findings.push(...(await checkTargets([planned], ctx)));
-    } catch (e) {
-      if (!(e instanceof ToolMissingError)) throw e;
-      for (const category of target.categories)
-        findings.push(...(await one({ ...target, categories: new Set([category]) })));
-    }
-  }
-  return findings;
+  return withoutRepeatedMissingTools(findings);
 }
 
 /** Lint, format and type checks through each language's CodeChecker (SPEC §7.1). */
 export const codeLayer: CheckLayer = {
   id: "code",
   async run(ctx: LayerContext) {
-    return { findings: await checkTargetsReportingMissing(await codeTargets(ctx), codeCheckContext(ctx)) };
+    return { findings: await checkTargets(await codeTargets(ctx), codeCheckContext(ctx)) };
   },
 };

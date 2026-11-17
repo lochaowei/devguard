@@ -30,7 +30,7 @@ export interface CodeTarget {
 export interface CodeCheckContext {
   /** Repo root. */
   cwd: string;
-  /** Throws ToolMissingError when a tool is not installed; let it propagate: `check` reports it as a finding (SPEC §11). */
+  /** Throws ToolMissingError when a tool is not installed; let it propagate, the layer reports it (SPEC §11). */
   tools: ToolRunner;
   /** Contents of a repo-relative file, or undefined when it cannot be read. */
   readText: (repoPath: string) => Promise<string | undefined>;

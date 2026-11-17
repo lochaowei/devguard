@@ -7,6 +7,7 @@ import { componentBuildTool } from "../settings/java/build.ts";
 import type { Finding, Level } from "../report/finding.ts";
 import { listTrackedFiles } from "../repo/files.ts";
 import { unsupportedPythonLock } from "../tools/python-manager.ts";
+import { reportingMissingTool } from "../tools/missing.ts";
 import type { ToolResult, ToolRunner } from "../tools/runner.ts";
 import type { CheckLayer } from "./types.ts";
 import { readIfExists } from "../shared/fs.ts";
@@ -302,7 +303,14 @@ async function checkComponent(s: Scope): Promise<Finding[]> {
   const findings: Finding[] = [];
   const emit: Emit = (level, rule, message, extra) =>
     findings.push({ level, layer: "config", rule, message, component: s.component.name, ...extra });
-  if (effective(s.component, "deps.lockfile") === true) await LOCKFILE_RULES[s.component.language](s, emit);
+  if (effective(s.component, "deps.lockfile") === true) {
+    // `go mod tidy -diff` needs go: without it that is reported, next to what the rule found before asking.
+    const missing = await reportingMissingTool(async () => {
+      await LOCKFILE_RULES[s.component.language](s, emit);
+      return [];
+    });
+    findings.push(...missing);
+  }
   await bannedDependencies(s, emit);
   return findings;
 }

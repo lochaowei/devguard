@@ -371,7 +371,7 @@ devguard --version | --help
 | `--apply` | standard upgrade：實際套用 |
 | `--cwd <dir>` | 指定專案根目錄（預設為目前工作目錄） |
 
-**exit code**（SPEC §11）：`0` 通過（只有偏離或提示也算通過；`fix` 無須修改或已套用完成）、`1` 有錯誤（或 `--strict` 時有偏離；`fix` 使用者取消、非互動環境未加 `--yes` 且有待修正項目，或沒有可用的 `.devguard.yaml`）、`2` CLI 本身出錯（參數錯誤、檔案不在專案目錄內、`draft` 時宣告檔已存在、內部例外）。專案的工具尚未安裝時，`check` 以 `2` 結束並印出安裝指令（例如 `uv sync`、`npm ci`）；`doctor` 與各 hook 則把它回報成一項錯誤（附安裝指令），其餘檢查照常執行。
+**exit code**（SPEC §11）：`0` 通過（只有偏離或提示也算通過；`fix` 無須修改或已套用完成）、`1` 有錯誤（或 `--strict` 時有偏離；`fix` 使用者取消、非互動環境未加 `--yes` 且有待修正項目，或沒有可用的 `.devguard.yaml`）、`2` CLI 本身出錯（參數錯誤、檔案不在專案目錄內、`draft` 時宣告檔已存在、內部例外）。專案的工具尚未安裝時，`check`、`doctor` 與各 hook 都把它回報成一項錯誤（`environment/tool-missing`，附安裝指令，例如 `uv sync`、`npm ci`），其餘檢查照常執行，exit `1`。
 
 **帳密**：預覽、片段與報告中一律不顯示帳密的值（`.npmrc` 的 `_auth` / `_authToken` / `_password`、Maven 的 `<username>` / `<password>`、網址中的 `user:password@`）；只引用環境變數（`${…}`）的值照常顯示（SPEC §10.3）。
 

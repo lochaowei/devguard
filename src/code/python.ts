@@ -1,5 +1,6 @@
 import type { Finding } from "../report/finding.ts";
 import { isPyrightTool, mypyConfigSetsFiles, type PyrightTool } from "../settings/type-checkers.ts";
+import { reportingMissingTool } from "../tools/missing.ts";
 import { pythonToolRequest, type ToolResult } from "../tools/runner.ts";
 import { codeFinding, firstDifferentLine, runBatched, splitStaged, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
@@ -188,11 +189,13 @@ export const pythonChecker: CodeChecker = {
   },
   async check(target, ctx) {
     const findings: Finding[] = [];
-    if (target.categories.has("lint")) findings.push(...(await lint(target, ctx)));
-    if (target.categories.has("format")) findings.push(...(await format(target, ctx)));
+    // Ruff and the type checker are installed separately: one that is missing is reported, the other still runs (#217).
+    const run = async (check: () => Promise<Finding[]>) => findings.push(...(await reportingMissingTool(check)));
+    if (target.categories.has("lint")) await run(() => lint(target, ctx));
+    if (target.categories.has("format")) await run(() => format(target, ctx));
     if (target.categories.has("typecheck")) {
       const tool = typeChecker(target);
-      findings.push(...(await (tool === "mypy" ? mypy(target, ctx) : pyright(target, ctx, tool))));
+      await run(() => (tool === "mypy" ? mypy(target, ctx) : pyright(target, ctx, tool)));
     }
     return findings;
   },

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CHECK_LAYERS, checkTestsAndCoverage } from "../src/check.ts";
 import type { CheckScope } from "../src/layers/types.ts";
-import type { ToolRequest, ToolResult } from "../src/tools/runner.ts";
+import { ToolMissingError, type ToolRequest, type ToolResult } from "../src/tools/runner.ts";
 import { rules, TODAY } from "./helpers.ts";
 import { argValue, checkTests, declare, fakeTools, ok, project } from "./tests-helpers.ts";
 
@@ -217,5 +217,20 @@ describe("TypeScript tests", () => {
       return ok(testReport());
     });
     expect((await check(WEB, tools)).findings).toEqual([]);
+  });
+
+  it("reports a component whose test tool is not installed and still runs the next component's tests (#217)", async () => {
+    const two =
+      "standard: team@1.0.0\ncomponents:\n  - {path: web/, language: typescript}\n  - {path: app/, language: typescript}\n";
+    const { tools, calls } = fakeTools((req) => {
+      if (req.dir === "web/") throw new ToolMissingError("找不到 vitest：node_modules 中沒有安裝", "cd web && npm ci");
+      writeSummary(argValue(req, "--coverage.reportsDirectory"), ALL_80);
+      writeFileSync(argValue(req, "--outputFile.json"), testReport(["b breaks"]));
+      return ok("", 1);
+    });
+    const r = await checkTests(project(two), tools, ["web/a.ts", "app/b.ts"]);
+    expect(rules(r.findings)).toEqual(["error:environment/tool-missing", "error:test/failed"]);
+    expect(r.findings[0]).toMatchObject({ fix: "cd web && npm ci" });
+    expect(calls.map((c) => c.dir)).toEqual(["web/", "app/"]);
   });
 });

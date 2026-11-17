@@ -27,7 +27,7 @@ devguard doctor [--quiet] [--exit-zero] [--format text|json|sarif|vscode|claude]
 ## 執行流程
 
 1. 執行 `check` 的檢查層，但**不跑測試與覆蓋率**（`doctor` 不支援 `--full`）。
-2. 專案工具沒有安裝時，列成一筆 `environment/tool-missing` 錯誤（附安裝指令），繼續跑完其他檢查。同一個工具只報一次。
+2. 專案工具沒有安裝時，與 `check` 一樣列成一筆 `environment/tool-missing` 錯誤（附安裝指令），繼續跑完其他檢查。同一個工具只報一次。
 3. 依序執行 `environment` 層的檢查：
 
 | 順序 | 檢查 | 規則 ID（`environment/…`） | 什麼時候檢查 |

@@ -6,7 +6,7 @@ import { runCheck } from "../src/check.ts";
 import { declarationLayer } from "../src/layers/declaration.ts";
 import { createDepsLayer } from "../src/layers/deps.ts";
 import type { Finding } from "../src/report/finding.ts";
-import type { ToolRequest, ToolResult, ToolRunner } from "../src/tools/runner.ts";
+import { ToolMissingError, type ToolRequest, type ToolResult, type ToolRunner } from "../src/tools/runner.ts";
 import { TODAY } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -331,6 +331,21 @@ describe("deps layer: Go", () => {
     expect(summary(findings)).toEqual(["error:deps/go-mod-untidy:svc/ (Go):svc/go.mod"]);
     expect(findings[0]?.message).toContain("github.com/google/uuid");
     expect(findings[0]?.fix).toBe("cd svc && go mod tidy");
+  });
+
+  it("reports a missing go next to the component's other dependency findings (#217)", async () => {
+    const { findings } = await check({
+      declaration: decl("go", "svc/"),
+      files: { "svc/go.mod": GO_MOD },
+      tool: () => {
+        throw new ToolMissingError("找不到 go", "安裝 Go");
+      },
+    });
+    expect(summary(findings)).toEqual([
+      "error:deps/lockfile-missing:svc/ (Go):svc/go.sum",
+      "error:environment/tool-missing::",
+    ]);
+    expect(findings[1]).toMatchObject({ message: "找不到 go", fix: "安裝 Go" });
   });
 
   it("reports missing modules, not untidy, when the module cache is empty (#83)", async () => {
