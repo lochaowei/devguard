@@ -208,7 +208,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
   - Java：`pom.xml` / `build.gradle` 中的 plugin 版本
 - **golangci-lint 例外**：不放進 `go.mod` 的 `tool`。使用指定版本的 binary，由開發者放到 PATH，CLI 從 PATH 呼叫並核對版本。
 - CLI 執行工具的方式：
-  - Python：`uv run <tool>`，工具須已安裝在專案環境中。專案環境是 `UV_PROJECT_ENVIRONMENT` 指定的目錄（絕對路徑照用，相對路徑相對於專案目錄，與 uv 相同），未設定時為 `.venv`；找不到工具時，訊息列出實際找過的專案環境路徑。Poetry 專案（最近的 lockfile 是 `poetry.lock`）不讀 `UV_PROJECT_ENVIRONMENT`，直接執行專案內 `.venv` 中的工具，所以 Poetry 必須設定 `virtualenvs.in-project true`
+  - Python：`uv run <tool>`，工具須已安裝在專案環境中。專案環境是 `UV_PROJECT_ENVIRONMENT` 指定的目錄（絕對路徑照用，相對路徑相對於專案目錄，與 uv 相同），未設定時為 `.venv`。「專案目錄」與 `uv run` 的判定一致（#214）：由元件目錄往上最近的 `pyproject.toml` 所在目錄（不要求有 `[project]`）；若再往上有 `pyproject.toml` 以 `[tool.uv.workspace]` 的 `members` 涵蓋它（扣除 `exclude`，pattern 支援 `*`、`?`、`**`），則為該 workspace 根目錄。環境只在這個目錄找，不再往上：元件自己有 `pyproject.toml`、但沒有自己的 `.venv` 時，不使用上層的 `.venv`，改走缺工具路徑（不執行 `uv run`，因此不會在元件目錄建立空的 `.venv`）。元件與上層都沒有 `pyproject.toml` 時，仍依序找元件目錄到 repo 根目錄的 `.venv`。同一個缺少的工具在同一個環境只回報一筆。找不到工具時，訊息列出實際找過的專案環境路徑；`doctor` 的 VS Code interpreter 檢查用同一套判定。Poetry 專案（最近的 lockfile 是 `poetry.lock`）不讀 `UV_PROJECT_ENVIRONMENT`，直接執行專案內 `.venv` 中的工具，所以 Poetry 必須設定 `virtualenvs.in-project true`
   - TypeScript：`node_modules/.bin/<tool>`（Windows 依序找 `<tool>.cmd`、`<tool>.exe`：npm／pnpm／Yarn 產生 `.cmd`，Bun 產生 `.exe`）
   - Go：`go tool <名稱>`
   - Java：`./mvnw` / `./gradlew`

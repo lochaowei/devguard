@@ -8,6 +8,8 @@ import { goEnv } from "./go-env.ts";
 import { PYTHON_MANAGERS, pythonManager, type PythonManager } from "./python-manager.ts";
 import { isEnoent, readIfExistsSync } from "../shared/fs.ts";
 import { pyName, pyprojectDependencies } from "../deps/manifests.ts";
+import { parseConfigText } from "../fix/edit.ts";
+import { isRecord } from "../shared/guards.ts";
 import { typescriptInstall } from "./typescript-install.ts";
 
 export interface ToolRequest {
@@ -201,14 +203,65 @@ function managerAt(dir: string, root: string, env: Env): PythonManager {
   return pythonManager(dir, (file) => env.exists(env.path.join(root, file)));
 }
 
+/** A glob of `[tool.uv.workspace]` (`*`, `?`, `**`) over a path relative to the workspace root, `/`-separated. */
+function workspaceGlob(pattern: string): RegExp {
+  const source = pattern
+    .replace(/^\.\//, "")
+    .replace(/\/+$/, "")
+    .split("/")
+    .map((part) =>
+      part === "**"
+        ? ".*"
+        : part
+            .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+            .replace(/\*/g, "[^/]*")
+            .replace(/\?/g, "[^/]"),
+    )
+    .join("/");
+  return new RegExp(`^${source}$`);
+}
+
+/** Whether the pyproject.toml `text` is a uv workspace root whose `members` (minus `exclude`) cover `member`. */
+function coversMember(text: string, member: string): boolean {
+  const doc = parseConfigText("pyproject.toml", text);
+  const tool = isRecord(doc) && isRecord(doc.tool) ? doc.tool : {};
+  const uv = isRecord(tool.uv) ? tool.uv : {};
+  const workspace = isRecord(uv.workspace) ? uv.workspace : undefined;
+  if (!workspace) return false;
+  const globs = (value: unknown) =>
+    Array.isArray(value) ? value.filter((v): v is string => typeof v === "string").map(workspaceGlob) : [];
+  return globs(workspace.members).some((g) => g.test(member)) && !globs(workspace.exclude).some((g) => g.test(member));
+}
+
 /**
- * The project environment directories to look in, nearest first. A uv project reads `UV_PROJECT_ENVIRONMENT` as uv
- * does: an absolute path as is, a relative one against the project directory; `.venv` when unset. Poetry ignores it.
+ * The directory whose environment `uv run` uses, as uv discovers it (checked on uv 0.10.8, #214): from the component
+ * directory upwards the nearest `pyproject.toml`, or, when a pyproject.toml above it is a workspace root that lists
+ * it as a member, that root. Poetry's environment is the nearest pyproject.toml's directory too. Without any
+ * pyproject.toml (nothing to anchor the project) every directory up to the repo root stays a candidate.
+ */
+function projectDirs(manager: PythonManager, dirs: readonly string[], env: Env): readonly string[] {
+  const at = dirs.findIndex((d) => env.exists(env.path.join(d, "pyproject.toml")));
+  const project = dirs[at];
+  if (project === undefined) return dirs;
+  if (manager === "uv") {
+    for (const root of dirs.slice(at + 1)) {
+      const text = env.readText(env.path.join(root, "pyproject.toml"));
+      const member = env.path.relative(root, project).replaceAll("\\", "/");
+      if (text !== undefined && coversMember(text, member)) return [root];
+    }
+  }
+  return [project];
+}
+
+/**
+ * The project environment directories to look in, nearest first (`projectDirs`). A uv project reads
+ * `UV_PROJECT_ENVIRONMENT` as uv does: an absolute path as is, a relative one against the project directory; `.venv`
+ * when unset. Poetry ignores it.
  */
 function projectEnvironments(manager: PythonManager, dirs: readonly string[], env: Env): string[] {
   const configured = manager === "uv" ? env.vars.UV_PROJECT_ENVIRONMENT : undefined;
   if (configured && env.path.isAbsolute(configured)) return [env.path.normalize(configured)];
-  return dirs.map((d) => env.path.join(d, configured || ".venv"));
+  return projectDirs(manager, dirs, env).map((d) => env.path.join(d, configured || ".venv"));
 }
 
 /** Whether a pyproject.toml of the component or a directory above it lists `tool`; undefined when there is none. */
@@ -415,14 +468,14 @@ export function createToolRunner(deps: ToolRunnerDeps): Required<ToolRunner> {
 export function pythonEnvironmentDirs(
   cwd: string,
   dir: string,
-  deps: Pick<ToolRunnerDeps, "platform" | "exists" | "processEnv"> = {},
+  deps: Pick<ToolRunnerDeps, "platform" | "exists" | "readText" | "processEnv"> = {},
 ): string[] {
   const windows = (deps.platform ?? process.platform) === "win32";
   const env: Env = {
     path: windows ? win32 : posix,
     windows,
     exists: deps.exists ?? existsSync,
-    readText: () => undefined,
+    readText: deps.readText ?? readIfExistsSync,
     pathEnv: "",
     vars: deps.processEnv ?? process.env,
   };

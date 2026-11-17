@@ -134,6 +134,7 @@ components:
 | 範例、第三方原始碼或自動產生的檔案變成元件 | 刪掉草稿，以 `--ignore examples/ --ignore third_party/` 重新產生；或直接把這些路徑寫進宣告的 `ignore` |
 | 想重新產生 | 先刪除或改名 `.devguard.yaml` 再執行 |
 | Poetry 專案的 `check` 提示 `找不到 ruff：專案環境（<專案>/.venv）中沒有安裝` | devguard 從專案內的 `.venv` 執行工具。照提示執行 `poetry config virtualenvs.in-project true && poetry install`，讓 Poetry 把虛擬環境建在專案裡 |
+| 子目錄元件（例如 `tests/packages/*` 的 fixture）有自己的 `pyproject.toml`，`check` 提示 `找不到 ruff：專案環境（<子目錄>\.venv）中沒有安裝` | 與 `uv run` 相同，有自己 `pyproject.toml` 的目錄是獨立的 uv 專案，用自己的 `.venv`，不會借用根目錄的。若它是根目錄 uv workspace 的成員，把它列進根目錄 `[tool.uv.workspace]` 的 `members`；若它不該被檢查，在宣告檔 `ignore` 掉 |
 | uv 專案的 `check` 提示 `找不到 ruff：專案環境（…）中沒有安裝`，但工具其實已安裝 | 括號內是 devguard 找過的專案環境路徑。專案環境不在 `.venv` 時，以 `UV_PROJECT_ENVIRONMENT` 指定它（與 `uv run` 讀同一個變數），再執行 `devguard check` |
 
 ---
