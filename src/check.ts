@@ -61,11 +61,6 @@ export interface CheckOptions {
   scope?: CheckScope;
   /** The staged version of a file (pre-commit hook); formatters and single-file linters check it via stdin. */
   stagedText?: (repoPath: string) => Promise<string | undefined>;
-  /**
-   * A tool that is not installed: `throw` (plain `check`: the CLI exits 2, SPEC §11) or `report` it as an error with
-   * the install command and run the remaining layers (doctor and the hooks, so the environment checks still run).
-   */
-  missingTools?: "throw" | "report";
 }
 
 export const TOOL_MISSING_RULE = "environment/tool-missing";
@@ -90,19 +85,33 @@ export function layerContext(options: CheckOptions): LayerContext {
   };
 }
 
-/** One layer's result; a missing tool becomes a finding when the options say so (doctor, hooks). */
-async function runLayer(layer: CheckLayer, ctx: LayerContext, options: CheckOptions): Promise<LayerResult> {
+/** The tool-missing findings that are only a Java build wrapper that is not there; `settings/wrapper-missing` says it. */
+const wrapperFindings = new WeakSet<Finding>();
+
+/** One layer's result; a tool that is not installed becomes a finding, so the other layers still run (SPEC §11). */
+async function runLayer(layer: CheckLayer, ctx: LayerContext): Promise<LayerResult> {
   try {
     return await layer.run(ctx);
   } catch (e) {
-    if (!(e instanceof ToolMissingError) || options.missingTools !== "report") throw e;
-    return { findings: [toolMissingFinding(e)] };
+    if (!(e instanceof ToolMissingError)) throw e;
+    const missing = toolMissingFinding(e);
+    if (e.javaWrapper) wrapperFindings.add(missing);
+    return { findings: [missing] };
   }
 }
 
 /** The same missing tool reported by another layer is reported once. */
 const repeated = (f: Finding, seen: readonly Finding[]) =>
   f.rule === TOOL_MISSING_RULE && seen.some((g) => g.rule === f.rule && g.message === f.message);
+
+/**
+ * A missing Java wrapper reported as `settings/wrapper-missing` is not reported again as a missing tool: the two would
+ * say the same thing with different fix commands (#217). Without the settings finding (e.g. `--only lint`) it stays.
+ */
+function withoutDuplicateWrapper(findings: Finding[]): Finding[] {
+  if (!findings.some((f) => f.rule === "settings/wrapper-missing")) return findings;
+  return findings.filter((f) => !wrapperFindings.has(f));
+}
 
 /** Runs the layers in order and merges their findings into one report. */
 export async function runCheck(
@@ -112,12 +121,17 @@ export async function runCheck(
   const ctx = layerContext(options);
   const findings: Finding[] = [];
   for (const layer of layers) {
-    const result = await runLayer(layer, ctx, options);
+    const result = await runLayer(layer, ctx);
     findings.push(...result.findings.filter((f) => !repeated(f, findings)));
     if (result.resolution) ctx.resolution = result.resolution;
   }
   const { resolution } = ctx;
-  return { standard: resolution?.standard?.id, components: resolution?.components ?? [], findings, resolution };
+  return {
+    standard: resolution?.standard?.id,
+    components: resolution?.components ?? [],
+    findings: withoutDuplicateWrapper(findings),
+    resolution,
+  };
 }
 
 /** The declaration layer alone: parse `.devguard.yaml` and resolve it against the bundled standard. */

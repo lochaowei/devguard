@@ -73,7 +73,7 @@
   - 開發者下載對應平台的執行檔，改名為 `devguard`（Windows 為 `devguard.exe`；Linux 與 macOS 要 `chmod +x`）並放進 PATH；更新時用新版取代。macOS 從瀏覽器下載的檔案要先移除 quarantine 屬性（`xattr -d com.apple.quarantine devguard`），否則 Gatekeeper 會擋下。CLI 找不到或版本過舊時，訊息會指向 release 頁面與這台機器對應的執行檔；寫進 git hook 的提示則不分平台，因為注入 husky、lefthook 的那一行由所有開發者共用。
   - 放在 PATH 上的是真正的執行檔，Claude Code 的 exec form hook 可以直接呼叫。
   - 原本規劃的內部 Scoop bucket 與 Nexus raw repository 已取消（#28）。
-- **golangci-lint** 仍是 §5.2 的例外：使用預設標準指定版本的 binary，由開發者放到 PATH，CLI 從 PATH 呼叫並核對版本。找不到時（`check` exit 2、`doctor` 的 `environment/tool-missing`、hook），提示寫出元件生效的 `tools.golangci-lint` 範圍（含 override）與下載位置（https://github.com/golangci/golangci-lint/releases）。
+- **golangci-lint** 仍是 §5.2 的例外：使用預設標準指定版本的 binary，由開發者放到 PATH，CLI 從 PATH 呼叫並核對版本。找不到時（`check`、`doctor`、hook 都回報 `environment/tool-missing`），提示寫出元件生效的 `tools.golangci-lint` 範圍（含 override）與下載位置（https://github.com/golangci/golangci-lint/releases）。
 - **預設標準內建在 CLI 中**（見 §5.5），所以 CLI 不需要連網就能解析專案宣告。
 
 來源：[CLI 實作語言與 Windows 分發選項研究](.scratch/coding-standards-guard/research/01-cli-runtime-options.md)、[CLI 實作語言與分發方式決策](.scratch/coding-standards-guard/issues/05-cli-runtime-decision.md)、[內部鏡像設定檢查](.scratch/coding-standards-guard/issues/16-internal-mirror-config.md)
@@ -212,7 +212,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
   - TypeScript：`node_modules/.bin/<tool>`（Windows 依序找 `<tool>.cmd`、`<tool>.exe`：npm／pnpm／Yarn 產生 `.cmd`，Bun 產生 `.exe`）
   - Go：`go tool <名稱>`
   - Java：`./mvnw` / `./gradlew`
-- 工具尚未安裝時，CLI **不會自行下載**，而是報錯並附上一行安裝指令（例如 `uv sync`、`poetry config virtualenvs.in-project true && poetry install`、`npm ci`），套件來源是開發者使用者層級的設定（§10）。TypeScript 的安裝指令由元件目錄往上最近的 lockfile 決定，在該 lockfile 所在的目錄（workspace 根目錄）執行：`package-lock.json`／`npm-shrinkwrap.json` 為 `npm ci`，`pnpm-lock.yaml` 為 `pnpm install --frozen-lockfile`，`yarn.lock` 為 `yarn install --immutable`（Berry）或 `yarn install --frozen-lockfile`（classic），`bun.lock`／`bun.lockb` 為 `bun install --frozen-lockfile`；同一個目錄有多個 lockfile 時 `deps.manager` 的那一個優先；都沒有時改為 `deps.manager` 的一般安裝（例如 `npm install`），在最近的有 `package.json` 的目錄執行（#117）。標準要求的 Python 開發工具（型別檢查器、Ruff、pytest）不在專案環境、元件與上層目錄的 `pyproject.toml` 也都沒有列在依賴中時，`uv sync` 裝不到它，提示改為加入開發依賴的指令，格式與 `standard upgrade` 相同（§5.5）：uv 專案 `uv add --dev "<工具><範圍>"`，Poetry 專案 `poetry config virtualenvs.in-project true && poetry add --group dev "<工具><範圍>"`（前半與 `poetry install` 的提示相同，工具才會裝進 devguard 會找的專案內 `.venv`），範圍取標準的 `tools.<工具>`（#68）。已列在依賴中只是還沒安裝時，維持 `uv sync`／`poetry install`。元件目錄與上層目錄都沒有 `pyproject.toml` 時，`uv sync`、`uv add` 都會失敗，提示改為兩行：「先建立 pyproject.toml：devguard fix --yes」，其後「之後再安裝：」接上述的安裝指令（有範圍時為加入開發依賴的指令，沒有範圍時為 `uv sync`／`poetry install`）；`check` 的 exit 2 與 `doctor`／hook 的 `environment/tool-missing` 都用這個提示（#112）。pytest-cov 是 pytest 的外掛、沒有執行檔：`check --full` 的 pytest 以 exit 4 結束且輸出含 `unrecognized arguments: --cov` 時，視為找不到 pytest-cov，走同一條路徑（`check` exit 2、`doctor` 與 hook 為 `environment/tool-missing`），提示依上述規則給出例如 `uv add --dev "pytest-cov>=6,<8"`；其他原因的 exit 4 仍是 `test/tool-failed`（#109）。找不到 uv 本身時，提示改為多行：列出官方安裝腳本、`pipx install uv`、`pip install uv`、`scoop install uv`（Windows），並說明已用 pip 安裝時要把 Python 的 Scripts 目錄（Windows）或 `~/.local/bin`（其他平台）加進 PATH，再以 `uv --version` 確認；devguard 不會到 PATH 以外的位置找 uv。
+- 工具尚未安裝時，CLI **不會自行下載**，而是報錯並附上一行安裝指令（例如 `uv sync`、`poetry config virtualenvs.in-project true && poetry install`、`npm ci`），套件來源是開發者使用者層級的設定（§10）。TypeScript 的安裝指令由元件目錄往上最近的 lockfile 決定，在該 lockfile 所在的目錄（workspace 根目錄）執行：`package-lock.json`／`npm-shrinkwrap.json` 為 `npm ci`，`pnpm-lock.yaml` 為 `pnpm install --frozen-lockfile`，`yarn.lock` 為 `yarn install --immutable`（Berry）或 `yarn install --frozen-lockfile`（classic），`bun.lock`／`bun.lockb` 為 `bun install --frozen-lockfile`；同一個目錄有多個 lockfile 時 `deps.manager` 的那一個優先；都沒有時改為 `deps.manager` 的一般安裝（例如 `npm install`），在最近的有 `package.json` 的目錄執行（#117）。標準要求的 Python 開發工具（型別檢查器、Ruff、pytest）不在專案環境、元件與上層目錄的 `pyproject.toml` 也都沒有列在依賴中時，`uv sync` 裝不到它，提示改為加入開發依賴的指令，格式與 `standard upgrade` 相同（§5.5）：uv 專案 `uv add --dev "<工具><範圍>"`，Poetry 專案 `poetry config virtualenvs.in-project true && poetry add --group dev "<工具><範圍>"`（前半與 `poetry install` 的提示相同，工具才會裝進 devguard 會找的專案內 `.venv`），範圍取標準的 `tools.<工具>`（#68）。已列在依賴中只是還沒安裝時，維持 `uv sync`／`poetry install`。元件目錄與上層目錄都沒有 `pyproject.toml` 時，`uv sync`、`uv add` 都會失敗，提示改為兩行：「先建立 pyproject.toml：devguard fix --yes」，其後「之後再安裝：」接上述的安裝指令（有範圍時為加入開發依賴的指令，沒有範圍時為 `uv sync`／`poetry install`）；`check`、`doctor`、hook 的 `environment/tool-missing` 都用這個提示（#112）。pytest-cov 是 pytest 的外掛、沒有執行檔：`check --full` 的 pytest 以 exit 4 結束且輸出含 `unrecognized arguments: --cov` 時，視為找不到 pytest-cov，走同一條路徑（回報 `environment/tool-missing`），提示依上述規則給出例如 `uv add --dev "pytest-cov>=6,<8"`；其他原因的 exit 4 仍是 `test/tool-failed`（#109）。找不到 uv 本身時，提示改為多行：列出官方安裝腳本、`pipx install uv`、`pip install uv`、`scoop install uv`（Windows），並說明已用 pip 安裝時要把 Python 的 Scripts 目錄（Windows）或 `~/.local/bin`（其他平台）加進 PATH，再以 `uv --version` 確認；devguard 不會到 PATH 以外的位置找 uv。
 
 來源：[工具版本權威與一致性檢查](.scratch/coding-standards-guard/issues/14-tool-version-authority.md)
 
@@ -600,8 +600,10 @@ devguard 不檢查也不寫入套件從哪裡下載（#64；npm 的部分先於 
 **exit code**
 - `0`：通過（只有偏離或提示時也算通過）。
 - `1`：有錯誤。
-- `2`：CLI 本身出錯，例如參數錯誤、找不到工具、內部例外。
-  - 找不到工具：`check` 以 `2` 結束並印出安裝指令。`doctor` 與各 hook 則把它回報成一項**錯誤**（環境層，附安裝指令），其餘檢查照常執行，所以剛 clone 的專案也能看到缺少的 hook 與 `devguard install` 提示（§7.3、§7.4）。
+- `2`：CLI 本身出錯，例如參數錯誤、內部例外。
+  - 找不到工具**不是** exit 2（#217）：所有執行檢查的指令（`check`、`check --staged`、`check --full`、指定檔案、`doctor`、各 hook）都把它回報成一項**錯誤**（`environment/tool-missing`，環境層，附安裝指令），其餘檢查照常執行，所以剛 clone 的專案也能看到缺少的 hook 與 `devguard install` 提示（§7.3、§7.4），exit code 為 `1`。同一個缺少的工具只回報一次，各輸出格式依各自既有的規則包含這筆 finding。
+  - 缺少 Java 建置 wrapper（`mvnw`／`gradlew`）時，`settings/wrapper-missing` 已說明同一件事，不再另外回報 `environment/tool-missing`，使用者只看到一筆。只跑程式碼或測試而沒有設定層時（例如 `--only lint`）沒有 `settings/wrapper-missing`，仍回報 `environment/tool-missing`。
+  - 例外：會執行工具來修改檔案的指令（`fix --code`、`standard upgrade`）沒有工具就無法完成，仍以 `2` 結束並印出安裝指令。
 - 加上 `--strict` 時，偏離也算失敗，回傳 `1`。
 - 會修改檔案的指令沒有套用待寫入的變更時也回傳 `1`：`fix`、`fix --code`、`install` 被拒絕或在非互動環境沒有 `--yes`；`standard upgrade` 沒有 `--apply` 而有變更待套用（只預覽、不詢問，讓 CI 能偵測「需要升級」）。
 

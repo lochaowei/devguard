@@ -19,7 +19,7 @@ export function prePushRunsTests(env: EnvVars): boolean {
  */
 export async function runPrePush(ctx: HookContext): Promise<number> {
   if (!prePushRunsTests(ctx.env ?? process.env)) return 0;
-  const result = await checkTestsAndCoverage({ ...ctx, missingTools: "report" });
+  const result = await checkTestsAndCoverage(ctx);
   const code = exitCodeFor(result.findings, false);
   if (code !== 0) ctx.write(renderText(result));
   return code;

@@ -42,7 +42,7 @@ ignore:                         # 選填：排除的目錄、檔案或 glob
    - 依副檔名推定語言，直接套用該語言的**預設標準**（不含任何元件覆寫）。
    - `check` 會發出 `declaration/uncovered-files` **提示（hint）**，建議在 `.devguard.yaml` 的 `components` 中補上對應元件。
    - 範例、第三方嵌入的原始碼、自動產生的檔案等不該套用標準的檔案，改寫進 `ignore`（見下節）。
-   - 從 `components` 刪掉一個元件**不等於排除它的檔案**：這些檔案變成未涵蓋檔案，仍依預設標準檢查，例如仍需要 ruff，找不到時 `check` 以 exit 2 中止。要讓 devguard 完全不看這些檔案，請寫進 `ignore`。
+   - 從 `components` 刪掉一個元件**不等於排除它的檔案**：這些檔案變成未涵蓋檔案，仍依預設標準檢查，例如仍需要 ruff，找不到時 `check` 回報 `environment/tool-missing` 錯誤。要讓 devguard 完全不看這些檔案，請寫進 `ignore`。
 
 ---
 

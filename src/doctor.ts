@@ -8,5 +8,5 @@ export interface DoctorOptions extends CheckOptions, EnvironmentLayerOptions {}
  * an environment error with its install command, so the remaining checks still run (§7.3, §7.4).
  */
 export function runDoctor(options: DoctorOptions): Promise<CheckResult> {
-  return runCheck({ missingTools: "report", ...options }, [...CHECK_LAYERS, createEnvironmentLayer(options)]);
+  return runCheck(options, [...CHECK_LAYERS, createEnvironmentLayer(options)]);
 }

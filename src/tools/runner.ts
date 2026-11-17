@@ -110,14 +110,17 @@ export interface ToolRunner {
   manage?(request: PackageRequest): Promise<ToolResult>;
 }
 
-/** The tool is not installed. The CLI reports it and exits 2 (SPEC §11). */
+/** The tool is not installed. `check` reports it as `environment/tool-missing` and carries on (SPEC §11). */
 export class ToolMissingError extends Error {
   readonly install: string;
+  /** The missing tool is a Java build wrapper, which `settings/wrapper-missing` already reports (#217). */
+  readonly javaWrapper: boolean;
 
-  constructor(message: string, install: string) {
+  constructor(message: string, install: string, javaWrapper = false) {
     super(message);
     this.name = "ToolMissingError";
     this.install = install;
+    this.javaWrapper = javaWrapper;
   }
 
   report(): string {
@@ -139,7 +142,7 @@ export interface ToolRunnerDeps {
   processEnv?: EnvVars;
 }
 
-type Resolved = { ok: true; command: Command } | { ok: false; message: string; install: string };
+type Resolved = { ok: true; command: Command } | { ok: false; message: string; install: string; javaWrapper?: true };
 
 interface Env {
   path: typeof win32;
@@ -346,6 +349,7 @@ function java(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
       ok: false,
       message: `找不到 ${req.tool}：沒有 ${kind.label} wrapper（${kind.posix} / ${kind.windows}）`,
       install: inDir(req.dir, kind.install),
+      javaWrapper: true,
     };
   }
   return { ok: true, command: { file: wrapper, args: [...(req.args ?? [])], cwd } };
@@ -390,7 +394,7 @@ export function createToolRunner(deps: ToolRunnerDeps): Required<ToolRunner> {
   const exec = deps.exec ?? nodeExec;
   const dirOf = (dir: string) => env.path.join(deps.cwd, dir.replace(/\/$/, ""));
   const start = async (resolved: Resolved, stdin?: string) => {
-    if (!resolved.ok) throw new ToolMissingError(resolved.message, resolved.install);
+    if (!resolved.ok) throw new ToolMissingError(resolved.message, resolved.install, resolved.javaWrapper === true);
     try {
       const command = { ...resolved.command, unsetEnv: GIT_REPO_ENV };
       return await exec(stdin === undefined ? command : { ...command, stdin });

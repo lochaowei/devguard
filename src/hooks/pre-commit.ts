@@ -197,7 +197,7 @@ export async function checkStaged(
  * fixes; on failure prints the `devguard fix --code` command. Returns the exit code (non-zero blocks the commit).
  */
 export async function runPreCommit(ctx: HookContext): Promise<number> {
-  const staged = await checkStaged({ ...ctx, missingTools: "report" });
+  const staged = await checkStaged(ctx);
   if (!staged) return 0;
   const { result, warning } = staged;
   if (warning) ctx.write(warning);

@@ -102,10 +102,14 @@ describe("Python tests", () => {
       if (req.tool === "pytest") return pytest;
       throw new ToolMissingError("找不到 pytest-cov", `uv add --dev "pytest-cov${req.range ?? ""}"`);
     });
-    await expect(check(tools)).rejects.toMatchObject({
-      message: "找不到 pytest-cov",
-      install: 'uv add --dev "pytest-cov>=6,<8"',
-    });
+    const { findings } = await check(tools);
+    expect(findings).toEqual([
+      expect.objectContaining({
+        rule: "environment/tool-missing",
+        message: "找不到 pytest-cov",
+        fix: 'uv add --dev "pytest-cov>=6,<8"',
+      }),
+    ]);
     expect(calls.map((c) => c.tool)).toEqual(["pytest", "pytest-cov"]);
   });
 

@@ -3,7 +3,7 @@ import { ToolMissingError } from "../tools/runner.ts";
 /** Bad command-line usage. */
 export class UsageError extends Error {}
 
-/** What to print on stderr when the CLI itself fails (exit 2, SPEC §11). */
+/** What to print on stderr when the CLI itself fails (exit 2, SPEC §11); a missing tool only reaches here from `fix --code` and `standard upgrade`. */
 export function failureMessage(e: unknown, usage: string): string {
   if (e instanceof ToolMissingError) return e.report();
   const message = e instanceof Error ? e.message : String(e);

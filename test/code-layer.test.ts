@@ -229,20 +229,26 @@ describe("code checks in devguard check", () => {
     expect(await run({ only: "format", full: false })).toEqual(["api/:ruff format --diff --force-exclude ."]);
   });
 
-  it("fails with ToolMissingError (exit 2, uv sync) when a Python tool is not installed", async () => {
+  it("reports a Python tool that is not installed as environment/tool-missing with uv sync", async () => {
     const declaration = API;
     const tools: ToolRunner = {
       run: () => Promise.reject(new ToolMissingError("找不到 ruff：專案環境（.venv）中沒有安裝", "cd api && uv sync")),
     };
     const options = { cwd: project(declaration), today: TODAY, tools, listFiles: () => Promise.resolve(["api/a.py"]) };
-    await expect(runCheck(options, LAYERS)).rejects.toMatchObject({ install: "cd api && uv sync" });
+    const { findings } = await runCheck(options, LAYERS);
+    expect(findings).toContainEqual(
+      expect.objectContaining({ rule: "environment/tool-missing", fix: "cd api && uv sync" }),
+    );
   });
 
-  it("fails with ToolMissingError (exit 2, npm ci) when a tool is not installed", async () => {
+  it("reports a tool that is not installed as environment/tool-missing with npm ci", async () => {
     const tools: ToolRunner = {
       run: () => Promise.reject(new ToolMissingError("找不到 eslint：node_modules 中沒有安裝", "cd web && npm ci")),
     };
-    await expect(check({ tools, files: ["web/a.ts"] })).rejects.toMatchObject({ install: "cd web && npm ci" });
+    const { findings } = await check({ tools, files: ["web/a.ts"] });
+    expect(findings).toContainEqual(
+      expect.objectContaining({ rule: "environment/tool-missing", fix: "cd web && npm ci" }),
+    );
   });
 
   it("still checks code when the declaration is missing", async () => {
