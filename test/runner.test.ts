@@ -716,3 +716,28 @@ describe("tool runner: git's repo-location variables stay out of project tools (
     expect(unset.map((names) => [...(names ?? [])].sort())).toEqual(Array.from({ length: 5 }, () => gitRepoEnv));
   });
 });
+
+describe("tool runner: Python with an unsupported package manager (#213)", () => {
+  const based = { language: "python", tool: "basedpyright", dir: "api/", range: ">=1.40,<2" } as const;
+  const pyproject = { "C:\\repo\\api\\pyproject.toml": '[project]\nname = "api"\n' };
+
+  it("never suggests uv for a PDM project, and gives PDM's own command", async () => {
+    const { runner } = fakeRunner({ ...pyproject, "C:\\repo\\api\\pdm.lock": "" });
+    const m = await missing(runner.run(req(based)));
+    expect(m.install).not.toMatch(/uv (add|sync)/);
+    expect(m.install).toContain('pdm add -dG dev "basedpyright>=1.40,<2"');
+  });
+
+  it("never suggests uv for a pylock.toml project, and leaves the command to the project's own tool", async () => {
+    const { runner } = fakeRunner({ ...pyproject, "C:\\repo\\pylock.toml": "" });
+    const m = await missing(runner.run(req(based)));
+    expect(m.install).not.toMatch(/uv (add|sync)/);
+    expect(m.install).toContain("basedpyright>=1.40,<2");
+    expect(m.install).not.toContain("pdm add");
+  });
+
+  it("still suggests uv when a uv.lock sits next to the pdm.lock", async () => {
+    const { runner } = fakeRunner({ ...pyproject, "C:\\repo\\api\\pdm.lock": "", "C:\\repo\\api\\uv.lock": "" });
+    expect((await missing(runner.run(req(based)))).install).toBe('cd api && uv add --dev "basedpyright>=1.40,<2"');
+  });
+});

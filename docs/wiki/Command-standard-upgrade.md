@@ -49,6 +49,7 @@ devguard standard upgrade [目標版本] [--apply] [--cwd <dir>]
 |---|---|
 | Python（uv） | `uv add --dev "<套件><範圍>"` |
 | Python（Poetry，最近的 lockfile 是 `poetry.lock`） | `poetry add --group dev "<套件><範圍>"`（PEP 508 形式，例如 `"ruff>=0.18,<0.19"`）；找不到 `poetry` 時提示 `scoop install poetry`，不改用 uv |
+| Python（PDM 或 `pylock.toml`，不支援） | 不執行 `uv add`，印出請自行執行的說明 |
 | TypeScript | `npm install --save-dev <套件>@<範圍>` |
 | Go | `go get -tool <模組>@v<範圍下限>`（`go get` 只接受單一版本） |
 | Java、PATH 上的工具 | **不執行**，只印出要手動修改的地方，標示 `（請自行執行）` |

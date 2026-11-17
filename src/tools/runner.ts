@@ -5,7 +5,7 @@ import { stripVTControlCharacters } from "node:util";
 import type { Language } from "../standard/types.ts";
 import { nodeExec, type Command, type EnvVars, type Exec } from "../process/exec.ts";
 import { goEnv } from "./go-env.ts";
-import { PYTHON_MANAGERS, pythonManager, type PythonManager } from "./python-manager.ts";
+import { PYTHON_MANAGERS, pythonManager, unsupportedPythonLock, type PythonManager } from "./python-manager.ts";
 import { isEnoent, readIfExistsSync } from "../shared/fs.ts";
 import { pyName, pyprojectDependencies } from "../deps/manifests.ts";
 import { parseConfigText } from "../fix/edit.ts";
@@ -274,6 +274,13 @@ function listedInPyproject(tool: string, dirs: readonly string[], env: Env): boo
 /** The first step of a Python install hint for a component that has no pyproject.toml, run from the repo root. */
 const PYPROJECT_FIRST = "先建立 pyproject.toml：devguard fix --yes";
 
+/** devguard supports uv and Poetry only (SPEC §5.2): for PDM or PEP 751 projects the user installs the tool. */
+function unsupportedInstall(req: ToolRequest, lock: string): string {
+  const spec = `${req.tool}${req.range ?? ""}`;
+  const pdm = lock.endsWith("pdm.lock") ? `；PDM 例如 pdm add -dG dev "${spec}"` : "";
+  return `找到 ${lock}，devguard 只支援 uv 與 Poetry；請用專案自己的套件管理工具把 ${spec} 裝進專案環境${pdm}`;
+}
+
 /**
  * How to get a missing Python tool: the manager's install when a pyproject.toml lists it (or there is no range to
  * add it in), otherwise adding it to the dev dependencies the way `standard upgrade` does (#68), after what puts the
@@ -300,11 +307,14 @@ function python(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
     .map((e) => (env.windows ? env.path.join(e, "Scripts", `${req.tool}.exe`) : env.path.join(e, "bin", req.tool)))
     .find((p) => env.exists(p));
   if (!bin) {
+    const lock = unsupportedPythonLock(req.dir, (file) => env.exists(env.path.join(dirs.at(-1) ?? "", file)));
+    const message = `找不到 ${req.tool}：專案環境（${environments.join("、")}）中沒有安裝`;
+    if (lock !== undefined) return { ok: false, message, install: unsupportedInstall(req, lock) };
     const command = inDir(req.dir, pythonInstall(req, dirs, env, name));
     // Without a pyproject.toml neither `uv sync` nor `uv add` can run (#112): `devguard fix` creates it first.
     const install =
       listedInPyproject(req.tool, dirs, env) === undefined ? `${PYPROJECT_FIRST}\n之後再安裝：${command}` : command;
-    return { ok: false, message: `找不到 ${req.tool}：專案環境（${environments.join("、")}）中沒有安裝`, install };
+    return { ok: false, message, install };
   }
   return { ok: true, command: { ...manager.runTool(bin, req.tool, req.args ?? []), cwd } };
 }

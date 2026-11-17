@@ -6,6 +6,7 @@ import { parseConfigText } from "../fix/edit.ts";
 import { componentBuildTool } from "../settings/java/build.ts";
 import type { Finding, Level } from "../report/finding.ts";
 import { listTrackedFiles } from "../repo/files.ts";
+import { unsupportedPythonLock } from "../tools/python-manager.ts";
 import type { ToolResult, ToolRunner } from "../tools/runner.ts";
 import type { CheckLayer } from "./types.ts";
 import { readIfExists } from "../shared/fs.ts";
@@ -97,7 +98,10 @@ async function pythonLockfile(s: Scope, emit: Emit): Promise<void> {
     return;
   }
   const expected = `${dir}${effective(s.component, "deps.manager") === "poetry" ? "poetry.lock" : "uv.lock"}`;
-  const note = text === undefined ? "" : "（不帶 hash 的 requirements.txt 不算 lockfile）";
+  const unsupported = unsupportedPythonLock(dir, s.exists);
+  const note =
+    (text === undefined ? "" : "（不帶 hash 的 requirements.txt 不算 lockfile）") +
+    (unsupported === undefined ? "" : `（找到 ${unsupported}，devguard 目前只支援 uv 與 Poetry 的 lockfile）`);
   const lock = requireCommitted(
     s,
     emit,
