@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runCheck } from "../src/check.ts";
 import { declarationLayer } from "../src/layers/declaration.ts";
 import { toolVersionsLayer } from "../src/layers/tool-versions.ts";
-import type { ToolRequest, ToolRunner } from "../src/tools/runner.ts";
+import { ToolMissingError, type ToolRequest, type ToolRunner } from "../src/tools/runner.ts";
 import { rules, TODAY } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -170,6 +170,21 @@ describe("golangci-lint from PATH (SPEC §5.2 exception)", () => {
   it("reports output it cannot read a version from", async () => {
     const r = await check({ ".devguard.yaml": GO }, fakeTools("something else"));
     expect(r.findings[0]?.message).toContain("無法");
+  });
+
+  it("reports a binary that is not on PATH once, next to the locked versions out of range (#217)", async () => {
+    const calls: ToolRequest[] = [];
+    const tools: ToolRunner = {
+      run(req) {
+        calls.push(req);
+        return Promise.reject(new ToolMissingError("找不到 golangci-lint", "把 golangci-lint 放進 PATH"));
+      },
+    };
+    const mixed = `${GO}  - {path: api/, language: python}\n`;
+    const r = await check({ ".devguard.yaml": mixed, "api/uv.lock": uvLock("0.0.1") }, tools);
+    expect(rules(r.findings)).toEqual(["error:tool-version/out-of-range", "error:environment/tool-missing"]);
+    expect(r.findings[1]).toMatchObject({ message: "找不到 golangci-lint", fix: "把 golangci-lint 放進 PATH" });
+    expect(calls).toHaveLength(1);
   });
 
   it("does not run it without a Go component", async () => {

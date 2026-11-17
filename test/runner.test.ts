@@ -606,7 +606,7 @@ describe("tool runner: Java", () => {
     const m = await missing(runner.run(req({ language: "java", tool: "mvnw", dir: "svc/" })));
     expect(m.message).toContain("mvnw");
     expect(m.message).not.toContain("gradlew");
-    expect(m.install).toBe("cd svc && mvn -N wrapper:wrapper");
+    expect(m.install).toBe("在 svc/ 執行 mvn -N wrapper:wrapper，並提交 mvnw、mvnw.cmd 與 .mvn/wrapper/");
     expect(started).toEqual([]);
   });
 
@@ -614,7 +614,7 @@ describe("tool runner: Java", () => {
     const { runner, started } = fakeRunner({ "C:\\repo\\mvnw.cmd": "" });
     const m = await missing(runner.run(req({ language: "java", tool: "gradlew", dir: "svc/" })));
     expect(m.message).toContain("gradlew");
-    expect(m.install).toBe("cd svc && gradle wrapper");
+    expect(m.install).toBe("在 svc/ 執行 gradle wrapper，並提交 gradlew、gradlew.bat 與 gradle/wrapper/");
     expect(started).toEqual([]);
   });
 });

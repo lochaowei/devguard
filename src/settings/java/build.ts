@@ -1,20 +1,21 @@
 import type { ResolvedComponent } from "../../declaration/resolve.ts";
 import type { Finding } from "../../report/finding.ts";
 import { upwards } from "../../repo/paths.ts";
+import { wrapperInstall } from "../../tools/runner.ts";
 import { finding, type JavaTarget } from "./common.ts";
 
 export type BuildTool = "maven" | "gradle";
 
-const WRAPPER: Record<BuildTool, { label: string; files: readonly string[]; fix: string }> = {
+const WRAPPER: Record<BuildTool, { label: string; files: readonly string[]; script: "mvnw" | "gradlew" }> = {
   maven: {
     label: "Maven",
     files: ["mvnw", "mvnw.cmd"],
-    fix: "在元件目錄執行 mvn wrapper:wrapper，並提交 mvnw、mvnw.cmd 與 .mvn/wrapper/",
+    script: "mvnw",
   },
   gradle: {
     label: "Gradle",
     files: ["gradlew", "gradlew.bat"],
-    fix: "在元件目錄執行 gradle wrapper，並提交 gradlew、gradlew.bat 與 gradle/wrapper/",
+    script: "gradlew",
   },
 };
 
@@ -104,7 +105,7 @@ export async function checkWrapper(t: JavaTarget): Promise<Finding[]> {
       "error",
       "settings/wrapper-missing",
       `沒有提交 ${wrapper.label} wrapper（${wrapper.files.join(" / ")}），CLI 一律透過 wrapper 呼叫建置工具`,
-      { fix: wrapper.fix },
+      { fix: wrapperInstall(wrapper.script, t.component.dir) },
     ),
   ];
 }

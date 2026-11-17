@@ -3,6 +3,7 @@ import { valueInForce, type EffectiveItem, type ResolvedComponent } from "../dec
 import { DECLARATION_FILE } from "../declaration/types.ts";
 import type { Finding } from "../report/finding.ts";
 import type { ItemDef } from "../standard/types.ts";
+import { reportingMissingTool } from "../tools/missing.ts";
 import type { ToolRunner } from "../tools/runner.ts";
 import { installedNpmPackage } from "../versions/installed.ts";
 import { pinnedBuilds, type ReadRepoFile } from "../versions/pinned.ts";
@@ -85,6 +86,17 @@ function checkInstalled(
 
 const VERSION_OUTPUT = /version\s+v?(\d+(?:\.\d+)+)/;
 
+/** What a tool on PATH says its version is (undefined when unreadable), or the finding that it is not there. */
+async function versionOnPath(tools: ToolRunner, c: ResolvedComponent, tool: string) {
+  let version: string | undefined;
+  const missing = await reportingMissingTool(async () => {
+    const out = await tools.run({ language: c.language, tool, dir: c.dir, args: ["--version"] });
+    version = VERSION_OUTPUT.exec(`${out.stdout}\n${out.stderr}`)?.[1];
+    return [];
+  });
+  return { version, missing };
+}
+
 /** Tools taken from PATH rather than the project (golangci-lint): ask the binary once, check every component. */
 async function checkOnPath(
   components: ResolvedComponent[],
@@ -92,16 +104,20 @@ async function checkOnPath(
   tools: ToolRunner,
 ) {
   const findings: Finding[] = [];
-  const asked = new Map<string, string | undefined>();
+  const asked = new Map<string, Awaited<ReturnType<typeof versionOnPath>>>();
   for (const c of components) {
     for (const { key, item } of defs(c)) {
       if (!item.onPath) continue;
       const tool = key.replace(/^tools\./, "");
-      if (!asked.has(tool)) {
-        const out = await tools.run({ language: c.language, tool, dir: c.dir, args: ["--version"] });
-        asked.set(tool, VERSION_OUTPUT.exec(`${out.stdout}\n${out.stderr}`)?.[1]);
+      let answer = asked.get(tool);
+      if (!answer) {
+        answer = await versionOnPath(tools, c, tool);
+        asked.set(tool, answer);
+        findings.push(...answer.missing);
       }
-      const version = asked.get(tool);
+      // Not on PATH: that is the error, reported once; there is no version to hold against the range.
+      if (answer.missing.length > 0) continue;
+      const { version } = answer;
       const range = rangeInForce(item, c.effective[key]);
       if (version !== undefined && inRange(version, range)) continue;
       findings.push({

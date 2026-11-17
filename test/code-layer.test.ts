@@ -1,11 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCheck, type CheckOptions } from "../src/check.ts";
 import { codeLayer } from "../src/layers/code.ts";
 import { declarationLayer } from "../src/layers/declaration.ts";
-import { javaSettingsLayer } from "../src/layers/settings-java.ts";
 import { uncoveredFilesLayer } from "../src/layers/uncovered.ts";
 import { ToolMissingError, type ToolRequest, type ToolRunner } from "../src/tools/runner.ts";
 import { rules, TODAY } from "./helpers.ts";
@@ -230,26 +229,61 @@ describe("code checks in devguard check", () => {
     expect(await run({ only: "format", full: false })).toEqual(["api/:ruff format --diff --force-exclude ."]);
   });
 
-  it("reports a Python tool that is not installed as environment/tool-missing with uv sync", async () => {
+  it("reports a Python tool that is not installed once, with the install command, and checks with the others (#217)", async () => {
     const declaration = API;
     const tools: ToolRunner = {
-      run: () => Promise.reject(new ToolMissingError("找不到 ruff：專案環境（.venv）中沒有安裝", "cd api && uv sync")),
+      run: (req) =>
+        req.tool === "ruff"
+          ? Promise.reject(new ToolMissingError("找不到 ruff：專案環境（.venv）中沒有安裝", "cd api && uv sync"))
+          : Promise.resolve({ code: 1, stdout: "a.py:1: error: Bad type  [assignment]\n", stderr: "" }),
     };
     const options = { cwd: project(declaration), today: TODAY, tools, listFiles: () => Promise.resolve(["api/a.py"]) };
     const { findings } = await runCheck(options, LAYERS);
-    expect(findings).toContainEqual(
-      expect.objectContaining({ rule: "environment/tool-missing", fix: "cd api && uv sync" }),
-    );
+    // Ruff is asked for twice (lint, format) and reported once.
+    expect(rules(findings)).toEqual(["error:environment/tool-missing", "error:mypy/assignment"]);
+    expect(findings[0]).toMatchObject({
+      layer: "environment",
+      message: "找不到 ruff：專案環境（.venv）中沒有安裝",
+      fix: "cd api && uv sync",
+    });
   });
 
-  it("reports a tool that is not installed as environment/tool-missing with npm ci", async () => {
+  it("reports a missing ESLint and still reports what Prettier, tsc and the other components find (#217)", async () => {
     const tools: ToolRunner = {
-      run: () => Promise.reject(new ToolMissingError("找不到 eslint：node_modules 中沒有安裝", "cd web && npm ci")),
+      run(req) {
+        if (req.tool === "eslint") {
+          return Promise.reject(new ToolMissingError("找不到 eslint：node_modules 中沒有安裝", "cd web && npm ci"));
+        }
+        if (req.tool === "tsc") {
+          return Promise.resolve({ code: 2, stdout: "a.ts(1,7): error TS2322: Bad.\n", stderr: "" });
+        }
+        return Promise.resolve({ code: 0, stdout: PASSING_OUTPUT[req.tool] ?? "", stderr: "" });
+      },
     };
-    const { findings } = await check({ tools, files: ["web/a.ts"] });
-    expect(findings).toContainEqual(
-      expect.objectContaining({ rule: "environment/tool-missing", fix: "cd web && npm ci" }),
-    );
+    const { findings } = await check({ tools, files: ["web/a.ts", "main.go"] });
+    expect(rules(findings)).toEqual(["error:environment/tool-missing", "error:tsc/TS2322"]);
+    expect(findings[0]).toMatchObject({ message: "找不到 eslint：node_modules 中沒有安裝", fix: "cd web && npm ci" });
+  });
+
+  it("reports each missing tool of a component, and a tool two components miss once (#217)", async () => {
+    const calls: string[] = [];
+    const tools: ToolRunner = {
+      run(req) {
+        calls.push(req.tool);
+        return Promise.reject(new ToolMissingError(`找不到 ${req.tool}`, "npm ci"));
+      },
+    };
+    const two =
+      "standard: team@1.0.0\ncomponents:\n  - {path: web/, language: typescript}\n  - {path: app/, language: typescript}\n";
+    const listFiles = () => Promise.resolve(["web/a.ts", "app/b.ts"]);
+    const { findings } = await runCheck({ cwd: project(two), today: TODAY, tools, listFiles }, LAYERS);
+    expect(findings.map((f) => f.message)).toEqual(["找不到 eslint", "找不到 prettier", "找不到 tsc"]);
+    expect(calls).toEqual(["eslint", "prettier", "tsc", "eslint", "prettier", "tsc"]);
+  });
+
+  it("does not swallow a tool run that fails for another reason", async () => {
+    const tools: ToolRunner = { run: () => Promise.reject(new Error("spawn EACCES")) };
+    await expect(check({ tools, files: ["web/a.ts"] })).rejects.toThrow("spawn EACCES");
   });
 
   it("still checks code when the declaration is missing", async () => {
@@ -302,74 +336,5 @@ describe("Go code checks in devguard check", () => {
     const r = await runCheck({ cwd: project(declaration), today: TODAY, tools, listFiles }, LAYERS);
     expect(r.findings).toEqual([]);
     expect(calls).toEqual([expect.objectContaining({ tool: "golangci-lint", dir: "svc/" })]);
-  });
-});
-
-describe("a missing tool hides only its own findings (#217)", () => {
-  const TWO =
-    "standard: team@1.0.0\ncomponents:\n  - {path: web/, language: typescript}\n  - {path: api/, language: typescript}\n";
-  const TSC_ERROR = { code: 2, stdout: "src/a.ts(1,7): error TS2322: Bad.\n", stderr: "" };
-  const without = (missing: (req: ToolRequest) => boolean): ToolRunner => ({
-    run(req) {
-      if (missing(req)) {
-        return Promise.reject(new ToolMissingError(`找不到 ${req.tool}`, `cd ${req.dir.replace(/\/$/, "")} && npm ci`));
-      }
-      if (req.tool === "tsc") return Promise.resolve(TSC_ERROR);
-      return Promise.resolve({ code: 0, stdout: req.tool === "eslint" ? "[]" : "", stderr: "" });
-    },
-  });
-  const files = ["web/src/a.ts", "api/src/a.ts"];
-  const run = (tools: ToolRunner) =>
-    runCheck({ cwd: project(TWO), today: TODAY, tools, listFiles: () => Promise.resolve(files) }, LAYERS);
-
-  it("still reports the type errors of the component whose eslint is missing, and of the others", async () => {
-    const r = await run(without((req) => req.tool === "eslint" && req.dir === "web/"));
-    expect(r.findings.map((f) => `${f.rule} ${f.component ?? ""}`).sort()).toEqual([
-      "environment/tool-missing web/ (TypeScript)",
-      "tsc/TS2322 api/ (TypeScript)",
-      "tsc/TS2322 web/ (TypeScript)",
-    ]);
-  });
-
-  it("reports each component that lacks the tool, with its own install command", async () => {
-    const r = await run(without((req) => req.tool === "eslint"));
-    const missing = r.findings.filter((f) => f.rule === "environment/tool-missing");
-    expect(missing.map((f) => f.fix).sort()).toEqual(["cd api && npm ci", "cd web && npm ci"]);
-    expect(r.findings.filter((f) => f.rule === "tsc/TS2322")).toHaveLength(2);
-  });
-});
-
-describe("a missing Java wrapper is reported once per component (#217)", () => {
-  const TWO = "standard: team@1.0.0\ncomponents:\n  - {path: a/, language: java}\n  - {path: b/, language: java}\n";
-  const POM =
-    "<project><build><plugins><plugin><artifactId>maven-pmd-plugin</artifactId></plugin></plugins></build></project>\n";
-
-  it("drops the duplicate only for the component that settings/wrapper-missing names", async () => {
-    const cwd = project(TWO);
-    for (const d of ["a", "b"]) {
-      mkdirSync(join(cwd, d, "src/main/java"), { recursive: true });
-      writeFileSync(join(cwd, d, "pom.xml"), POM);
-      writeFileSync(join(cwd, d, "src/main/java/A.java"), "class A {}\n");
-    }
-    writeFileSync(join(cwd, "b/mvnw"), "");
-    const tools: ToolRunner = {
-      run: (req) =>
-        Promise.reject(
-          new ToolMissingError(
-            `找不到 ${req.tool}`,
-            `cd ${req.dir.replace(/\/$/, "")} && mvn -N wrapper:wrapper`,
-            true,
-          ),
-        ),
-    };
-    const files = ["a/pom.xml", "a/src/main/java/A.java", "b/pom.xml", "b/mvnw", "b/src/main/java/A.java"];
-    const r = await runCheck({ cwd, today: TODAY, tools, listFiles: () => Promise.resolve(files) }, [
-      declarationLayer,
-      javaSettingsLayer,
-      codeLayer,
-    ]);
-    const pick = (rule: string) => r.findings.filter((f) => f.rule === rule).map((f) => f.component);
-    expect(pick("settings/wrapper-missing")).toEqual(["a/ (Java)"]);
-    expect(pick("environment/tool-missing")).toEqual(["b/ (Java)"]);
   });
 });

@@ -24,7 +24,7 @@ devguard hook git-pre-commit|git-pre-push|claude-session-start|claude-post-edit|
 | [`claude-post-edit`](#claude-post-edit) | Claude 用 `Edit` / `Write` 改完一個檔案 | 該檔案的 lint、format | stdout 的 JSON：`decision: "block"` | Claude 收到問題並繼續修正，exit `0` |
 | [`claude-stop`](#claude-stop) | Claude 要結束這一輪 | 工作目錄中所有變更檔案的 lint、format、typecheck | stdout 的 JSON：`decision: "block"` 或 `systemMessage` | Claude 繼續修正；第二次仍失敗就放行並告訴開發者，exit `0` |
 
-所有 hook 遇到專案工具沒有安裝時，都會把它列成一筆錯誤（附安裝指令）並繼續跑（與 `check`、`doctor` 相同）。
+所有 hook 遇到專案工具沒有安裝時，都會把它列成一筆錯誤（`environment/tool-missing`，附安裝指令）並繼續跑，與 `check` 相同。
 
 git 執行 hook 時會匯出 `GIT_DIR`、`GIT_INDEX_FILE` 等 repo 定位變數。devguard 啟動專案工具（測試、linter、formatter、型別檢查、套件管理指令）前會移除 `GIT_DIR`、`GIT_WORK_TREE`、`GIT_INDEX_FILE`、`GIT_OBJECT_DIRECTORY`、`GIT_ALTERNATE_OBJECT_DIRECTORIES`、`GIT_COMMON_DIR`、`GIT_PREFIX`，其餘環境變數照常傳遞。所以專案測試在暫存目錄裡建立的 git repo，即使在 worktree 中 push，也不會寫進你的 repo。devguard 自己的 git 指令（例如讀取 staged 版本）仍使用這些變數。
 

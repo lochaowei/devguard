@@ -85,6 +85,7 @@ export async function runCodeFix(options: CodeFixOptions): Promise<0 | 1> {
   });
   if (code !== 0) return code;
   // Exit 0 with something pending means it was applied: check again. Otherwise the first check still holds.
+  // A tool that is not installed is among them, with its install command (SPEC §11).
   const left = [...failures, ...(pending ? await checkTargets(targets, checkCtx) : before)];
   const heading = pending ? "修正後再次檢查，剩餘的程式碼問題：" : "剩餘的程式碼問題：";
   options.io.write(`\n${heading}\n${renderText({ components: [], findings: left })}`);

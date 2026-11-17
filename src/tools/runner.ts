@@ -113,17 +113,17 @@ export interface ToolRunner {
   manage?(request: PackageRequest): Promise<ToolResult>;
 }
 
-/** The tool is not installed. `check` reports it as `environment/tool-missing` and carries on (SPEC §11). */
+/**
+ * The tool is not installed. A check reports it as an `environment/tool-missing` error (`reportingMissingTool`); a
+ * command that has to run the tool to do its work (`standard upgrade --apply`) ends with it, exit 2 (SPEC §11).
+ */
 export class ToolMissingError extends Error {
   readonly install: string;
-  /** The missing tool is a Java build wrapper, which `settings/wrapper-missing` already reports (#217). */
-  readonly javaWrapper: boolean;
 
-  constructor(message: string, install: string, javaWrapper = false) {
+  constructor(message: string, install: string) {
     super(message);
     this.name = "ToolMissingError";
     this.install = install;
-    this.javaWrapper = javaWrapper;
   }
 
   report(): string {
@@ -145,7 +145,7 @@ export interface ToolRunnerDeps {
   processEnv?: EnvVars;
 }
 
-type Resolved = { ok: true; command: Command } | { ok: false; message: string; install: string; javaWrapper?: true };
+type Resolved = { ok: true; command: Command } | { ok: false; message: string; install: string };
 
 interface Env {
   path: typeof win32;
@@ -381,25 +381,38 @@ function go(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
   return { ok: true, command: { file: "go", args: ["tool", req.tool, ...args], cwd, env: offline } };
 }
 
-/** The Java build wrappers by `ToolRequest.tool`: the script per platform, and how to add a missing one. */
-const JAVA_WRAPPERS: Readonly<Record<string, { label: string; windows: string; posix: string; install: string }>> = {
-  mvnw: { label: "Maven", windows: "mvnw.cmd", posix: "mvnw", install: "mvn -N wrapper:wrapper" },
-  gradlew: { label: "Gradle", windows: "gradlew.bat", posix: "gradlew", install: "gradle wrapper" },
-};
+/**
+ * How to add a Java build wrapper that is missing. The settings check for an uncommitted wrapper
+ * (`settings/wrapper-missing`) gives the same text, so a component without one gets a single error (#217).
+ */
+export function wrapperInstall(tool: "mvnw" | "gradlew", dir: string): string {
+  const where = dir === "" ? "專案根目錄" : ` ${dir} `;
+  return tool === "mvnw"
+    ? `在${where}執行 mvn -N wrapper:wrapper，並提交 mvnw、mvnw.cmd 與 .mvn/wrapper/`
+    : `在${where}執行 gradle wrapper，並提交 gradlew、gradlew.bat 與 gradle/wrapper/`;
+}
+
+/** The Java build wrappers by `ToolRequest.tool`: the script per platform. */
+const JAVA_WRAPPERS = {
+  mvnw: { label: "Maven", windows: "mvnw.cmd", posix: "mvnw" },
+  gradlew: { label: "Gradle", windows: "gradlew.bat", posix: "gradlew" },
+} as const;
+
+const isWrapper = (tool: string): tool is keyof typeof JAVA_WRAPPERS => Object.hasOwn(JAVA_WRAPPERS, tool);
 
 /** Only the wrapper asked for: Maven arguments must never reach gradlew, nor Gradle tasks mvnw (#96). */
 function java(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
   const cwd = dirs[0] ?? "";
-  const kind = JAVA_WRAPPERS[req.tool];
-  if (!kind) throw new Error(`Java 工具必須是 mvnw 或 gradlew：${req.tool}`);
+  const { tool } = req;
+  if (!isWrapper(tool)) throw new Error(`Java 工具必須是 mvnw 或 gradlew：${req.tool}`);
+  const kind = JAVA_WRAPPERS[tool];
   const name = env.windows ? kind.windows : kind.posix;
   const wrapper = dirs.map((d) => env.path.join(d, name)).find((w) => env.exists(w));
   if (!wrapper) {
     return {
       ok: false,
       message: `找不到 ${req.tool}：沒有 ${kind.label} wrapper（${kind.posix} / ${kind.windows}）`,
-      install: inDir(req.dir, kind.install),
-      javaWrapper: true,
+      install: wrapperInstall(tool, req.dir),
     };
   }
   return { ok: true, command: { file: wrapper, args: [...(req.args ?? [])], cwd } };
@@ -444,7 +457,7 @@ export function createToolRunner(deps: ToolRunnerDeps): Required<ToolRunner> {
   const exec = deps.exec ?? nodeExec;
   const dirOf = (dir: string) => env.path.join(deps.cwd, dir.replace(/\/$/, ""));
   const start = async (resolved: Resolved, stdin?: string) => {
-    if (!resolved.ok) throw new ToolMissingError(resolved.message, resolved.install, resolved.javaWrapper === true);
+    if (!resolved.ok) throw new ToolMissingError(resolved.message, resolved.install);
     try {
       const command = { ...resolved.command, unsetEnv: GIT_REPO_ENV };
       return await exec(stdin === undefined ? command : { ...command, stdin });

@@ -2,6 +2,7 @@ import { posix } from "node:path";
 import type { Finding } from "../report/finding.ts";
 import { isRecord } from "../shared/guards.ts";
 import { referencedTsconfigs } from "../settings/typescript/tsconfig.ts";
+import { reportingMissingTool } from "../tools/missing.ts";
 import { typescriptToolRequest, type ToolResult } from "../tools/runner.ts";
 import { eslintIgnoreFlags } from "./eslint-flags.ts";
 import { codeFinding, firstDifferentLine, runBatched, splitStaged, toolFailed, toRepoPath } from "./support.ts";
@@ -256,13 +257,13 @@ export const typescriptChecker: CodeChecker = {
   async check(target, ctx) {
     const findings: Finding[] = [];
     const useBiome = usesBiome(target);
-    if (target.categories.has("lint")) {
-      findings.push(...(await (useBiome ? biome(target, ctx, "lint") : lint(target, ctx))));
-    }
+    // Each category has its own tool: one that is not installed is reported and the others still run (#217).
+    const run = async (check: () => Promise<Finding[]>) => findings.push(...(await reportingMissingTool(check)));
+    if (target.categories.has("lint")) await run(() => (useBiome ? biome(target, ctx, "lint") : lint(target, ctx)));
     if (target.categories.has("format")) {
-      findings.push(...(await (useBiome ? biome(target, ctx, "format") : format(target, ctx))));
+      await run(() => (useBiome ? biome(target, ctx, "format") : format(target, ctx)));
     }
-    if (target.categories.has("typecheck")) findings.push(...(await typecheck(target, ctx)));
+    if (target.categories.has("typecheck")) await run(() => typecheck(target, ctx));
     return findings;
   },
   /** Lint fixes first, then the formatter, so the formatter has the last word on layout. */

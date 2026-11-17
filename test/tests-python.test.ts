@@ -102,14 +102,9 @@ describe("Python tests", () => {
       if (req.tool === "pytest") return pytest;
       throw new ToolMissingError("找不到 pytest-cov", `uv add --dev "pytest-cov${req.range ?? ""}"`);
     });
-    const { findings } = await check(tools);
-    expect(findings).toEqual([
-      expect.objectContaining({
-        rule: "environment/tool-missing",
-        message: "找不到 pytest-cov",
-        fix: 'uv add --dev "pytest-cov>=6,<8"',
-      }),
-    ]);
+    const r = await check(tools);
+    expect(rules(r.findings)).toEqual(["error:environment/tool-missing"]);
+    expect(r.findings[0]).toMatchObject({ message: "找不到 pytest-cov", fix: 'uv add --dev "pytest-cov>=6,<8"' });
     expect(calls.map((c) => c.tool)).toEqual(["pytest", "pytest-cov"]);
   });
 
@@ -150,8 +145,10 @@ describe("a missing tool in one component (#217)", () => {
       return req.tool === "pytest" ? ok("", 1, PYTEST_FAILED) : ok("");
     });
     const { findings } = await checkTests(project(TWO), tools, ["a/x.py", "b/x.py"]);
-    const pick = (rule: string) => findings.filter((f) => f.rule === rule).map((f) => f.component);
-    expect(pick("environment/tool-missing")).toEqual(["a/ (Python)"]);
-    expect(pick("test/tool-failed")).toEqual(["b/ (Python)"]);
+    expect(rules(findings)).toEqual([
+      "error:environment/tool-missing",
+      "error:test/tool-failed",
+      "error:coverage/no-report",
+    ]);
   });
 });
