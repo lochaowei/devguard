@@ -212,3 +212,95 @@ describe("go checker: staged files (SPEC §7.4)", () => {
     ]);
   });
 });
+
+describe("go checker: staged files identical to the working tree share one `fmt --diff` (#216)", () => {
+  const messy = "package x\n\nfunc  f() {}\n";
+  const clean = "package x\n\nfunc f() {}\n";
+
+  /** A fake `golangci-lint fmt --diff <files>`: prints a gofmt-style diff for each file read from `disk` that is messy. */
+  function runner(disk: Record<string, string>) {
+    const calls: ToolRequest[] = [];
+    const tools: ToolRunner = {
+      run(req) {
+        calls.push(req);
+        const args = req.args ?? [];
+        if (args[0] === "fmt" && args[1] === "--diff") {
+          const diffs = args
+            .slice(2)
+            .filter((f) => disk[`${req.dir}${f}`]?.includes("func  f"))
+            .map(
+              (f) =>
+                `diff ${f}.orig ${f}\n--- ${f}.orig\n+++ ${f}\n@@ -1,3 +1,3 @@\n package x\n \n-func  f() {}\n+func f() {}\n`,
+            );
+          return Promise.resolve({ code: diffs.length > 0 ? 1 : 0, stdout: diffs.join(""), stderr: "" });
+        }
+        if (args[0] === "fmt") {
+          return Promise.resolve({ code: 0, stdout: (req.stdin ?? "").replace("func  f", "func f"), stderr: "" });
+        }
+        return Promise.resolve({ code: 0, stdout: '{"Issues":[]}', stderr: "" });
+      },
+    };
+    return { tools, calls };
+  }
+
+  const run = (files: string[], disk: Record<string, string>, staged: Record<string, string>) => {
+    const { tools, calls } = runner(disk);
+    const findings = goChecker.check(target({ files }), {
+      cwd: CWD,
+      tools,
+      readText: (p) => Promise.resolve(disk[p]),
+      staged: (p) => Promise.resolve(staged[p]),
+    });
+    return findings.then((f) => ({ findings: f, calls }));
+  };
+
+  const fmtCalls = (calls: ToolRequest[]) => calls.filter((c) => c.args?.[0] === "fmt");
+
+  it("uses a constant number of golangci-lint fmt calls for 25 fully staged files", async () => {
+    const names = Array.from({ length: 25 }, (_, i) => `f${String(i)}.go`);
+    const content = Object.fromEntries(names.map((n) => [`svc/${n}`, clean]));
+    const { findings, calls } = await run(names, content, content);
+    expect(findings).toEqual([]);
+    expect(fmtCalls(calls)).toHaveLength(1);
+    expect(fmtCalls(calls)[0]?.args).toEqual(["fmt", "--diff", ...names]);
+  });
+
+  it("reports a misformatted file once, at the first differing line", async () => {
+    const content = { "svc/a.go": clean, "svc/b.go": messy };
+    const { findings, calls } = await run(["a.go", "b.go"], content, content);
+    expect(fmtCalls(calls)).toHaveLength(1);
+    expect(findings.map((f) => [f.rule, f.file, f.line])).toEqual([["golangci-lint/fmt", "svc/b.go", 3]]);
+  });
+
+  it("still judges a partially staged file by its staged content, through stdin", async () => {
+    const disk = { "svc/a.go": messy, "svc/b.go": clean };
+    const staged = { "svc/a.go": clean, "svc/b.go": clean };
+    const { findings, calls } = await run(["a.go", "b.go"], disk, staged);
+    expect(findings).toEqual([]);
+    const fmt = fmtCalls(calls);
+    expect(fmt.map((c) => c.args)).toEqual([
+      ["fmt", "--diff", "b.go"],
+      ["fmt", "--stdin"],
+    ]);
+    expect(fmt[1]?.stdin).toBe(clean);
+  });
+
+  it("reports a tool failure when fmt --diff crashes", async () => {
+    const tools: ToolRunner = {
+      run: (req) =>
+        Promise.resolve(
+          req.args?.[0] === "fmt"
+            ? { code: 3, stdout: "", stderr: "boom" }
+            : { code: 0, stdout: '{"Issues":[]}', stderr: "" },
+        ),
+    };
+    const content = { "svc/a.go": messy };
+    const findings = await goChecker.check(target({ files: ["a.go"] }), {
+      cwd: CWD,
+      tools,
+      readText: (p) => Promise.resolve(content[p as keyof typeof content]),
+      staged: (p) => Promise.resolve(content[p as keyof typeof content]),
+    });
+    expect(findings.map((f) => f.rule)).toEqual(["code/tool-failed"]);
+  });
+});

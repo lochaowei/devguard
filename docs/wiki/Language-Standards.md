@@ -151,7 +151,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
   - `tools.goimports`（`golang.org/x/tools/cmd/goimports`）：`>=0.38,<1`
   - `tools.govulncheck`（`golang.org/x/vuln/cmd/govulncheck`）：`>=1.1,<2`（`team@1.3.0` 移除）
 - **程式碼檢查（`code` 層）**：
-  - 透過 `golangci-lint run --output.json.path=stdout` 一次涵蓋 lint、format 與型別編譯問題，並依類別過濾。一律加上 `--max-same-issues=0 --max-issues-per-linter=0`，不論設定檔的 `issues` 怎麼寫，所有相同或同一 linter 的問題都會列出（#90）；加上 `--allow-serial-runners`，另一個 golangci-lint 正在執行時排隊等候，不會以 `parallel golangci-lint is running` 失敗（#94）。`--staged` 時額外對 staged `.go` 檔執行 `golangci-lint fmt --stdin` 檢查排版。
+  - 透過 `golangci-lint run --output.json.path=stdout` 一次涵蓋 lint、format 與型別編譯問題，並依類別過濾。一律加上 `--max-same-issues=0 --max-issues-per-linter=0`，不論設定檔的 `issues` 怎麼寫，所有相同或同一 linter 的問題都會列出（#90）；加上 `--allow-serial-runners`，另一個 golangci-lint 正在執行時排隊等候，不會以 `parallel golangci-lint is running` 失敗（#94）。`--staged` 時額外檢查 staged `.go` 檔的排版：內容與工作目錄相同的檔案合併成一次 `golangci-lint fmt --diff`，內容不同的（部分 staged）才逐檔以 `golangci-lint fmt --stdin` 檢查 staged 版本（#216）。
 - **自動修正程式碼（`fix --code`）**：
   - `golangci-lint run --fix`（套用 linters 自動修復與設定中的 `gofumpt` / `goimports`），同樣加上上述三個參數，所有能自動修正的問題都會套用。
 - **測試與覆蓋率（`tests` 層，`--full`）**：
