@@ -7,11 +7,11 @@ import { nodeExec, type Command, type EnvVars, type Exec } from "../process/exec
 import { goEnv } from "./go-env.ts";
 import { PYTHON_MANAGERS, pythonManager, unsupportedPythonLock, type PythonManager } from "./python-manager.ts";
 import { isEnoent, readIfExistsSync } from "../shared/fs.ts";
-import { pyName, pyprojectDependencies } from "../deps/manifests.ts";
+import { packageJsonDependencies, pyName, pyprojectDependencies } from "../deps/manifests.ts";
 import { globSource } from "../shared/glob.ts";
 import { readToml } from "../shared/toml.ts";
 import { isRecord } from "../shared/guards.ts";
-import { typescriptInstall } from "./typescript-install.ts";
+import { typescriptAddDev, typescriptInstall } from "./typescript-install.ts";
 
 export interface ToolRequest {
   language: Language;
@@ -28,8 +28,8 @@ export interface ToolRequest {
   stdin?: string;
   /**
    * The standard's version range of the tool (`tools.<tool>`). Python: when the tool is missing and no
-   * pyproject.toml lists it, the install hint adds it to the dev dependencies in this range (#68). Go: the
-   * golangci-lint hint names the range to put on PATH (#91).
+   * pyproject.toml lists it, the install hint adds it to the dev dependencies in this range (#68); TypeScript: the
+   * same when no package.json lists it (#210). Go: the golangci-lint hint names the range to put on PATH (#91).
    */
   range?: string;
   /**
@@ -51,13 +51,32 @@ export function pythonToolRequest(
   return { language: "python", tool, dir: component.dir, ...(typeof range === "string" ? { range } : {}) };
 }
 
-/** A run of the TypeScript `tool` in a component's directory, with its `deps.manager` for the install hint (#117). */
+/**
+ * The npm package that provides a TypeScript tool and the standard's name for it (`tools.<name>`), where they differ
+ * from the executable's name.
+ */
+const TYPESCRIPT_PACKAGES: Readonly<Record<string, { package: string; item: string }>> = {
+  tsc: { package: "typescript", item: "typescript" },
+  biome: { package: "@biomejs/biome", item: "biome" },
+};
+
+/**
+ * A run of the TypeScript `tool` in a component's directory, with what the hint for a missing tool needs: its
+ * `deps.manager` (#117) and the standard's range of the tool (#210).
+ */
 export function typescriptToolRequest(
   component: { dir: string; effective: Readonly<Record<string, unknown>> },
   tool: string,
 ): Omit<ToolRequest, "args"> {
   const manager = component.effective["deps.manager"];
-  return { language: "typescript", tool, dir: component.dir, ...(typeof manager === "string" ? { manager } : {}) };
+  const range = component.effective[`tools.${TYPESCRIPT_PACKAGES[tool]?.item ?? tool}`];
+  return {
+    language: "typescript",
+    tool,
+    dir: component.dir,
+    ...(typeof manager === "string" ? { manager } : {}),
+    ...(typeof range === "string" ? { range } : {}),
+  };
 }
 
 /** A run of golangci-lint in a component's directory, with the standard's range of it for the install hint (#91). */
@@ -330,12 +349,38 @@ function typescript(req: ToolRequest, dirs: readonly string[], env: Env): Resolv
   const bin = dirs
     .flatMap((d) => names.map((name) => env.path.join(d, "node_modules", ".bin", name)))
     .find((p) => env.exists(p));
-  if (!bin) {
-    const root = dirs.at(-1) ?? "";
-    const how = typescriptInstall(req.dir, req.manager, (file) => env.readText(env.path.join(root, file)));
+  if (!bin) return typescriptMissing(req, dirs, env);
+  return { ok: true, command: { file: bin, args: [...(req.args ?? [])], cwd } };
+}
+
+/** Whether a package.json of the component or a directory above it lists `name`; undefined when there is none. */
+function listedInPackageJson(name: string, dirs: readonly string[], env: Env): boolean | undefined {
+  const texts = dirs.flatMap((d) => env.readText(env.path.join(d, "package.json")) ?? []);
+  if (texts.length === 0) return undefined;
+  return texts.some((t) => packageJsonDependencies(t, "package.json").some((d) => d.name === name));
+}
+
+/**
+ * How to get a missing TypeScript tool. The package manager's install brings it only when a package.json lists it
+ * (or there is none to tell). Otherwise the project does not have the tool the standard requires (it uses another,
+ * e.g. xo or oxfmt), and the hint adds it to the dev dependencies in the standard's range instead (#210), as for
+ * Python (#68).
+ */
+function typescriptMissing(req: ToolRequest, dirs: readonly string[], env: Env): Resolved {
+  const root = dirs.at(-1) ?? "";
+  const read = (file: string) => env.readText(env.path.join(root, file));
+  const name = TYPESCRIPT_PACKAGES[req.tool]?.package ?? req.tool;
+  if (listedInPackageJson(name, dirs, env) !== false) {
+    const how = typescriptInstall(req.dir, req.manager, read);
     return { ok: false, message: `找不到 ${req.tool}：node_modules 中沒有安裝`, install: inDir(how.dir, how.command) };
   }
-  return { ok: true, command: { file: bin, args: [...(req.args ?? [])], cwd } };
+  const spec = req.range === undefined ? name : `${name}@${req.range.replaceAll(",", " ")}`;
+  const how = typescriptAddDev(req.dir, req.manager, read, spec);
+  return {
+    ok: false,
+    message: `找不到 ${req.tool}：標準要求此工具，但專案的 package.json 沒有列出`,
+    install: inDir(how.dir, how.command),
+  };
 }
 
 /** `tool` directives in go.mod, both single-line and block form. */
