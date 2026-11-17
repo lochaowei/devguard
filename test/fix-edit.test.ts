@@ -514,3 +514,39 @@ line-length = 1
     expect(out).toBe('[tool.ruff.lint]\nselect = ["E", "B", "UP"]\n');
   });
 });
+
+describe("editConfigText: TOML keeps untouched lines byte for byte (#215)", () => {
+  const branch = { op: "set", path: ["tool", "coverage", "run", "branch"], value: true } as const;
+
+  // The shape of pypa/build's pyproject.toml: dotted keys under [tool.pytest], a last array element without a
+  // trailing comma and a comment aligned to the other lines, and an existing [tool.coverage] that gains a key.
+  it.each([1, 2, 20, 81])("keeps a last array item's comment %i spaces away, when another table gains a key", (gap) => {
+    const text = `[tool.pytest]
+ini_options.filterwarnings = [
+  "error",
+  "default:unclosed:ResourceWarning",${" ".repeat(gap)}# first
+  "ignore:os.path.commonprefix:DeprecationWarning"${" ".repeat(gap)}# https://example.com/pull/222
+]
+ini_options.log_level = "INFO"
+
+[tool.coverage]
+run.source = [ "build", "tests" ]
+`;
+    const out = editConfigText("pyproject.toml", text, [branch]);
+    expect(out).toBe(`${text}run.branch = true\n`);
+  });
+
+  it("keeps the comment of a standard array when a key of its own table changes", () => {
+    const text = `[tool.pytest]
+filters = [
+  "a",
+  "b"${" ".repeat(9)}# why
+]
+level = "INFO"
+`;
+    const out = editConfigText("pyproject.toml", text, [
+      { op: "set", path: ["tool", "pytest", "level"], value: "DEBUG" },
+    ]);
+    expect(out).toBe(text.replace('"INFO"', '"DEBUG"'));
+  });
+});

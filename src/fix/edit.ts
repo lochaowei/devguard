@@ -13,7 +13,7 @@ import {
 import { isScalar, isSeq, parse as parseYaml, parseDocument, type Document, type YAMLSeq } from "yaml";
 import { baseName } from "../repo/paths.ts";
 import type { KeyEdit, KeyPath } from "./repair.ts";
-import { moveItems, renameKey } from "./toml-text.ts";
+import { moveItems, renameKey, restoreUntouchedLines } from "./toml-text.ts";
 import { renderKeepingLayout } from "./yaml-text.ts";
 
 /** How a structured shared file is read and written. */
@@ -156,7 +156,7 @@ function editToml(original: string, edits: readonly KeyEdit[]): string {
     ...[...sections].map(([name, values]) => ({ head: name ? `[${name}]\n` : "", name, values })),
     ...[...arrayTables].flatMap(([name, items]) => items.map((values) => ({ head: `[[${name}]]\n`, name, values }))),
   ];
-  let out = empty ? "" : patchToml(text, doc, TOML_FORMAT);
+  let out = empty ? "" : restoreUntouchedLines(text, patchToml(text, doc, TOML_FORMAT));
   for (const { head, name, values } of blocks) {
     out += `${separator(out)}${head}${underTable(stringifyToml(values, TOML_FORMAT), name).trimEnd()}\n`;
   }

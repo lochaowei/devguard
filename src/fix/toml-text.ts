@@ -197,3 +197,84 @@ export function moveItems(text: string, from: KeyPath, into: KeyPath): string {
     .sort((a, b) => b.at - a.at)
     .reduce((t, s) => t.slice(0, s.at) + s.insert + t.slice(s.at + s.remove), text);
 }
+
+/** Whitespace in front of a comment is layout, not data: lines that differ only there are the same line. */
+const sameButForCommentGap = (a: string, b: string): boolean =>
+  a.replace(/[ \t]+(?=#)/, " ") === b.replace(/[ \t]+(?=#)/, " ");
+
+/** Longest-common-subsequence cell budget; beyond it the lines are left as the patch wrote them. */
+const LCS_LIMIT = 4_000_000;
+
+/** `at(i, j)`: the length of the longest common subsequence of `a` from line `i` and `b` from line `j`. */
+function commonLengths(a: readonly string[], b: readonly string[]): (i: number, j: number) => number {
+  const width = b.length + 1;
+  const table = new Uint32Array((a.length + 1) * width);
+  const at = (i: number, j: number): number => table[i * width + j] ?? 0;
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      table[i * width + j] = a[i] === b[j] ? at(i + 1, j + 1) + 1 : Math.max(at(i + 1, j), at(i, j + 1));
+    }
+  }
+  return at;
+}
+
+/** A run of lines the patch replaced: each added line goes back to its removed twin when only the comment gap moved. */
+function restoreRun(removed: readonly string[], added: readonly string[]): string[] {
+  return added.map((line, k) => {
+    const old = removed[k];
+    return old !== undefined && sameButForCommentGap(old, line) ? old : line;
+  });
+}
+
+/** The patched lines `b`, with the replaced runs between lines both texts share restored where possible. */
+function mergeRuns(a: readonly string[], b: readonly string[]): string[] {
+  const at = commonLengths(a, b);
+  const out: string[] = [];
+  let removed: string[] = [];
+  let added: string[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length || j < b.length) {
+    const lineA = a[i];
+    const lineB = b[j];
+    if (lineA !== undefined && lineA === lineB) {
+      out.push(...restoreRun(removed, added), lineA);
+      removed = [];
+      added = [];
+      i++;
+      j++;
+    } else if (lineB !== undefined && (lineA === undefined || at(i, j + 1) >= at(i + 1, j))) {
+      added.push(lineB);
+      j++;
+    } else if (lineA !== undefined) {
+      removed.push(lineA);
+      i++;
+    }
+  }
+  return [...out, ...restoreRun(removed, added)];
+}
+
+/** How many lines `a` and `b` share at the start, or at the end. */
+function sharedLines(a: readonly string[], b: readonly string[], fromEnd: boolean): number {
+  const room = Math.min(a.length, b.length);
+  let n = 0;
+  while (n < room && (fromEnd ? a[a.length - 1 - n] === b[b.length - 1 - n] : a[n] === b[n])) n++;
+  return n;
+}
+
+/**
+ * toml-patch re-renders the comment gap of an array's last item (#215), so a line the edit never meant to touch
+ * comes back with different spacing. Aligns the patched text with the text it was patched from and puts back every
+ * changed line that differs from its original only in the whitespace before a comment. Lines the edit did change
+ * (new, removed, or different in value) keep what the patch wrote.
+ */
+export function restoreUntouchedLines(before: string, after: string): string {
+  const a = before.split("\n");
+  const b = after.split("\n");
+  const head = sharedLines(a, b, false);
+  const tail = sharedLines(a.slice(head), b.slice(head), true);
+  const midA = a.slice(head, a.length - tail);
+  const midB = b.slice(head, b.length - tail);
+  if (midA.length === 0 || midB.length === 0 || midA.length * midB.length > LCS_LIMIT) return after;
+  return [...b.slice(0, head), ...mergeRuns(midA, midB), ...b.slice(b.length - tail)].join("\n");
+}
