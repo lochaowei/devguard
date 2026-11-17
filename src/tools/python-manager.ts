@@ -23,6 +23,22 @@ export function pythonManager(dir: string, exists: FileExists): PythonManager {
   return nearest?.endsWith("poetry.lock") ? "poetry" : "uv";
 }
 
+/** Python lockfiles of package managers devguard does not support (SPEC §5.2): PDM's and PEP 751's. */
+export const UNSUPPORTED_PYTHON_LOCKS = ["pdm.lock", "pylock.toml"] as const;
+
+/**
+ * The nearest lockfile of an unsupported manager, unless a uv.lock or poetry.lock is in the same or a nearer
+ * directory (those win). Repo-relative.
+ */
+export function unsupportedPythonLock(dir: string, exists: FileExists): string | undefined {
+  for (const d of upwards(dir)) {
+    if (exists(`${d}uv.lock`) || exists(`${d}poetry.lock`)) return undefined;
+    const found = UNSUPPORTED_PYTHON_LOCKS.find((l) => exists(d + l));
+    if (found) return d + found;
+  }
+  return undefined;
+}
+
 /** `pythonManager` through an async reader of repo-relative files (undefined when a file does not exist). */
 export async function readPythonManager(
   dir: string,

@@ -540,3 +540,29 @@ describe("deps layer: without a usable declaration", () => {
     expect(summary(findings)).toEqual(["error:standard/newer-than-cli::.devguard.yaml"]);
   });
 });
+
+describe("deps layer: unsupported Python lockfile (#213)", () => {
+  it("names pdm.lock and the supported managers instead of only asking for uv.lock", async () => {
+    const { findings } = await check({ declaration: decl("python"), files: { "pyproject.toml": "", "pdm.lock": "" } });
+    expect(summary(findings)).toEqual(["error:deps/lockfile-missing:./ (Python):uv.lock"]);
+    expect(findings[0]?.message).toContain("pdm.lock");
+    expect(findings[0]?.message).toContain("uv 與 Poetry");
+  });
+
+  it("names pylock.toml, also when it is in a parent directory", async () => {
+    const { findings } = await check({
+      declaration: decl("python", "svc/"),
+      files: { "svc/pyproject.toml": "", "pylock.toml": "" },
+    });
+    expect(findings[0]?.message).toContain("pylock.toml");
+    expect(findings[0]?.message).toContain("uv 與 Poetry");
+  });
+
+  it("keeps the plain message when a uv.lock is next to the pdm.lock", async () => {
+    const { findings } = await check({
+      declaration: decl("python"),
+      files: { "pyproject.toml": "", "pdm.lock": "", "uv.lock": "" },
+    });
+    expect(findings).toEqual([]);
+  });
+});

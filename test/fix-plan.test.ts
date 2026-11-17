@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { applyPlan, fileCategory, planChanges, renderPlan } from "../src/fix/plan.ts";
+import type { Repair } from "../src/fix/repair.ts";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -166,5 +167,64 @@ describe("planChanges / applyPlan", () => {
     const rendered = renderPlan(plan);
     expect(rendered).toContain(" *.png binary\n *.jpg binary\n+* text=auto eol=lf");
     expect(rendered).not.toContain("\r");
+  });
+});
+
+describe("planChanges: indentation of a new JSON file (#211)", () => {
+  const prettierrc: Repair = { op: "set", file: ".prettierrc", path: ["printWidth"], value: 100 };
+  const settings: Repair = { op: "set", file: ".vscode/settings.json", path: ["editor", "tabSize"], value: 2 };
+  const written = async (dir: string, repairs: Repair[]) => {
+    const plan = await planChanges(dir, repairs);
+    return Object.fromEntries(plan.writes.map((w) => [w.file, w.after]));
+  };
+
+  it("uses tabs when .editorconfig says indent_style = tab", async () => {
+    const dir = repo({ ".editorconfig": "root = true\n\n[*]\nindent_style = tab\n" });
+    expect(await written(dir, [prettierrc, settings])).toEqual({
+      ".prettierrc": '{\n\t"printWidth": 100\n}\n',
+      ".vscode/settings.json": '{\n\t"editor": {\n\t\t"tabSize": 2\n\t}\n}\n',
+    });
+  });
+
+  it("uses indent_size spaces", async () => {
+    const dir = repo({ ".editorconfig": "[*]\nindent_style = space\nindent_size = 4\n" });
+    expect((await written(dir, [prettierrc]))[".prettierrc"]).toBe('{\n    "printWidth": 100\n}\n');
+  });
+
+  it("keeps two spaces without .editorconfig", async () => {
+    expect((await written(repo(), [prettierrc]))[".prettierrc"]).toBe('{\n  "printWidth": 100\n}\n');
+  });
+
+  it("lets the project's Prettier useTabs / tabWidth win over .editorconfig", async () => {
+    const dir = repo({
+      ".editorconfig": "[*]\nindent_style = tab\n",
+      ".prettierrc.json": '{ "useTabs": false, "tabWidth": 3 }\n',
+    });
+    expect((await written(dir, [settings]))[".vscode/settings.json"]).toBe(
+      '{\n   "editor": {\n      "tabSize": 2\n   }\n}\n',
+    );
+  });
+
+  it("matches section globs, nested files and root = true", async () => {
+    const dir = repo({
+      ".editorconfig":
+        "[*]\nindent_style = tab\n[*.{json,yml}]\nindent_style = space\nindent_size = 4\n[.vscode/*.json]\nindent_size = 8\n",
+    });
+    // `.prettierrc` has no extension, so only [*] matches it
+    expect((await written(dir, [prettierrc]))[".prettierrc"]).toBe('{\n\t"printWidth": 100\n}\n');
+    expect((await written(dir, [settings]))[".vscode/settings.json"]).toBe(
+      '{\n        "editor": {\n                "tabSize": 2\n        }\n}\n',
+    );
+    const nested = repo({
+      ".editorconfig": "[*]\nindent_style = tab\n",
+      "web/.editorconfig": "root = true\n[*]\nindent_style = space\nindent_size = 2\n",
+    });
+    const web: Repair = { op: "set", file: "web/tsconfig.json", path: ["a"], value: 1 };
+    expect((await written(nested, [web]))["web/tsconfig.json"]).toBe('{\n  "a": 1\n}\n');
+  });
+
+  it("keeps an existing file's own indentation", async () => {
+    const dir = repo({ ".editorconfig": "[*]\nindent_style = tab\n", ".prettierrc": '{\n    "semi": false\n}\n' });
+    expect((await written(dir, [prettierrc]))[".prettierrc"]).toBe('{\n    "semi": false,\n    "printWidth": 100\n}\n');
   });
 });

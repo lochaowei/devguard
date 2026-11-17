@@ -39,6 +39,8 @@ export interface BuildFile {
 export interface MavenPlugin {
   artifactId: string;
   configuration?: XmlEl;
+  /** The whole `<plugin>` element. */
+  element: XmlEl;
   pom: BuildFile;
 }
 
@@ -107,7 +109,7 @@ function parentPath(pom: BuildFile, parent: XmlEl): string | undefined {
   return normalizePath(pom.dir + (relative.endsWith(".xml") ? relative : `${relative.replace(/\/$/, "")}/pom.xml`));
 }
 
-function pomPlugins(pom: BuildFile): MavenPlugin[] {
+export function pomPlugins(pom: BuildFile): MavenPlugin[] {
   const builds = pom.xml?.children.filter((c) => c.name === "build") ?? [];
   const lists = builds.flatMap((b) => {
     const management = child(b, "pluginManagement");
@@ -118,6 +120,7 @@ function pomPlugins(pom: BuildFile): MavenPlugin[] {
     .map((p) => ({
       artifactId: child(p, "artifactId")?.text.trim() ?? "",
       configuration: child(p, "configuration"),
+      element: p,
       pom,
     }));
 }

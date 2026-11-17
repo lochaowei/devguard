@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import type { CodeCategory, CodeTarget } from "../src/code/types.ts";
 import { typescriptChecker } from "../src/code/typescript.ts";
 import type { ToolRequest, ToolResult, ToolRunner } from "../src/tools/runner.ts";
@@ -394,5 +397,49 @@ describe("typescript checker: Prettier", () => {
     const { tools } = fakeTools({ prettier: { code: 2, stderr: "[error] Invalid configuration" } });
     const findings = await check(target({ categories: only("format") }), tools);
     expect(findings).toEqual([expect.objectContaining({ rule: "code/tool-failed" })]);
+  });
+});
+
+describe("typescript checker: ESLint older than 9 (#212)", () => {
+  const roots: string[] = [];
+  afterEach(() => {
+    for (const d of roots.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  /** A repo whose `web/` component has the given ESLint installed in the root node_modules. */
+  function repoWithEslint(version: string): string {
+    const root = mkdtempSync(join(tmpdir(), "devguard-eslint-"));
+    roots.push(root);
+    mkdirSync(join(root, "node_modules", "eslint"), { recursive: true });
+    writeFileSync(join(root, "node_modules", "eslint", "package.json"), JSON.stringify({ version }));
+    return root;
+  }
+
+  const ctx = (cwd: string, tools: ToolRunner) => ({ cwd, tools, readText: () => Promise.resolve(undefined) });
+
+  it("does not pass --no-warn-ignored to ESLint 8 when checking", async () => {
+    const { tools, calls } = fakeTools({ eslint: { stdout: "[]" } });
+    await typescriptChecker.check(
+      target({ categories: only("lint"), files: ["src/a.ts"] }),
+      ctx(repoWithEslint("8.57.1"), tools),
+    );
+    expect(calls[0]?.args).toEqual(["--format", "json", "src/a.ts"]);
+  });
+
+  it("keeps --no-warn-ignored for ESLint 9 and later, and when the version is unknown", async () => {
+    for (const cwd of [repoWithEslint("9.0.0"), repoWithEslint("10.1.0"), CWD]) {
+      const { tools, calls } = fakeTools({ eslint: { stdout: "[]" } });
+      await typescriptChecker.check(target({ categories: only("lint"), files: ["a.ts"] }), ctx(cwd, tools));
+      expect(calls[0]?.args).toContain("--no-warn-ignored");
+    }
+  });
+
+  it("leaves --no-warn-ignored out of the lint fix step for ESLint 8 only", async () => {
+    const { tools } = fakeTools({});
+    const eslintArgs = async (version: string) =>
+      (await typescriptChecker.fixSteps(target(), ctx(repoWithEslint(version), tools))).find((s) => s.tool === "eslint")
+        ?.args;
+    expect(await eslintArgs("8.57.1")).toEqual(["--fix"]);
+    expect(await eslintArgs("9.2.0")).toEqual(["--fix", "--no-warn-ignored"]);
   });
 });
