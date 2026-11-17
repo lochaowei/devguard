@@ -104,7 +104,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 
 ### 執行方式
 
-- **工具執行器**：`uv run --no-sync <tool>`（鎖定版本讀取自 `uv.lock` 或 `poetry.lock`）。工具須已安裝在專案環境：有設定 `UV_PROJECT_ENVIRONMENT` 時就是它指定的目錄（絕對路徑照用，相對路徑相對於專案目錄，與 uv 相同），否則是 `.venv`；找不到時訊息會列出實際找過的路徑。安裝提示是 `uv sync`（Poetry：`poetry install`）；工具沒有列在 `pyproject.toml` 的依賴中時改為 `uv add --dev "<工具><範圍>"`（Poetry：`poetry config virtualenvs.in-project true && poetry add --group dev "<工具><範圍>"`），範圍取標準的 `tools.*`。元件與上層目錄都沒有 `pyproject.toml` 時，提示先是 `devguard fix --yes`（建立 `pyproject.toml`），再接上述的安裝指令。Poetry 專案不讀 `UV_PROJECT_ENVIRONMENT`。Poetry 專案（最近的 lockfile 是 `poetry.lock`）改為直接執行專案內 `.venv` 中的工具，需要 `poetry config virtualenvs.in-project true`；以下的 `uv run --no-sync` 對 Poetry 專案都換成 `.venv` 中的執行檔
+- **工具執行器**：`uv run --no-sync <tool>`（鎖定版本讀取自 `uv.lock` 或 `poetry.lock`）。工具須已安裝在專案環境：有設定 `UV_PROJECT_ENVIRONMENT` 時就是它指定的目錄（絕對路徑照用，相對路徑相對於專案目錄，與 uv 相同），否則是 `.venv`。專案目錄與 `uv run` 一致：由元件目錄往上最近的 `pyproject.toml` 所在目錄，或涵蓋它的 uv workspace 根目錄（`[tool.uv.workspace]` 的 `members` 扣除 `exclude`）；環境只在這個目錄找，所以有自己 `pyproject.toml` 卻沒有 `.venv` 的元件（例如測試用的 fixture 套件）回報缺工具，而不是借用上層的 `.venv`。找不到時訊息會列出實際找過的路徑。安裝提示是 `uv sync`（Poetry：`poetry install`）；工具沒有列在 `pyproject.toml` 的依賴中時改為 `uv add --dev "<工具><範圍>"`（Poetry：`poetry config virtualenvs.in-project true && poetry add --group dev "<工具><範圍>"`），範圍取標準的 `tools.*`。元件與上層目錄都沒有 `pyproject.toml` 時，提示先是 `devguard fix --yes`（建立 `pyproject.toml`），再接上述的安裝指令。Poetry 專案不讀 `UV_PROJECT_ENVIRONMENT`。Poetry 專案（最近的 lockfile 是 `poetry.lock`）改為直接執行專案內 `.venv` 中的工具，需要 `poetry config virtualenvs.in-project true`；以下的 `uv run --no-sync` 對 Poetry 專案都換成 `.venv` 中的執行檔
 - **套件來源**：devguard 不檢查也不寫入 `[[tool.uv.index]]` 或 `[[tool.poetry.source]]`，交給 uv／Poetry 的使用者層級設定；只檢查 `pyproject.toml` 中的網址沒有內含帳密（`credentials/plaintext`）。`standard upgrade --apply` 對 Poetry 專案執行 `poetry add --group dev`
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
   - `tools.ruff`：`>=0.17,<0.18`（`team@1.1.0`：`>=0.17,<1`）
@@ -151,7 +151,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
   - `tools.goimports`（`golang.org/x/tools/cmd/goimports`）：`>=0.38,<1`
   - `tools.govulncheck`（`golang.org/x/vuln/cmd/govulncheck`）：`>=1.1,<2`（`team@1.3.0` 移除）
 - **程式碼檢查（`code` 層）**：
-  - 透過 `golangci-lint run --output.json.path=stdout` 一次涵蓋 lint、format 與型別編譯問題，並依類別過濾。一律加上 `--max-same-issues=0 --max-issues-per-linter=0`，不論設定檔的 `issues` 怎麼寫，所有相同或同一 linter 的問題都會列出（#90）；加上 `--allow-serial-runners`，另一個 golangci-lint 正在執行時排隊等候，不會以 `parallel golangci-lint is running` 失敗（#94）。`--staged` 時額外對 staged `.go` 檔執行 `golangci-lint fmt --stdin` 檢查排版。
+  - 透過 `golangci-lint run --output.json.path=stdout` 一次涵蓋 lint、format 與型別編譯問題，並依類別過濾。一律加上 `--max-same-issues=0 --max-issues-per-linter=0`，不論設定檔的 `issues` 怎麼寫，所有相同或同一 linter 的問題都會列出（#90）；加上 `--allow-serial-runners`，另一個 golangci-lint 正在執行時排隊等候，不會以 `parallel golangci-lint is running` 失敗（#94）。`--staged` 時額外檢查 staged `.go` 檔的排版：內容與工作目錄相同的檔案合併成一次 `golangci-lint fmt --diff`，內容不同的（部分 staged）才逐檔以 `golangci-lint fmt --stdin` 檢查 staged 版本（#216）。
 - **自動修正程式碼（`fix --code`）**：
   - `golangci-lint run --fix`（套用 linters 自動修復與設定中的 `gofumpt` / `goimports`），同樣加上上述三個參數，所有能自動修正的問題都會套用。
 - **測試與覆蓋率（`tests` 層，`--full`）**：

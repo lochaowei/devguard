@@ -208,7 +208,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
   - Java：`pom.xml` / `build.gradle` 中的 plugin 版本
 - **golangci-lint 例外**：不放進 `go.mod` 的 `tool`。使用指定版本的 binary，由開發者放到 PATH，CLI 從 PATH 呼叫並核對版本。
 - CLI 執行工具的方式：
-  - Python：`uv run <tool>`，工具須已安裝在專案環境中。專案環境是 `UV_PROJECT_ENVIRONMENT` 指定的目錄（絕對路徑照用，相對路徑相對於專案目錄，與 uv 相同），未設定時為 `.venv`；找不到工具時，訊息列出實際找過的專案環境路徑。Poetry 專案（最近的 lockfile 是 `poetry.lock`）不讀 `UV_PROJECT_ENVIRONMENT`，直接執行專案內 `.venv` 中的工具，所以 Poetry 必須設定 `virtualenvs.in-project true`
+  - Python：`uv run <tool>`，工具須已安裝在專案環境中。專案環境是 `UV_PROJECT_ENVIRONMENT` 指定的目錄（絕對路徑照用，相對路徑相對於專案目錄，與 uv 相同），未設定時為 `.venv`。「專案目錄」與 `uv run` 的判定一致（#214）：由元件目錄往上最近的 `pyproject.toml` 所在目錄（不要求有 `[project]`）；若再往上有 `pyproject.toml` 以 `[tool.uv.workspace]` 的 `members` 涵蓋它（扣除 `exclude`，pattern 支援 `*`、`?`、`**`），則為該 workspace 根目錄。環境只在這個目錄找，不再往上：元件自己有 `pyproject.toml`、但沒有自己的 `.venv` 時，不使用上層的 `.venv`，改走缺工具路徑（不執行 `uv run`，因此不會在元件目錄建立空的 `.venv`）。元件與上層都沒有 `pyproject.toml` 時，仍依序找元件目錄到 repo 根目錄的 `.venv`。同一個缺少的工具在同一個環境只回報一筆。找不到工具時，訊息列出實際找過的專案環境路徑；`doctor` 的 VS Code interpreter 檢查用同一套判定。Poetry 專案（最近的 lockfile 是 `poetry.lock`）不讀 `UV_PROJECT_ENVIRONMENT`，直接執行專案內 `.venv` 中的工具，所以 Poetry 必須設定 `virtualenvs.in-project true`
   - TypeScript：`node_modules/.bin/<tool>`（Windows 依序找 `<tool>.cmd`、`<tool>.exe`：npm／pnpm／Yarn 產生 `.cmd`，Bun 產生 `.exe`）
   - Go：`go tool <名稱>`
   - Java：`./mvnw` / `./gradlew`
@@ -495,7 +495,7 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 - **找不到 CLI**：擋下 commit。錯誤訊息附上安裝指令，並提示可用 `--no-verify` 暫時略過。
 - **部分 staged 的檔案**：不做 stash，也不還原任何檔案。
   - formatter 與單檔 linter 改用 `git show :<path>` 取出 **staged 版本**，再以 stdin 交給工具檢查，例如 `ruff check|format --stdin-filename`、`eslint --stdin --stdin-filename`、`prettier --stdin-filepath`、`biome format --stdin-file-path`，以及 Go 的格式檢查 `golangci-lint fmt --stdin`（套用設定中的 gofumpt、goimports）。這可以避免最常見的誤判：工作目錄已經格式化，但 commit 進去的版本沒有。
-  - staged 版本與工作目錄的檔案逐位元組相同時（沒有部分 staged 的一般情況），工具直接讀磁碟上的檔案，同一元件的這些檔案合併成一次工具執行；只有內容不同的檔案（部分 staged、staged 後從工作目錄刪除、工作目錄是 CRLF）才逐檔走 stdin。比對只用一次 `git hash-object --no-filters --stdin-paths`，不逐檔執行 `git show`。檢查的內容仍然是 staged 版本，而工具的啟動成本不隨 staged 檔案數增加（#205）。例外：Go 的 `golangci-lint fmt --stdin` 仍對每個 staged `.go` 檔執行。
+  - staged 版本與工作目錄的檔案逐位元組相同時（沒有部分 staged 的一般情況），工具直接讀磁碟上的檔案，同一元件的這些檔案合併成一次工具執行；只有內容不同的檔案（部分 staged、staged 後從工作目錄刪除、工作目錄是 CRLF）才逐檔走 stdin。比對只用一次 `git hash-object --no-filters --stdin-paths`，不逐檔執行 `git show`。檢查的內容仍然是 staged 版本，而工具的啟動成本不隨 staged 檔案數增加（#205）。Go 同理（#216）：staged 版本與磁碟相同的 `.go` 檔合併成一次 `golangci-lint fmt --diff <檔案…>`（行號取 diff 第一個變更處），只有內容不同的檔案才逐檔走 `golangci-lint fmt --stdin`，所以 golangci-lint 行程數不隨 staged 檔案數增加。
   - 型別檢查（mypy、pyright、tsc）、golangci-lint 與 Java 工具（Spotless、PMD）沒有 stdin 模式，而且本來就會讀磁碟上的其他檔案，所以仍然檢查工作目錄的版本。
   - TypeScript 的 `tsc` 仍檢查整個專案，但 staged 模式（pre-commit hook、`check --staged`）只有檔案在 staged 清單內的 `tsc` 錯誤才是錯誤並擋下 commit；其他檔案的錯誤與不屬於任何檔案的 `error TSxxxx` 降為提示（hint），不擋 commit（#202）。完整的 `devguard check` 與 CI 照舊把所有 `tsc` 錯誤當錯誤回報。
   - `biome lint` 也檢查工作目錄的版本，與未 staged 的檔案一樣以檔案路徑執行：Biome 2.x 從 stdin 讀取時不回報任何 lint 診斷（不論內容，一律 exit 1 並只印出 `The contents aren't fixed`），`--write` 則會吞掉錯誤。不把 staged 內容寫成暫存檔再檢查，因為 Biome 依路徑套用 `includes` 與 `overrides`。

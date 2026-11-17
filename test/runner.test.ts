@@ -5,6 +5,7 @@ import type { Command, Exec } from "../src/process/exec.ts";
 import {
   createToolRunner,
   golangciRequest,
+  pythonEnvironmentDirs,
   ToolMissingError,
   type ToolRequest,
   type ToolRunnerDeps,
@@ -151,7 +152,7 @@ describe("tool runner: Python with UV_PROJECT_ENVIRONMENT (#66)", () => {
     const pyproject = { "C:\\repo\\api\\pyproject.toml": '[project]\nname = "api"\n' };
     const { runner } = fakeRunner(pyproject, { processEnv: { UV_PROJECT_ENVIRONMENT: "venv" } });
     const m = await missing(runner.run(req({ language: "python", tool: "ruff", dir: "api/" })));
-    expect(m.message).toBe("找不到 ruff：專案環境（C:\\repo\\api\\venv、C:\\repo\\venv）中沒有安裝");
+    expect(m.message).toBe("找不到 ruff：專案環境（C:\\repo\\api\\venv）中沒有安裝");
     expect(m.install).toBe("cd api && uv sync");
   });
 
@@ -168,6 +169,104 @@ describe("tool runner: Python with UV_PROJECT_ENVIRONMENT (#66)", () => {
     );
     await runner.run(req({ language: "python", tool: "ruff" }));
     expect(started[0]?.file).toBe("C:\\repo\\.venv\\Scripts\\ruff.exe");
+  });
+});
+
+describe("tool runner: the project environment follows uv's project discovery (#214)", () => {
+  const project = '[project]\nname = "x"\n';
+  const workspace = (members: string, exclude = "[]") =>
+    `[project]\nname = "root"\n[tool.uv.workspace]\nmembers = ${members}\nexclude = ${exclude}\n`;
+  const ruff = { language: "python", tool: "ruff", dir: "tests/pkg/" } as const;
+
+  it("stops at the component's own pyproject.toml: reports its .venv without running uv", async () => {
+    const files = {
+      "C:\\repo\\.venv\\Scripts\\ruff.exe": "",
+      "C:\\repo\\pyproject.toml": project,
+      "C:\\repo\\tests\\pkg\\pyproject.toml": project,
+    };
+    const { runner, started } = fakeRunner(files);
+    const m = await missing(runner.run(req(ruff)));
+    expect(m.message).toBe("找不到 ruff：專案環境（C:\\repo\\tests\\pkg\\.venv）中沒有安裝");
+    expect(m.install).toBe("cd tests/pkg && uv sync");
+    expect(started).toEqual([]);
+  });
+
+  it("uses the nearest pyproject.toml even when it has no [project] table, as uv does", async () => {
+    const files = { "C:\\repo\\.venv\\Scripts\\ruff.exe": "", "C:\\repo\\tests\\pyproject.toml": "[tool.ruff]\n" };
+    const m = await missing(fakeRunner(files).runner.run(req(ruff)));
+    expect(m.message).toContain("C:\\repo\\tests\\.venv");
+  });
+
+  it("keeps the workspace root's .venv for a member listed in members", async () => {
+    const files = {
+      "C:\\repo\\.venv\\Scripts\\ruff.exe": "",
+      "C:\\repo\\pyproject.toml": workspace('["tests/*"]'),
+      "C:\\repo\\tests\\pkg\\pyproject.toml": project,
+    };
+    const { runner, started } = fakeRunner(files);
+    await runner.run(req(ruff));
+    expect(started).toEqual([{ file: "uv", args: ["run", "--no-sync", "ruff"], cwd: "C:\\repo\\tests\\pkg" }]);
+  });
+
+  it("treats a directory inside a member as part of the member, and a recursive pattern as a match", async () => {
+    const files = {
+      "C:\\repo\\.venv\\Scripts\\ruff.exe": "",
+      "C:\\repo\\pyproject.toml": workspace('["tests/**"]'),
+      "C:\\repo\\tests\\pkg\\pyproject.toml": project,
+    };
+    const { runner, started } = fakeRunner(files);
+    await runner.run({ ...ruff, dir: "tests/pkg/src/" });
+    expect(started).toHaveLength(1);
+  });
+
+  it("gives a package the workspace excludes its own .venv", async () => {
+    const files = {
+      "C:\\repo\\.venv\\Scripts\\ruff.exe": "",
+      "C:\\repo\\pyproject.toml": workspace('["tests/*"]', '["tests/pkg"]'),
+      "C:\\repo\\tests\\pkg\\pyproject.toml": project,
+    };
+    const m = await missing(fakeRunner(files).runner.run(req(ruff)));
+    expect(m.message).toContain("C:\\repo\\tests\\pkg\\.venv");
+  });
+
+  it("gives a package the workspace does not list its own .venv", async () => {
+    const files = {
+      "C:\\repo\\.venv\\Scripts\\ruff.exe": "",
+      "C:\\repo\\pyproject.toml": workspace('["libs/*"]'),
+      "C:\\repo\\tests\\pkg\\pyproject.toml": project,
+    };
+    await missing(fakeRunner(files).runner.run(req(ruff)));
+  });
+
+  it("still uses the parent .venv for a subdirectory without a pyproject.toml of its own", async () => {
+    const files = { "C:\\repo\\.venv\\Scripts\\ruff.exe": "", "C:\\repo\\pyproject.toml": project };
+    const { runner, started } = fakeRunner(files);
+    await runner.run(req(ruff));
+    expect(started).toHaveLength(1);
+  });
+
+  it("reads UV_PROJECT_ENVIRONMENT against the project directory it stops at", async () => {
+    const files = { "C:\\repo\\pyproject.toml": project, "C:\\repo\\tests\\pkg\\pyproject.toml": project };
+    const { runner } = fakeRunner(files, { processEnv: { UV_PROJECT_ENVIRONMENT: "venv" } });
+    const m = await missing(runner.run(req(ruff)));
+    expect(m.message).toBe("找不到 ruff：專案環境（C:\\repo\\tests\\pkg\\venv）中沒有安裝");
+  });
+
+  it("stops Poetry at the nearest pyproject.toml too", async () => {
+    const files = {
+      "C:\\repo\\poetry.lock": "",
+      "C:\\repo\\.venv\\Scripts\\ruff.exe": "",
+      "C:\\repo\\tests\\pkg\\pyproject.toml": project,
+    };
+    const m = await missing(fakeRunner(files).runner.run(req(ruff)));
+    expect(m.message).toContain("C:\\repo\\tests\\pkg\\.venv");
+  });
+
+  it("gives doctor's interpreter check the same directories", () => {
+    const exists = (p: string) => p === "C:\\repo\\tests\\pkg\\pyproject.toml";
+    expect(pythonEnvironmentDirs("C:\\repo", "tests/pkg/", { platform: "win32", exists, processEnv: {} })).toEqual([
+      "C:\\repo\\tests\\pkg\\.venv",
+    ]);
   });
 });
 
