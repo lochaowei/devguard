@@ -82,13 +82,16 @@ describe("devguard doctor: check plus the environment layer (SPEC §3.2, §11)",
       today: TODAY,
       listFiles: () => Promise.resolve(["a.ts"]),
     });
-    expect(findings.filter((f) => f.rule === "environment/tool-missing")).toEqual([
-      expect.objectContaining({
-        level: "error",
-        message: "找不到 eslint：標準要求此工具，但專案的 package.json 沒有列出",
-        fix: 'pnpm add --save-dev "eslint@>=10 <11"',
-      }),
-    ]);
+    // Each tool is reported with its own add-dev command (main's per-tool findings).
+    expect(findings.filter((f) => f.rule === "environment/tool-missing")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "error",
+          message: "找不到 eslint：標準要求此工具，但專案的 package.json 沒有列出",
+          fix: 'pnpm add --save-dev "eslint@>=10 <11"',
+        }),
+      ]),
+    );
   });
 });
 
