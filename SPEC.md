@@ -204,6 +204,7 @@ CLI 依偵測到的工具設定檔產生**草稿**：
 - 專案用各語言自己的依賴管理鎖定**確切版本**：
   - Python：`pyproject.toml` 的 dev group 加上 `uv.lock`
   - TypeScript：`devDependencies` 加上 lockfile
+    - 沒有 lockfile 提供某個工具的版本（例如 `package-lock=false`）時，改讀實際安裝的版本：元件目錄往上最近的 `node_modules/<套件>/package.json` 的 `version`；超出範圍一樣回報 `tool-version/out-of-range`，訊息指出是安裝的版本，修正提示不要求更新 lockfile。有 lockfile 時以 lockfile 為準（#212）
   - Go：`go.mod` 的 `tool`
   - Java：`pom.xml` / `build.gradle` 中的 plugin 版本
 - **golangci-lint 例外**：不放進 `go.mod` 的 `tool`。使用指定版本的 binary，由開發者放到 PATH，CLI 從 PATH 呼叫並核對版本。
@@ -402,7 +403,7 @@ Gradle 多專案建置（#101）：`settings.gradle(.kts)` 的 `include` 的子�
 
 `devguard check --full` 與 CI 執行全部檢查，不受 `DEVGUARD_PRE_PUSH` 影響。pre-push 預設不跑任何檢查、直接放行，讓日常的 WIP push 不會被完整測試與覆蓋率計算擋住；完整測試與覆蓋率由 CI 的 `check --full` 把關（§7.4）。
 
-指定檔案時（檔案參數、`--staged`、pre-commit、Claude 的兩個 hook、`fix --code`），TypeScript 元件內的非原始碼檔案（`.js`、`.mjs`、`.json`、`.md`、`.prettierrc`、`LICENSE` 等）也交給最深的 TypeScript 元件的 linter 與 formatter，由工具決定處理哪些：ESLint 用 `--no-warn-ignored`，Prettier 用 `--ignore-unknown`，Biome 用 `--files-ignore-unknown=true` 與 `--no-errors-on-unmatched`。工具設定的 ignore（`.prettierignore`、ESLint 的 `ignores`、Biome 的 `files`）照常生效；工具不處理的檔案不產生 finding，staged（stdin）時也一樣。因此回報的 lint 與格式問題，與整個元件的檢查對同一組檔案回報的相同。其他語言的原始碼仍歸各自的元件。型別檢查不變：只有元件內有原始碼檔案時才跑。
+指定檔案時（檔案參數、`--staged`、pre-commit、Claude 的兩個 hook、`fix --code`），TypeScript 元件內的非原始碼檔案（`.js`、`.mjs`、`.json`、`.md`、`.prettierrc`、`LICENSE` 等）也交給最深的 TypeScript 元件的 linter 與 formatter，由工具決定處理哪些：ESLint 用 `--no-warn-ignored`（安裝的 ESLint 低於 9 時不認得這個旗標，check 與 `fix --code` 都不傳；讀不到安裝版本時照傳，#212），Prettier 用 `--ignore-unknown`，Biome 用 `--files-ignore-unknown=true` 與 `--no-errors-on-unmatched`。工具設定的 ignore（`.prettierignore`、ESLint 的 `ignores`、Biome 的 `files`）照常生效；工具不處理的檔案不產生 finding，staged（stdin）時也一樣。因此回報的 lint 與格式問題，與整個元件的檢查對同一組檔案回報的相同。其他語言的原始碼仍歸各自的元件。型別檢查不變：只有元件內有原始碼檔案時才跑。
 
 型別檢查的範圍是整個元件，由型別檢查器的設定決定。mypy 在元件目錄執行：mypy 實際讀到的設定（依 mypy 的順序找 `mypy.ini`、`.mypy.ini`、有 `[tool.mypy]` 的 `pyproject.toml`、有 `[mypy]` 的 `setup.cfg`，元件目錄沒有時往上層目錄找到 repo 根目錄為止，只用第一份）設了 `files` 時，devguard 不傳路徑，依設定檢查；否則傳 `.` 檢查整個元件。上層目錄的設定一樣套用在元件目錄執行的 mypy，所以其中的 `files` 路徑是相對於元件目錄解析。命令列有路徑時 mypy 會忽略設定中的 `files`。pyright 與 basedpyright 本來就不傳路徑。
 

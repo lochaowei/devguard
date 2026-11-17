@@ -3,6 +3,7 @@ import type { Finding } from "../report/finding.ts";
 import { isRecord } from "../shared/guards.ts";
 import { referencedTsconfigs } from "../settings/typescript/tsconfig.ts";
 import { typescriptToolRequest, type ToolResult } from "../tools/runner.ts";
+import { eslintIgnoreFlags } from "./eslint-flags.ts";
 import { codeFinding, firstDifferentLine, runBatched, splitStaged, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
 
@@ -50,7 +51,7 @@ function eslintFindings(target: CodeTarget, ctx: CodeCheckContext, result: ToolR
 /** Staged files go through `eslint --stdin --stdin-filename` one by one; the rest are checked on disk. */
 async function lint(target: CodeTarget, ctx: CodeCheckContext): Promise<Finding[]> {
   const request = typescriptToolRequest(target, "eslint");
-  const args = ["--format", "json", "--no-warn-ignored"];
+  const args = ["--format", "json", ...eslintIgnoreFlags(target, ctx)];
   const { staged, onDisk } = await splitStaged(target, ctx);
   const results = await runBatched(ctx.tools, request, args, onDisk);
   for (const { file, text } of staged) {
@@ -265,12 +266,12 @@ export const typescriptChecker: CodeChecker = {
     return findings;
   },
   /** Lint fixes first, then the formatter, so the formatter has the last word on layout. */
-  fixSteps(target) {
+  fixSteps(target, ctx) {
     const files = target.files ?? ["."];
     const biome = usesBiome(target);
     const lintFix = biome
       ? { tool: "biome", args: ["lint", "--write", ...BIOME_UNKNOWN], files, okUpTo: 1 }
-      : { tool: "eslint", args: ["--fix", "--no-warn-ignored"], files, okUpTo: 1 };
+      : { tool: "eslint", args: ["--fix", ...eslintIgnoreFlags(target, ctx)], files, okUpTo: 1 };
     const formatFix = biome
       ? { tool: "biome", args: ["format", "--write", ...BIOME_UNKNOWN], files, okUpTo: 1 }
       : { tool: "prettier", args: ["--write", "--ignore-unknown", "--log-level", "warn"], files, okUpTo: 0 };

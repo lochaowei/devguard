@@ -178,3 +178,37 @@ describe("golangci-lint from PATH (SPEC §5.2 exception)", () => {
     expect(tools.calls).toEqual([]);
   });
 });
+
+describe("installed versions when no lockfile pins the tool (#212)", () => {
+  const TS = "standard: team@1.0.0\ncomponents:\n  - {path: ./, language: typescript}\n";
+  const installed = (name: string, version: string) => ({
+    [`node_modules/${name}/package.json`]: JSON.stringify({ name, version }),
+  });
+
+  it("reads the installed version from node_modules when there is no lockfile", async () => {
+    const r = await check({ ".devguard.yaml": TS, ...installed("eslint", "8.57.1") });
+    expect(r.findings.map((f) => [f.rule, f.file])).toEqual([
+      ["tool-version/out-of-range", "node_modules/eslint/package.json"],
+    ]);
+    expect(r.findings[0]?.message).toContain("eslint 8.57.1");
+    expect(r.findings[0]?.message).toContain("安裝");
+    expect(r.findings[0]?.fix).not.toContain("lockfile");
+  });
+
+  it("finds the nearest node_modules above the component directory", async () => {
+    const decl = "standard: team@1.0.0\ncomponents:\n  - {path: web/, language: typescript}\n";
+    const r = await check({ ".devguard.yaml": decl, ...installed("eslint", "8.57.1") });
+    expect(r.findings.map((f) => f.file)).toEqual(["node_modules/eslint/package.json"]);
+  });
+
+  it("is quiet for an installed version inside the range", async () => {
+    const r = await check({ ".devguard.yaml": TS, ...installed("eslint", "10.1.0") });
+    expect(r.findings).toEqual([]);
+  });
+
+  it("prefers the lockfile: the finding is the lockfile's, not the installed copy's", async () => {
+    const lock = JSON.stringify({ packages: { "node_modules/eslint": { version: "9.30.0" } } });
+    const r = await check({ ".devguard.yaml": TS, "package-lock.json": lock, ...installed("eslint", "8.57.1") });
+    expect(r.findings.map((f) => [f.rule, f.file])).toEqual([["tool-version/out-of-range", "package-lock.json"]]);
+  });
+});

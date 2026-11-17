@@ -4,7 +4,8 @@ import { DECLARATION_FILE } from "../declaration/types.ts";
 import type { Finding } from "../report/finding.ts";
 import type { ItemDef } from "../standard/types.ts";
 import type { ToolRunner } from "../tools/runner.ts";
-import { pinnedBuilds } from "../versions/pinned.ts";
+import { installedNpmPackage } from "../versions/installed.ts";
+import { pinnedBuilds, type ReadRepoFile } from "../versions/pinned.ts";
 import { preCommitRevHints } from "../versions/pre-commit-revs.ts";
 import { inRange } from "../versions/range.ts";
 import type { CheckLayer } from "./types.ts";
@@ -33,11 +34,13 @@ function rangeItems(c: ResolvedComponent, defs: Readonly<Record<string, ItemDef>
 /** Locked versions of the component's tools against the ranges in force (SPEC §5.2, §8). */
 async function checkPinned(c: ResolvedComponent, items: RangeItem[], cwd: string): Promise<Finding[]> {
   const findings: Finding[] = [];
-  for (const pinned of await pinnedBuilds(c.language, c.dir, repoReaderSync(cwd), listDirsIn(cwd))) {
-    for (const { key, item } of items) {
-      if (item.onPath) continue;
-      const range = rangeInForce(item, c.effective[key]);
-      for (const name of item.pinnedAs ?? []) {
+  const read = repoReaderSync(cwd);
+  const builds = await pinnedBuilds(c.language, c.dir, read, listDirsIn(cwd));
+  for (const { key, item } of items) {
+    if (item.onPath) continue;
+    const range = rangeInForce(item, c.effective[key]);
+    for (const name of item.pinnedAs ?? []) {
+      for (const pinned of builds) {
         const version = pinned.versions.get(name);
         if (version === undefined || inRange(version, range)) continue;
         findings.push({
@@ -50,9 +53,34 @@ async function checkPinned(c: ResolvedComponent, items: RangeItem[], cwd: string
           fix: `把 ${name} 改成 ${range} 內的版本並更新 lockfile；或在 ${DECLARATION_FILE} 以 {value, reason, until} 放寬 ${key}`,
         });
       }
+      if (builds.every((b) => !b.versions.has(name))) {
+        findings.push(...checkInstalled(c, { name, key, range }, read));
+      }
     }
   }
   return findings;
+}
+
+/** No lockfile says which version is installed: a TypeScript component's tool is read from node_modules (#212). */
+function checkInstalled(
+  c: ResolvedComponent,
+  tool: { name: string; key: string; range: string },
+  read: ReadRepoFile,
+): Finding[] {
+  const { name, key, range } = tool;
+  const installed = c.language === "typescript" ? installedNpmPackage(c.dir, name, read) : undefined;
+  if (!installed || inRange(installed.version, range)) return [];
+  return [
+    {
+      level: "error",
+      layer: "consistency",
+      rule: "tool-version/out-of-range",
+      message: `安裝的 ${name} ${installed.version} 不在允許的版本範圍 ${range} 內`,
+      component: c.name,
+      file: installed.file,
+      fix: `安裝 ${range} 內的 ${name}；或在 ${DECLARATION_FILE} 以 {value, reason, until} 放寬 ${key}`,
+    },
+  ];
 }
 
 const VERSION_OUTPUT = /version\s+v?(\d+(?:\.\d+)+)/;
