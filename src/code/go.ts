@@ -1,7 +1,7 @@
 import { posix } from "node:path";
 import type { Finding } from "../report/finding.ts";
 import { golangciRequest, type ToolResult } from "../tools/runner.ts";
-import { codeFinding, firstDifferentLine, runBatched, stagedVersions, toolFailed, toRepoPath } from "./support.ts";
+import { codeFinding, firstDifferentLine, runBatched, splitStaged, toolFailed, toRepoPath } from "./support.ts";
 import type { CodeCategory, CodeChecker, CodeCheckContext, CodeTarget } from "./types.ts";
 
 interface GolangciIssue {
@@ -82,6 +82,65 @@ async function formatStaged(target: CodeTarget, ctx: CodeCheckContext, file: str
 }
 
 /**
+ * The files `golangci-lint fmt --diff` would change and the line of each one's first change. Each diff names the file
+ * (`+++ <path>`) and its first hunk (`@@ -<line>,...`); unchanged context lines come before the first change.
+ */
+export function parseFmtDiff(stdout: string): { file: string; line: number }[] {
+  const changed: { file: string; line: number }[] = [];
+  for (const section of stdout.split(/^\+\+\+ /m).slice(1)) {
+    const [name = "", ...lines] = section.split("\n");
+    const start = Number(/^@@ -(\d+)/m.exec(section)?.[1]);
+    const body = lines.slice(lines.findIndex((l) => l.startsWith("@@")) + 1);
+    const context = body.findIndex((l) => l.startsWith("-") || l.startsWith("+"));
+    if (Number.isNaN(start) || context === -1) continue;
+    changed.push({ file: name.trimEnd(), line: start + context });
+  }
+  return changed;
+}
+
+/**
+ * The format of files whose staged version is identical to the working tree, in one `golangci-lint fmt --diff
+ * <files>` run (#216). Exit 1 means some file would change.
+ */
+async function formatOnDisk(target: CodeTarget, ctx: CodeCheckContext, files: readonly string[]): Promise<Finding[]> {
+  const results = await runBatched(ctx.tools, golangciRequest(target), ["fmt", "--diff"], files);
+  return results.flatMap((result) => {
+    if (result.code > 1) return [toolFailed(target, "golangci-lint fmt", result)];
+    const changed = parseFmtDiff(result.stdout);
+    if (result.code === 1 && changed.length === 0) return [toolFailed(target, "golangci-lint fmt", result)];
+    return changed.map(({ file, line }) =>
+      codeFinding(target, {
+        rule: "golangci-lint/fmt",
+        message: "格式不符合 gofumpt / goimports",
+        file: toRepoPath(ctx.cwd, target.dir, file),
+        line,
+      }),
+    );
+  });
+}
+
+/** The staged `.go` files: those needing stdin (staged differs from disk) and those fmt can read on disk. */
+async function stagedGoFiles(target: CodeTarget, ctx: CodeCheckContext) {
+  if (!target.categories.has("format") || ctx.staged === undefined) return { viaStdin: [], onDisk: [] };
+  const split = await splitStaged(target, ctx);
+  const viaStdin = split.staged.filter((s) => s.file.endsWith(".go"));
+  return {
+    viaStdin,
+    onDisk: await existing(
+      ctx,
+      target,
+      (split.onDisk ?? []).filter((f) => f.endsWith(".go")),
+    ),
+  };
+}
+
+/** The files that exist on disk (one deleted after staging has no version to hand to fmt --diff). */
+async function existing(ctx: CodeCheckContext, target: CodeTarget, files: readonly string[]): Promise<string[]> {
+  const text = await Promise.all(files.map((f) => ctx.readText(target.dir + f)));
+  return files.filter((_, i) => text[i] !== undefined);
+}
+
+/**
  * Flags every `golangci-lint run` gets, whatever the project's config says (flags win over `issues.*` / `run.*`):
  * - no cap on repeated issues (defaults: 3 identical, 50 per linter), so check sees and `--fix` applies all of them,
  *   and a file asked for is not dropped because its package hit the cap first (#90);
@@ -108,16 +167,17 @@ export const goChecker: CodeChecker = {
     const results = await runBatched(ctx.tools, request, args, packages ?? ["./..."]);
     const findings = results.flatMap((r) => issueFindings(target, ctx, r));
     if (target.files === undefined) return findings;
-    const staged = target.categories.has("format")
-      ? (await stagedVersions(target, ctx)).filter((s) => s.file.endsWith(".go"))
-      : [];
-    const stagedPaths = new Set(staged.map((s) => toRepoPath(ctx.cwd, target.dir, s.file)));
-    // Other files of the same packages are not what was asked for; a staged file's format is judged from stdin.
+    const { viaStdin, onDisk } = await stagedGoFiles(target, ctx);
+    const stagedPaths = new Set(
+      [...viaStdin.map((s) => s.file), ...onDisk].map((f) => toRepoPath(ctx.cwd, target.dir, f)),
+    );
+    // Other files of the same packages are not what was asked for; a staged file's format is judged separately.
     const asked = new Set(target.files.map((f) => toRepoPath(ctx.cwd, target.dir, f)));
     const kept = findings.filter(
       (f) => f.file === undefined || (asked.has(f.file) && !(stagedPaths.has(f.file) && isFormatRule(f.rule))),
     );
-    for (const { file, text } of staged) kept.push(...(await formatStaged(target, ctx, file, text)));
+    if (onDisk.length > 0) kept.push(...(await formatOnDisk(target, ctx, onDisk)));
+    for (const { file, text } of viaStdin) kept.push(...(await formatStaged(target, ctx, file, text)));
     return kept;
   },
   /** `run --fix` applies the linters' suggested fixes and the configured formatters (gofumpt, goimports...). */
