@@ -104,7 +104,8 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 
 ### 執行方式
 
-- **工具執行器**：`uv run --no-sync <tool>`（鎖定版本讀取自 `uv.lock` 或 `poetry.lock`）。工具須已安裝在專案環境：有設定 `UV_PROJECT_ENVIRONMENT` 時就是它指定的目錄（絕對路徑照用，相對路徑相對於專案目錄，與 uv 相同），否則是 `.venv`；找不到時訊息會列出實際找過的路徑。安裝提示是 `uv sync`（Poetry：`poetry install`）；工具沒有列在 `pyproject.toml` 的依賴中時改為 `uv add --dev "<工具><範圍>"`（Poetry：`poetry config virtualenvs.in-project true && poetry add --group dev "<工具><範圍>"`），範圍取標準的 `tools.*`。元件與上層目錄都沒有 `pyproject.toml` 時，提示先是 `devguard fix --yes`（建立 `pyproject.toml`），再接上述的安裝指令。Poetry 專案不讀 `UV_PROJECT_ENVIRONMENT`。Poetry 專案（最近的 lockfile 是 `poetry.lock`）改為直接執行專案內 `.venv` 中的工具，需要 `poetry config virtualenvs.in-project true`；以下的 `uv run --no-sync` 對 Poetry 專案都換成 `.venv` 中的執行檔
+- **不支援的套件管理工具**：Python 只支援 uv 與 Poetry。最近的 lockfile 是 `pdm.lock` 或 `pylock.toml`（且沒有同層或更近的 `uv.lock`／`poetry.lock`）時，`deps/lockfile-missing` 會說明找到哪個檔案與支援範圍；工具沒裝時不提示 `uv add`／`uv sync`，改請你用專案自己的工具安裝（PDM 例如 `pdm add -dG dev "<工具><範圍>"`）。
+- **工具執行器**：`uv run --no-sync <tool>`（鎖定版本讀取自 `uv.lock` 或 `poetry.lock`）。工具須已安裝在專案環境：有設定 `UV_PROJECT_ENVIRONMENT` 時就是它指定的目錄（絕對路徑照用，相對路徑相對於專案目錄，與 uv 相同），否則是 `.venv`。專案目錄與 `uv run` 一致：由元件目錄往上最近的 `pyproject.toml` 所在目錄，或涵蓋它的 uv workspace 根目錄（`[tool.uv.workspace]` 的 `members` 扣除 `exclude`）；環境只在這個目錄找，所以有自己 `pyproject.toml` 卻沒有 `.venv` 的元件（例如測試用的 fixture 套件）回報缺工具，而不是借用上層的 `.venv`。找不到時訊息會列出實際找過的路徑。安裝提示是 `uv sync`（Poetry：`poetry install`）；工具沒有列在 `pyproject.toml` 的依賴中時改為 `uv add --dev "<工具><範圍>"`（Poetry：`poetry config virtualenvs.in-project true && poetry add --group dev "<工具><範圍>"`），範圍取標準的 `tools.*`。元件與上層目錄都沒有 `pyproject.toml` 時，提示先是 `devguard fix --yes`（建立 `pyproject.toml`），再接上述的安裝指令。Poetry 專案不讀 `UV_PROJECT_ENVIRONMENT`。Poetry 專案（最近的 lockfile 是 `poetry.lock`）改為直接執行專案內 `.venv` 中的工具，需要 `poetry config virtualenvs.in-project true`；以下的 `uv run --no-sync` 對 Poetry 專案都換成 `.venv` 中的執行檔
 - **套件來源**：devguard 不檢查也不寫入 `[[tool.uv.index]]` 或 `[[tool.poetry.source]]`，交給 uv／Poetry 的使用者層級設定；只檢查 `pyproject.toml` 中的網址沒有內含帳密（`credentials/plaintext`）。`standard upgrade --apply` 對 Poetry 專案執行 `poetry add --group dev`
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
   - `tools.ruff`：`>=0.17,<0.18`（`team@1.1.0`：`>=0.17,<1`）
@@ -146,12 +147,12 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 
 - **工具執行器**：PATH 上的 `golangci-lint`（例外：指定版本的 binary 由開發者放到 PATH，CLI 核對版本）與 `go tool <name>`（鎖定於 `go.mod` 的 `tool` directive）；執行時一律帶入 `GOTOOLCHAIN=local`；`go tool` 與 `go mod` 等檢查用的指令另外帶入 `GOPROXY=off`，檢查時不下載任何模組。其餘指令（golangci-lint、套件管理指令）的模組來源是開發者自己的 Go 設定（`go env GOPROXY`）。
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
-  - `tools.golangci-lint`（PATH）：`>=2.12,<3`。PATH 上找不到時，`check`（exit 2）與 `doctor`（`environment/tool-missing`）的提示會寫出元件生效的範圍（含 override）與下載頁 https://github.com/golangci/golangci-lint/releases（#91）
+  - `tools.golangci-lint`（PATH）：`>=2.12,<3`。PATH 上找不到時，`check`、`doctor` 回報的 `environment/tool-missing` 提示會寫出元件生效的範圍（含 override）與下載頁 https://github.com/golangci/golangci-lint/releases（#91）
   - `tools.gofumpt`（`mvdan.cc/gofumpt`）：`>=0.9,<1`
   - `tools.goimports`（`golang.org/x/tools/cmd/goimports`）：`>=0.38,<1`
   - `tools.govulncheck`（`golang.org/x/vuln/cmd/govulncheck`）：`>=1.1,<2`（`team@1.3.0` 移除）
 - **程式碼檢查（`code` 層）**：
-  - 透過 `golangci-lint run --output.json.path=stdout` 一次涵蓋 lint、format 與型別編譯問題，並依類別過濾。一律加上 `--max-same-issues=0 --max-issues-per-linter=0`，不論設定檔的 `issues` 怎麼寫，所有相同或同一 linter 的問題都會列出（#90）；加上 `--allow-serial-runners`，另一個 golangci-lint 正在執行時排隊等候，不會以 `parallel golangci-lint is running` 失敗（#94）。`--staged` 時額外對 staged `.go` 檔執行 `golangci-lint fmt --stdin` 檢查排版。
+  - 透過 `golangci-lint run --output.json.path=stdout` 一次涵蓋 lint、format 與型別編譯問題，並依類別過濾。一律加上 `--max-same-issues=0 --max-issues-per-linter=0`，不論設定檔的 `issues` 怎麼寫，所有相同或同一 linter 的問題都會列出（#90）；加上 `--allow-serial-runners`，另一個 golangci-lint 正在執行時排隊等候，不會以 `parallel golangci-lint is running` 失敗（#94）。`--staged` 時額外檢查 staged `.go` 檔的排版：內容與工作目錄相同的檔案合併成一次 `golangci-lint fmt --diff`，內容不同的（部分 staged）才逐檔以 `golangci-lint fmt --stdin` 檢查 staged 版本（#216）。
 - **自動修正程式碼（`fix --code`）**：
   - `golangci-lint run --fix`（套用 linters 自動修復與設定中的 `gofumpt` / `goimports`），同樣加上上述三個參數，所有能自動修正的問題都會套用。
 - **測試與覆蓋率（`tests` 層，`--full`）**：
@@ -189,6 +190,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
   - `tools.eslint`：`>=10,<11`、`tools.prettier`：`>=3,<4`、`tools.typescript`：`>=6,<7`、`tools.typescript-eslint`：`>=8,<9`、`tools.eslint-plugin-sonarjs`：`>=3,<4`（`team@1.1.0` 已移除這一項）
   - `tools.biome`（`@biomejs/biome`）：`>=2,<3`
+  - 沒有 lockfile（例如 `package-lock=false`）鎖定某個工具時，改讀實際安裝的版本：元件目錄往上最近的 `node_modules/<套件>/package.json` 的 `version`；超出範圍一樣回報 `tool-version/out-of-range`，訊息寫「安裝的」版本，指向該 `package.json`。有 lockfile 時以 lockfile 為準（#212）
   - `tools.vitest`：`>=5,<6`（`team@1.1.0`：`>=4.1,<6`）、`tools.jest`：`>=30,<31`
 - **程式碼檢查（`code` 層）**：
   - `lint`：`eslint --format json`（`--staged` 時透過 `--stdin` 讀取 staged 內容；或 `biome lint --reporter=github`，Biome 2.x 從 stdin 不回報 lint 診斷，所以 `--staged` 時也檢查工作目錄版本）
@@ -238,6 +240,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 - **建置檔的 plugin（設定層）**：讀元件的建置檔（Maven：`pom.xml` 的 `<build><plugins>` 與 `<pluginManagement>`；Gradle：`build.gradle(.kts)` 的 `plugins {}`、`apply plugin`、版本目錄的 `alias(libs.plugins.…)`）；Maven 的 parent POM 在 repo 中時（`<relativePath>`，預設 `../pom.xml`）也算。plugin 可能來自 devguard 讀不到的地方時（repo 外的 parent POM、`<profiles>`、Gradle 的 buildSrc／`includeBuild` convention plugin、`apply from`、上層 Gradle 建置、根建置的 `apply false`）不回報，程式碼層照常執行該工具。建置檔不會被修改，`fix` 只印出要加入的片段。
   - `settings/java-plugin-missing`：沒有 Spotless（`spotless-maven-plugin` / `com.diffplug.spotless`）或 PMD（`maven-pmd-plugin` / `pmd`）plugin，各一筆錯誤；片段含 palantir-java-format，PMD 的片段指向 devguard 的設定檔。
   - `settings/java-plugin-config`：PMD 沒有指向元件使用的 ruleset（Maven `<rulesets>`；Gradle `ruleSetFiles`）。路徑可以用 `${project.basedir}`、`${maven.multiModuleProjectDirectory}`、`$rootDir`、`rootProject.file(…)` 等；其他無法解析的寫法不回報。
+  - `settings/rat-excludes`：pom 宣告 `apache-rat-plugin`（`build/plugins` 或 `pluginManagement`，repo 內的 parent POM 也算），但排除設定（`<excludes>`／`<inputExcludes>`）沒有涵蓋 `.devguard.yaml`（元件在 repo 根目錄時）與 PMD 設定檔（例如 `pmd-ruleset.xml`）。這些檔案沒有授權標頭，RAT 會讓 `mvn test` 在執行測試前失敗。片段是可貼進 plugin `<configuration>` 的排除清單（plugin 版本低於 0.17 用 `<excludes>`，其餘用 `<inputExcludes>`），`fix` 只印出。排除來自檔案、標準集合或 `%regex` 時，以及 plugin 來自 repo 外的 parent POM 時不回報；devguard 不產生授權標頭。Gradle 的 RAT 不在範圍。
 - **程式碼檢查（`code` 層）**：
   - 建置檔沒有某個工具的 plugin 時不執行那個工具（由設定層回報），不會產生 `code/tool-failed`。
   - `format`：`mvnw -B -ntp spotless:check`（或 Gradle `spotlessCheck --console=plain -q`）

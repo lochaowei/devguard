@@ -102,10 +102,14 @@ describe("Python tests", () => {
       if (req.tool === "pytest") return pytest;
       throw new ToolMissingError("找不到 pytest-cov", `uv add --dev "pytest-cov${req.range ?? ""}"`);
     });
-    await expect(check(tools)).rejects.toMatchObject({
-      message: "找不到 pytest-cov",
-      install: 'uv add --dev "pytest-cov>=6,<8"',
-    });
+    const { findings } = await check(tools);
+    expect(findings).toEqual([
+      expect.objectContaining({
+        rule: "environment/tool-missing",
+        message: "找不到 pytest-cov",
+        fix: 'uv add --dev "pytest-cov>=6,<8"',
+      }),
+    ]);
     expect(calls.map((c) => c.tool)).toEqual(["pytest", "pytest-cov"]);
   });
 
@@ -134,5 +138,20 @@ describe("Python tests", () => {
     );
     const r = await check(tools);
     expect(r.findings[0]?.message).toContain("（No data to report.）");
+  });
+});
+
+describe("a missing tool in one component (#217)", () => {
+  it("does not hide the test failures of the other components", async () => {
+    const TWO =
+      "standard: team@1.0.0\ncomponents:\n  - {path: a/, language: python}\n  - {path: b/, language: python}\n";
+    const { tools } = fakeTools((req: ToolRequest) => {
+      if (req.dir === "a/") throw new ToolMissingError("找不到 pytest", "cd a && uv sync");
+      return req.tool === "pytest" ? ok("", 1, PYTEST_FAILED) : ok("");
+    });
+    const { findings } = await checkTests(project(TWO), tools, ["a/x.py", "b/x.py"]);
+    const pick = (rule: string) => findings.filter((f) => f.rule === rule).map((f) => f.component);
+    expect(pick("environment/tool-missing")).toEqual(["a/ (Python)"]);
+    expect(pick("test/tool-failed")).toEqual(["b/ (Python)"]);
   });
 });

@@ -8,6 +8,7 @@ import { PYPROJECT } from "../layers/settings-python.ts";
 import { baseName } from "../repo/paths.ts";
 import type { Exec } from "../process/exec.ts";
 import { crlfWorkingTreeFiles, RECHECKOUT_HINT } from "../repo/eol.ts";
+import { unsupportedPythonLock } from "../tools/python-manager.ts";
 import { renderText } from "../report/render.ts";
 import { previewThenApply, type Interaction } from "./interaction.ts";
 import { applyPlan, hasBlockedWrites, planChanges, renderPlan, withoutBlockedWrites, type ChangePlan } from "./plan.ts";
@@ -86,6 +87,8 @@ function requirementsImportHints(cwd: string, plan: ChangePlan): string[] {
     if (w.before !== "" || baseName(w.file) !== PYPROJECT) return [];
     const dir = w.file.slice(0, -PYPROJECT.length);
     if (!existsSync(join(cwd, dir, "requirements.txt"))) return [];
+    // `uv add` is not how a PDM or PEP 751 project adds dependencies (#213).
+    if (unsupportedPythonLock(dir, (file) => existsSync(join(cwd, file))) !== undefined) return [];
     const command =
       dir === "" ? "uv add -r requirements.txt" : `cd ${dir.replace(/\/$/, "")} && uv add -r requirements.txt`;
     return [`\n${dir}requirements.txt 的執行期依賴還沒有匯入：執行 ${command}，把它們加進 ${w.file} 與 uv.lock。\n`];

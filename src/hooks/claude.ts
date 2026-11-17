@@ -53,7 +53,7 @@ async function checkFiles(
 ): Promise<Finding[]> {
   if (files.length === 0) return [];
   const scope = { files, full: false };
-  const options = { ...ctx, scope, missingTools: "report" as const, listFiles: () => Promise.resolve([...files]) };
+  const options = { ...ctx, scope, listFiles: () => Promise.resolve([...files]) };
   const result = await runCheck(options, [declarationLayer, codeChecks(categories)]);
   return result.findings.filter((f) => f.layer === "code" || f.rule === TOOL_MISSING_RULE);
 }

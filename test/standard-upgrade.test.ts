@@ -379,3 +379,17 @@ describe("the upgrade suggestion is doctor's, not check's (SPEC §5.5)", () => {
     expect(read(dir, ".devguard.yaml")).toContain("team@1.0.0");
   });
 });
+
+describe("devguard standard upgrade of a PDM component (#213)", () => {
+  it("prints a manual step instead of a uv add command", async () => {
+    const dir = repo({
+      ".devguard.yaml": "standard: team@1.0.0\ncomponents:\n  - path: api/\n    language: python\n",
+      "api/pdm.lock": "",
+      "uv.lock": '[[package]]\nname = "ruff"\nversion = "0.17.2"\n',
+    });
+    const { out } = await upgrade(dir, { target: "team@1.1.0" });
+    expect(out).not.toMatch(/uv add/);
+    expect(out).toContain("ruff>=0.18,<0.19");
+    expect(out).toContain("請自行執行");
+  });
+});

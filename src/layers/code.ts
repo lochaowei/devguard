@@ -14,6 +14,8 @@ import { assignFiles, type OwnedFile } from "../repo/files.ts";
 import { defaultStandard } from "../standard/registry.ts";
 import type { Language, Standard } from "../standard/types.ts";
 import { scopedFiles, type CheckScope, type LayerContext, type CheckLayer } from "./types.ts";
+import { ToolMissingError } from "../tools/runner.ts";
+import { orMissingTool } from "./missing-tool.ts";
 import { repoReader } from "../shared/fs.ts";
 
 interface Group {
@@ -159,10 +161,35 @@ export async function checkTargets(targets: readonly PlannedTarget[], ctx: CodeC
   return findings;
 }
 
+/**
+ * `checkTargets` for `check`: a tool that is not installed becomes a finding of its target instead of aborting the layer
+ * (#217). A target that fails is run again one category at a time, so the categories whose tools are installed still
+ * report; the tools that already ran are repeated only in this failure case.
+ */
+async function checkTargetsReportingMissing(
+  targets: readonly PlannedTarget[],
+  ctx: CodeCheckContext,
+): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  for (const planned of targets) {
+    const { target } = planned;
+    const one = (t: CodeTarget) =>
+      orMissingTool(() => checkTargets([{ ...planned, target: t }], ctx), target.component);
+    try {
+      findings.push(...(await checkTargets([planned], ctx)));
+    } catch (e) {
+      if (!(e instanceof ToolMissingError)) throw e;
+      for (const category of target.categories)
+        findings.push(...(await one({ ...target, categories: new Set([category]) })));
+    }
+  }
+  return findings;
+}
+
 /** Lint, format and type checks through each language's CodeChecker (SPEC §7.1). */
 export const codeLayer: CheckLayer = {
   id: "code",
   async run(ctx: LayerContext) {
-    return { findings: await checkTargets(await codeTargets(ctx), codeCheckContext(ctx)) };
+    return { findings: await checkTargetsReportingMissing(await codeTargets(ctx), codeCheckContext(ctx)) };
   },
 };

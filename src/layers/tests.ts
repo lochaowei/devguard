@@ -8,6 +8,7 @@ import type { Standard } from "../standard/types.ts";
 import { coverageGateOff } from "../testing/coverage.ts";
 import { TEST_CHECKERS } from "../testing/registry.ts";
 import type { TestTarget } from "../testing/types.ts";
+import { orMissingTool } from "./missing-tool.ts";
 import { filesInScope, type CheckLayer, type LayerContext } from "./types.ts";
 
 /** The coverage threshold a component is held to (`valueInForce`), and whether it is an accepted deviation. */
@@ -49,7 +50,10 @@ export const testsLayer: CheckLayer = {
       const reportDir = await mkdtemp(join(tmpdir(), "devguard-tests-"));
       try {
         const target = toTarget(standard, component);
-        const found = await checker.check(target, { cwd: ctx.cwd, tools: ctx.tools, reportDir });
+        const found = await orMissingTool(
+          () => checker.check(target, { cwd: ctx.cwd, tools: ctx.tools, reportDir }),
+          target.component,
+        );
         findings.push(
           ...(coverageGateOff(target.threshold) ? found.filter((f) => f.rule !== "coverage/no-report") : found),
         );

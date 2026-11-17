@@ -20,7 +20,13 @@ import { createDeclarationLayer, readDeclaration } from "../layers/declaration.t
 import { rangeInForce } from "../layers/tool-versions.ts";
 import { rangeApplies } from "../settings/type-checkers.ts";
 import type { Finding } from "../report/finding.ts";
-import { PYTHON_MANAGERS, pythonManager, type FileExists, type PythonManager } from "../tools/python-manager.ts";
+import {
+  PYTHON_MANAGERS,
+  pythonManager,
+  unsupportedPythonLock,
+  type FileExists,
+  type PythonManager,
+} from "../tools/python-manager.ts";
 import { createToolRunner, type PackageRequest, type ToolRunner } from "../tools/runner.ts";
 import { pinnedVersions, type Pinned } from "../versions/pinned.ts";
 import { inRange, parseRange } from "../versions/range.ts";
@@ -260,6 +266,16 @@ function manualCommand(change: ToolChange): PlannedCommand {
   return { display: `${how}（請自行執行）` };
 }
 
+/** A Python tool in a project of a package manager devguard does not support: the user installs it themselves. */
+function unsupportedPythonCommand(group: readonly ToolChange[], lock: string): PlannedCommand {
+  const dir = group[0]?.dir ?? "";
+  const specs = group.map(pep508).join(" ");
+  const where = dir === "" ? "" : `在 ${dir} `;
+  return {
+    display: `${where}請用專案自己的套件管理工具安裝 ${specs}（找到 ${lock}，devguard 只支援 uv 與 Poetry；請自行執行）`,
+  };
+}
+
 /** The command as printed: run from the component's directory. */
 function displayOf(manager: ManagerDef, request: PackageRequest): string {
   const where = request.dir === "" ? "" : `cd ${request.dir.replace(/\/$/, "")} && `;
@@ -286,9 +302,12 @@ function commandsFor(changes: readonly ToolChange[], exists: FileExists): Planne
     const id = `${change.language}|${change.dir}`;
     groups.set(id, [...(groups.get(id) ?? []), change]);
   }
-  const managed = [...groups.values()].flatMap((group) =>
-    group[0] ? [managerCommand(group, group[0].language, exists)] : [],
-  );
+  const managed = [...groups.values()].flatMap((group) => {
+    const first = group[0];
+    if (!first) return [];
+    const lock = first.language === "python" ? unsupportedPythonLock(first.dir, exists) : undefined;
+    return [lock ? unsupportedPythonCommand(group, lock) : managerCommand(group, first.language, exists)];
+  });
   return [...managed, ...changes.filter((c) => !isManaged(c)).map(manualCommand)];
 }
 

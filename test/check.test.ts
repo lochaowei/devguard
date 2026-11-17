@@ -2,9 +2,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { checkDeclaration } from "../src/check.ts";
+import { checkDeclaration, runCheck, type CheckLayer } from "../src/check.ts";
 import { parseDeclaration } from "../src/declaration/parse.ts";
 import { resolveDeclaration } from "../src/declaration/resolve.ts";
+import type { Finding } from "../src/report/finding.ts";
+import { ToolMissingError } from "../src/tools/runner.ts";
 import { team_1_0_0 } from "../src/standard/team-1.0.0.ts";
 import { rules, TODAY } from "./helpers.ts";
 
@@ -63,5 +65,40 @@ describe("deprecated standards", () => {
     expect(rules(resolveDeclaration(decl, TODAY, deprecated("2026-01-01")).findings)).toEqual([
       "error:standard/deprecated",
     ]);
+  });
+});
+
+describe("runCheck: a tool that is not installed (SPEC §11, #217)", () => {
+  const finding = (rule: string): Finding => ({ level: "error", layer: "config", rule, message: rule });
+  const settings: CheckLayer = {
+    id: "settings",
+    run: () => Promise.resolve({ findings: [finding("settings/wrapper-missing")] }),
+  };
+  const code = (e: ToolMissingError): CheckLayer => ({ id: "code", run: () => Promise.reject(e) });
+  const after: CheckLayer = { id: "after", run: () => Promise.resolve({ findings: [finding("after/ran")] }) };
+  const wrapper = new ToolMissingError("找不到 mvnw", "mvn -N wrapper:wrapper", true);
+
+  it("reports it and runs the remaining layers instead of throwing", async () => {
+    const r = await runCheck({ cwd: project(), today: TODAY }, [
+      code(new ToolMissingError("找不到 ruff", "uv sync")),
+      after,
+    ]);
+    expect(rules(r.findings)).toEqual(["error:environment/tool-missing", "error:after/ran"]);
+    expect(r.findings[0]?.fix).toBe("uv sync");
+  });
+
+  it("keeps settings/wrapper-missing and drops the missing wrapper it duplicates", async () => {
+    const r = await runCheck({ cwd: project(), today: TODAY }, [settings, code(wrapper), after]);
+    expect(rules(r.findings)).toEqual(["error:settings/wrapper-missing", "error:after/ran"]);
+  });
+
+  it("keeps the missing wrapper when no settings finding says it", async () => {
+    const r = await runCheck({ cwd: project(), today: TODAY }, [code(wrapper)]);
+    expect(rules(r.findings)).toEqual(["error:environment/tool-missing"]);
+  });
+
+  it("still throws errors that are not a missing tool", async () => {
+    const boom: CheckLayer = { id: "boom", run: () => Promise.reject(new Error("boom")) };
+    await expect(runCheck({ cwd: project(), today: TODAY }, [boom])).rejects.toThrow("boom");
   });
 });

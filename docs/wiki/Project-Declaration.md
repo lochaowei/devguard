@@ -42,7 +42,7 @@ ignore:                         # 選填：排除的目錄、檔案或 glob
    - 依副檔名推定語言，直接套用該語言的**預設標準**（不含任何元件覆寫）。
    - `check` 會發出 `declaration/uncovered-files` **提示（hint）**，建議在 `.devguard.yaml` 的 `components` 中補上對應元件。
    - 範例、第三方嵌入的原始碼、自動產生的檔案等不該套用標準的檔案，改寫進 `ignore`（見下節）。
-   - 從 `components` 刪掉一個元件**不等於排除它的檔案**：這些檔案變成未涵蓋檔案，仍依預設標準檢查，例如仍需要 ruff，找不到時 `check` 以 exit 2 中止。要讓 devguard 完全不看這些檔案，請寫進 `ignore`。
+   - 從 `components` 刪掉一個元件**不等於排除它的檔案**：這些檔案變成未涵蓋檔案，仍依預設標準檢查，例如仍需要 ruff，找不到時 `check` 回報 `environment/tool-missing` 錯誤。要讓 devguard 完全不看這些檔案，請寫進 `ignore`。
 
 ---
 
@@ -85,6 +85,8 @@ ignore:                         # 選填：排除的目錄、檔案或 glob
 | `choice`（工具選擇） | 改用 `allowed` 清單內的工具算合法替代；改用清單外的工具算放寬 | `lint.tool`、`typecheck.tool`、`test.tool`、`deps.manager`、`build.tool` |
 | `versionRange`（版本範圍） | 範圍落在預設範圍內算收緊或相同；超出預設上下界算放寬 | `tools.ruff`、`tools.eslint`、`tools.golangci-lint` 等 |
 | `style`（風格項目） | 無嚴格或寬鬆之分，可直接寫值，不算偏離 | `format.*` |
+
+Python 的 `deps.manager` 只有 `uv` 與 `poetry`；PDM（`pdm.lock`）與 PEP 751（`pylock.toml`）專案不受支援，devguard 不會對它們建議 uv 指令（見[語言標準](Language-Standards.md)）。
 
 鏡像與弱點掃描項目（頂層 `mirrors:`、`deps.vulnScan`、`deps.vulnFailOn`、`deps.ignoredVulns`、`tools.govulncheck`）devguard 已不再使用（#64），`team@1.3.0` 移除了它們。不論宣告哪個標準版本，寫著它們只會得到 `declaration/retired-item` **提示**，不判定收緊或放寬；`devguard standard upgrade` 到 `team@1.3.0` 會把它們刪除。寫錯位置的（例如元件 `overrides` 中的 `mirrors.npm`）仍是不存在的項目，算錯誤。Java 的 Checkstyle 已移除（#193）：`tools.checkstyle`、`tools.maven-checkstyle-plugin`、`lint.tool: checkstyle+pmd` 與含 `google_checks` 的 `lint.rules` 同樣只得到 `declaration/retired-item` 提示，請刪除該項。
 

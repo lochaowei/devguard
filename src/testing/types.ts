@@ -22,7 +22,7 @@ export interface TestTarget {
 export interface TestContext {
   /** Repo root. */
   cwd: string;
-  /** Throws ToolMissingError when a tool is not installed; let it propagate (exit 2). */
+  /** Throws ToolMissingError when a tool is not installed; let it propagate: `check` reports it as a finding (SPEC §11). */
   tools: ToolRunner;
   /** A fresh, empty, absolute directory for report files; removed after the run. */
   reportDir: string;

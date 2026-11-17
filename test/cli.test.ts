@@ -202,42 +202,67 @@ describe("devguard check", () => {
     expect((await run(["check", "--cwd", dir, join(tmpdir(), "elsewhere.ts")])).code).toBe(2);
   });
 
-  it("exits 2 with `npm ci` when the TypeScript tools are not installed", async () => {
+  it("reports the missing TypeScript tools as environment/tool-missing with `npm ci`, exit 1", async () => {
     const dir = project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: typescript}\n");
     writeFileSync(join(dir, "a.ts"), "export const a = 1;\n");
     const r = await run(["check", "--cwd", dir, "--only", "lint", join(dir, "a.ts")], "real");
-    expect(r.code).toBe(2);
-    expect(r.err).toContain("eslint");
-    expect(r.err).toContain("npm ci");
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("environment/tool-missing");
+    expect(r.out).toContain("eslint");
+    expect(r.out).toContain("npm ci");
+    expect(r.err).toBe("");
   });
 
-  it("exits 2 with the declared manager's install when there is no lockfile (#117)", async () => {
+  it("includes environment/tool-missing in the json findings (#217)", async () => {
+    const dir = project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: typescript}\n");
+    writeFileSync(join(dir, "a.ts"), "export const a = 1;\n");
+    const r = await run(["check", "--cwd", dir, "--format", "json", "--only", "lint", join(dir, "a.ts")], "real");
+    expect(r.code).toBe(1);
+    const { findings } = JSON.parse(r.out) as { findings: { rule: string }[] };
+    expect(findings.map((f) => f.rule)).toContain("environment/tool-missing");
+  });
+
+  it("reports the declared manager's install when there is no lockfile (#117)", async () => {
     const component = "  - path: ./\n    language: typescript\n    overrides:\n      deps.manager: pnpm\n";
     const dir = project(`standard: team@1.0.0\ncomponents:\n${component}`);
     rmSync(join(dir, "package-lock.json"));
     writeFileSync(join(dir, "a.ts"), "export const a = 1;\n");
     const r = await run(["check", "--cwd", dir, "--only", "lint", join(dir, "a.ts")], "real");
-    expect(r.code).toBe(2);
-    expect(r.err).toContain("安裝：pnpm install\n");
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("pnpm install");
   });
 
-  it("exits 2 asking for `devguard fix` first, not `uv sync`, without a pyproject.toml (#112)", async () => {
+  it("asks for `devguard fix` first, not `uv sync`, without a pyproject.toml (#112)", async () => {
     const dir = project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: python}\n");
     writeFileSync(join(dir, "a.py"), "a = 1\n");
     const r = await run(["check", "--cwd", dir, "--only", "lint", join(dir, "a.py")], "real");
-    expect(r.code).toBe(2);
-    expect(r.err).toContain("devguard fix --yes");
-    expect(r.err).not.toContain("uv sync");
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("devguard fix --yes");
+    expect(r.out).not.toContain("uv sync");
   });
 
-  it("exits 2 with `uv sync` when the Python tools are not installed", async () => {
+  it("reports the missing Python tools with `uv sync`, exit 1", async () => {
     const dir = project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: python}\n");
     writeFileSync(join(dir, "pyproject.toml"), '[project]\nname = "a"\ndependencies = ["ruff"]\n');
     writeFileSync(join(dir, "a.py"), "a = 1\n");
     const r = await run(["check", "--cwd", dir, "--only", "lint", join(dir, "a.py")], "real");
-    expect(r.code).toBe(2);
-    expect(r.err).toContain("ruff");
-    expect(r.err).toContain("uv sync");
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("ruff");
+    expect(r.out).toContain("uv sync");
+  });
+
+  it("reports a Maven component without a wrapper once, exit 1, no stderr (#217)", async () => {
+    const dir = project("standard: team@1.0.0\ncomponents:\n  - {path: ./, language: java}\n");
+    writeFileSync(join(dir, "pom.xml"), "<project><artifactId>maven-pmd-plugin</artifactId></project>\n");
+    mkdirSync(join(dir, "src/main/java"), { recursive: true });
+    writeFileSync(join(dir, "src/main/java/A.java"), "class A {}\n");
+    const r = await run(["check", "--cwd", dir, "--format", "json"], "real");
+    expect(r.code).toBe(1);
+    const { findings } = JSON.parse(r.out) as { findings: { rule: string }[] };
+    const rules = findings.map((f) => f.rule);
+    expect(rules).toContain("settings/wrapper-missing");
+    expect(rules).not.toContain("environment/tool-missing");
+    expect(r.err).toBe("");
   });
 
   it("prints the version and help", async () => {
