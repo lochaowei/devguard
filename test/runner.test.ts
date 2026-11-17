@@ -7,6 +7,7 @@ import {
   golangciRequest,
   pythonEnvironmentDirs,
   ToolMissingError,
+  typescriptToolRequest,
   type ToolRequest,
   type ToolRunnerDeps,
 } from "../src/tools/runner.ts";
@@ -386,6 +387,8 @@ describe("tool runner: a Python component without a pyproject.toml (#112)", () =
 });
 
 describe("tool runner: TypeScript", () => {
+  const LISTS_ESLINT = '{"devDependencies":{"eslint":"^10.0.0"}}';
+
   it("runs Bun's node_modules/.bin/<tool>.exe on Windows, and the .cmd when both are there (#122)", async () => {
     const exe = "C:\\repo\\node_modules\\.bin\\eslint.exe";
     const cmd = "C:\\repo\\node_modules\\.bin\\eslint.cmd";
@@ -451,7 +454,7 @@ describe("tool runner: TypeScript", () => {
   });
 
   it("installs at the workspace root that holds the lockfile, not in the component (#117)", async () => {
-    const files = { "C:\\repo\\package-lock.json": "{}", "C:\\repo\\package.json": "{}" };
+    const files = { "C:\\repo\\package-lock.json": "{}", "C:\\repo\\package.json": LISTS_ESLINT };
     const hooks = req({ language: "typescript", tool: "eslint", dir: ".claude/hooks/" });
     expect((await missing(fakeRunner(files).runner.run(hooks))).install).toBe("npm ci");
     const sub = { "C:\\repo\\web\\pnpm-lock.yaml": "", "C:\\repo\\package-lock.json": "{}" };
@@ -460,13 +463,107 @@ describe("tool runner: TypeScript", () => {
   });
 
   it("asks for the declared manager's plain install where package.json is when there is no lockfile", async () => {
-    const files = { "C:\\repo\\web\\package.json": "{}" };
+    const files = { "C:\\repo\\web\\package.json": LISTS_ESLINT };
     const web = req({ language: "typescript", tool: "eslint", dir: "web/", manager: "pnpm" });
     expect((await missing(fakeRunner(files).runner.run(web))).install).toBe("cd web && pnpm install");
     const bare = req({ language: "typescript", tool: "eslint", dir: "web/" });
     expect((await missing(fakeRunner({}).runner.run(bare))).install).toBe("cd web && npm install");
     const bun = req({ language: "typescript", tool: "eslint", dir: "web/", manager: "bun" });
     expect((await missing(fakeRunner(files).runner.run(bun))).install).toBe("cd web && bun install");
+  });
+
+  describe("a tool no package.json lists (#210)", () => {
+    const eslint = req({ language: "typescript", tool: "eslint", range: ">=10,<11" });
+    const pkg = (deps: Record<string, string> = {}) => JSON.stringify({ name: "app", devDependencies: deps });
+
+    it("asks to add it to the dev dependencies in the standard's range, since an install cannot bring it", async () => {
+      const files = { "C:\\repo\\package.json": pkg({ xo: "^1.0.0" }), "C:\\repo\\package-lock.json": "{}" };
+      const m = await missing(fakeRunner(files).runner.run(eslint));
+      expect(m.message).toBe("找不到 eslint：標準要求此工具，但專案的 package.json 沒有列出");
+      expect(m.install).toBe('npm install --save-dev "eslint@>=10 <11"');
+    });
+
+    it("still asks for the install when a package.json lists it", async () => {
+      const files = { "C:\\repo\\package.json": pkg({ eslint: "^10.0.0" }), "C:\\repo\\package-lock.json": "{}" };
+      const m = await missing(fakeRunner(files).runner.run(eslint));
+      expect(m).toEqual({ message: "找不到 eslint：node_modules 中沒有安裝", install: "npm ci" });
+    });
+
+    it("counts a workspace root's package.json that lists it", async () => {
+      const files = {
+        "C:\\repo\\package.json": pkg({ eslint: "^10.0.0" }),
+        "C:\\repo\\packages\\web\\package.json": pkg(),
+        "C:\\repo\\pnpm-lock.yaml": "",
+      };
+      const m = await missing(fakeRunner(files).runner.run({ ...eslint, dir: "packages/web/" }));
+      expect(m.install).toBe("pnpm install --frozen-lockfile");
+    });
+
+    it("adds it with each package manager's own command, where the nearest package.json is", async () => {
+      const hint = async (lockfile: string, text: string) => {
+        const files = {
+          "C:\\repo\\package.json": pkg(),
+          "C:\\repo\\packages\\web\\package.json": pkg(),
+          [`C:\\repo\\${lockfile}`]: text,
+        };
+        return (await missing(fakeRunner(files).runner.run({ ...eslint, dir: "packages/web/src/" }))).install;
+      };
+      expect(await hint("package-lock.json", "{}")).toBe('cd packages/web && npm install --save-dev "eslint@>=10 <11"');
+      expect(await hint("pnpm-lock.yaml", "")).toBe('cd packages/web && pnpm add --save-dev "eslint@>=10 <11"');
+      expect(await hint("yarn.lock", fixture("yarn-berry.lock"))).toBe(
+        'cd packages/web && yarn add --dev "eslint@>=10 <11"',
+      );
+      expect(await hint("bun.lock", fixture("bun.lock"))).toBe('cd packages/web && bun add --dev "eslint@>=10 <11"');
+    });
+
+    it("adds the flag pnpm and Yarn classic need to add to a workspace root", async () => {
+      const workspaces = JSON.stringify({ name: "root", workspaces: ["packages/*"] });
+      const hint = async (files: Record<string, string>) =>
+        (await missing(fakeRunner(files).runner.run(eslint))).install;
+      // pnpm refuses without -w (ERR_PNPM_ADDING_TO_ROOT), Yarn classic without -W.
+      expect(
+        await hint({
+          "C:\\repo\\package.json": pkg(),
+          "C:\\repo\\pnpm-lock.yaml": "",
+          "C:\\repo\\pnpm-workspace.yaml": "packages:\n  - packages/*\n",
+        }),
+      ).toBe('pnpm add --save-dev -w "eslint@>=10 <11"');
+      const yarn = (lock: string) =>
+        hint({ "C:\\repo\\package.json": workspaces, "C:\\repo\\yarn.lock": fixture(lock) });
+      expect(await yarn("yarn-classic.lock")).toBe('yarn add --dev -W "eslint@>=10 <11"');
+      expect(await yarn("yarn-berry.lock")).toBe('yarn add --dev "eslint@>=10 <11"');
+    });
+
+    it("adds it with the declared manager where package.json is when there is no lockfile", async () => {
+      const files = { "C:\\repo\\web\\package.json": pkg() };
+      const web = { ...eslint, dir: "web/", manager: "pnpm" };
+      expect((await missing(fakeRunner(files).runner.run(web))).install).toBe(
+        'cd web && pnpm add --save-dev "eslint@>=10 <11"',
+      );
+    });
+
+    it("names the package that provides the tool: typescript for tsc, @biomejs/biome for biome", async () => {
+      const files = { "C:\\repo\\package.json": pkg({ typescript: "^6.0.0" }) };
+      const hint = async (tool: string, range: string) =>
+        await missing(fakeRunner(files).runner.run(req({ language: "typescript", tool, range })));
+      expect((await hint("tsc", ">=6,<7")).install).toBe("npm install");
+      const biome = await hint("biome", ">=2,<3");
+      expect(biome.message).toContain("找不到 biome");
+      expect(biome.install).toBe('npm install --save-dev "@biomejs/biome@>=2 <3"');
+    });
+
+    it("adds it without a version when no range is known", async () => {
+      const files = { "C:\\repo\\package.json": pkg() };
+      const bare = req({ language: "typescript", tool: "eslint" });
+      expect((await missing(fakeRunner(files).runner.run(bare))).install).toBe("npm install --save-dev eslint");
+    });
+
+    it("takes the range from the component's effective settings, by the package's name", () => {
+      const component = { dir: "web/", effective: { "tools.typescript": ">=6,<7", "tools.eslint": ">=10,<11" } };
+      expect(typescriptToolRequest(component, "tsc").range).toBe(">=6,<7");
+      expect(typescriptToolRequest(component, "eslint").range).toBe(">=10,<11");
+      expect(typescriptToolRequest({ dir: "", effective: {} }, "eslint").range).toBeUndefined();
+    });
   });
 
   it("runs node_modules/.bin/<tool> elsewhere", async () => {

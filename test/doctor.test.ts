@@ -69,6 +69,30 @@ describe("devguard doctor: check plus the environment layer (SPEC §3.2, §11)",
     expect(missing[0]?.message).toContain("找不到 ruff");
     expect(rules(findings)).toContain("error:environment/hook-missing");
   });
+
+  it("asks to add a TypeScript tool the standard requires but no package.json lists (#210)", async () => {
+    const files = {
+      ".devguard.yaml": "standard: team@1.0.0\ncomponents:\n  - {path: ./, language: typescript}\n",
+      "package.json": '{"name":"app","devDependencies":{"xo":"^1.0.0"}}',
+      "pnpm-lock.yaml": "lockfileVersion: '9.0'\n",
+      "a.ts": "export const a = 1;\n",
+    };
+    const { findings } = await runDoctor({
+      cwd: repo(files),
+      today: TODAY,
+      listFiles: () => Promise.resolve(["a.ts"]),
+    });
+    // Each tool is reported with its own add-dev command (main's per-tool findings).
+    expect(findings.filter((f) => f.rule === "environment/tool-missing")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "error",
+          message: "找不到 eslint：標準要求此工具，但專案的 package.json 沒有列出",
+          fix: 'pnpm add --save-dev "eslint@>=10 <11"',
+        }),
+      ]),
+    );
+  });
 });
 
 describe("git hooks installed (SPEC §7.4)", () => {

@@ -186,7 +186,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 
 ### 執行方式
 
-- **工具執行器**：`node_modules/.bin/<tool>`（Windows 下依序找 `.cmd`、`.exe`（Bun 產生的 shim），`.cmd` 自動透過 `cmd.exe /d /s /c` 啟動；鎖定版本讀取自 `package-lock.json`、`pnpm-lock.yaml`、`yarn.lock` 或 `bun.lock`）。
+- **工具執行器**：`node_modules/.bin/<tool>`（Windows 下依序找 `.cmd`、`.exe`（Bun 產生的 shim），`.cmd` 自動透過 `cmd.exe /d /s /c` 啟動；鎖定版本讀取自 `package-lock.json`、`pnpm-lock.yaml`、`yarn.lock` 或 `bun.lock`）。工具沒有安裝時的提示是 lockfile 的安裝指令（`npm ci`、`pnpm install --frozen-lockfile` 等）；工具沒有列在元件與上層目錄任何一個 `package.json` 的依賴中時，改為加入開發依賴的指令：`npm install --save-dev "<套件>@<範圍>"`、`pnpm add --save-dev "…"`、`yarn add --dev "…"`、`bun add --dev "…"`，在最近的有 `package.json` 的目錄執行，範圍取標準的 `tools.*`（例如 `eslint@>=10 <11`）。
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
   - `tools.eslint`：`>=10,<11`、`tools.prettier`：`>=3,<4`、`tools.typescript`：`>=6,<7`、`tools.typescript-eslint`：`>=8,<9`、`tools.eslint-plugin-sonarjs`：`>=3,<4`（`team@1.1.0` 已移除這一項）
   - `tools.biome`（`@biomejs/biome`）：`>=2,<3`
