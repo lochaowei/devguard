@@ -496,3 +496,21 @@ describe("draftDeclaration: other languages", () => {
     });
   });
 });
+
+describe("draftDeclaration: unsupported Python package managers (#213)", () => {
+  const text = async (files: Record<string, string>) =>
+    (await draftDeclaration({ cwd: project(files), today: TODAY, files: Object.keys(files) })).text;
+
+  it("notes a pdm.lock or pylock.toml above the component", async () => {
+    for (const lock of ["pdm.lock", "pylock.toml"]) {
+      const out = await text({ "pyproject.toml": "[project]\nname = 'a'\n", [lock]: "", "a.py": "" });
+      expect(out).toContain(`找到 ${lock}`);
+      expect(out).toContain("只支援 uv 與 Poetry");
+    }
+  });
+
+  it("writes no note for uv and Poetry projects", async () => {
+    const out = await text({ "pyproject.toml": "[project]\nname = 'a'\n", "uv.lock": "", "pdm.lock": "", "a.py": "" });
+    expect(out).not.toContain("只支援");
+  });
+});

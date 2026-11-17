@@ -23,6 +23,7 @@ import { baseName, upwards } from "./repo/paths.ts";
 import { typeCheckerConfigs, typeCheckingOff, type TypeChecker } from "./settings/type-checkers.ts";
 import { parseConfigText } from "./fix/edit.ts";
 import { readIfExists } from "./shared/fs.ts";
+import { unsupportedPythonLock } from "./tools/python-manager.ts";
 
 /** The settings checks whose readers the draft reuses: their findings carry the values read from config files. */
 const SETTINGS_LAYERS: readonly CheckLayer[] = [
@@ -416,11 +417,16 @@ function componentNotes(
   components: readonly ResolvedComponent[],
   ambiguous: (c: ResolvedComponent) => boolean,
   absorbed: readonly AbsorbedDir[],
+  unsupportedLock: (c: ResolvedComponent) => string | undefined,
 ): Map<number, string[]> {
   const notes = new Map<number, string[]>();
   components.forEach((c, i) => {
+    const lock = unsupportedLock(c);
     const lines = [
       ...(ambiguous(c) ? [AMBIGUOUS_BUILD] : []),
+      ...(lock === undefined
+        ? []
+        : [` 找到 ${lock}：devguard 只支援 uv 與 Poetry，deps.lockfile 與工具安裝提示不適用`]),
       ...absorbed
         .filter((a) => c.language === "python" && a.into === c.dir)
         .map((a) => ` ${displayDir(a.dir)} 只有 requirements.txt，歸屬 ${displayDir(c.dir)} 元件，未另建元件`),
@@ -478,6 +484,7 @@ export async function draftDeclaration(options: DraftOptions): Promise<Draft> {
     resolution.components,
     (c) => files.javaBuilds.get(c.dir)?.ambiguous === true,
     plan.absorbed,
+    (c) => (c.language === "python" ? unsupportedPythonLock(c.dir, (f) => present.has(f)) : undefined),
   );
   const yaml = withComponentNotes(withIgnoreComments(new Document(doc), ignore.length, plan.ignore), notes);
   return { text: HEADER + yaml.toString(), components };

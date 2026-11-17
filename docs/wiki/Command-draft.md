@@ -53,6 +53,7 @@ $ devguard draft
    | 語言 | 項目 | 判斷 |
    |---|---|---|
    | Python | `deps.manager: poetry` | 有 `poetry.lock`（比 `uv.lock` 近） |
+   | Python | （不推出項目，只在元件上方加註解） | 最近的 lockfile 是 `pdm.lock` 或 `pylock.toml`：devguard 只支援 uv 與 Poetry |
    | Python | `typecheck.tool: pyright` | 有 `pyrightconfig.json`，且它不是 `typeCheckingMode = "off"` |
    | Python | `typecheck.tool: basedpyright` | 元件的 `pyproject.toml` 有 `[tool.basedpyright]`，且它不是 `typeCheckingMode = "off"`（優先於上一列；同一目錄的 `pyrightconfig.json` 設為 off 時，pyright 以它為準，這個表也不算） |
    | TypeScript | `lint.tool: biome` | 有 `biome.json(c)`（比 `eslint.config.*` 近） |
