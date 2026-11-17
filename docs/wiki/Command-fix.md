@@ -62,6 +62,8 @@ devguard fix --code [檔案…] [--yes] [--cwd <dir>]
 | `snippet`：建置檔與程式碼形式的設定 | `pom.xml`、`build.gradle(.kts)`、`eslint.config.js`、`vitest.config.ts` 等 | **不寫入**，只印出要手動套用的片段 |
 | `user`：使用者層級設定 | repo 以外的路徑，例如 `~/.m2/settings.xml` | **不寫入**，只印出修改說明 |
 
+新建的 JSON／JSONC 檔（`.prettierrc`、`.vscode/*.json`、`tsconfig.json` 等）的縮排依序取專案 Prettier 設定的 `useTabs`／`tabWidth`，否則 `.editorconfig` 適用於該檔案的 `indent_style`／`indent_size`，都沒有時用 2 個空白，所以 `fix` 之後 `check` 不會把剛產生的檔案報成 `prettier/format`；修改既有檔案時仍沿用該檔案自己的縮排。
+
 修改 TOML 共用檔（例如 `pyproject.toml`）時，`fix` 會先確認修改後的內容仍是合法的 TOML。不合法時該檔**不寫入**，改為印出 `pyproject.toml：錯誤：修改後不是合法的 TOML，不會修改；請自行套用` 與要套用的修改；同一次的其他檔案照常處理，這不會讓 `fix` 失敗：其他檔案寫入成功時 exit code 仍是 `0`。
 
 沿用上層設定的 Python 子元件（元件目錄沒有自己的 `pyproject.toml`、`ruff.toml` 或 `pyrightconfig.json`，工具讀的是上層目錄的那一份）：`fix` 不修改上層的共用設定，也不在子元件目錄建立新的設定檔（#106）。子元件的標準與那份設定不一致時，`check` 回報不附自動修正的 finding，例如 `需手動修正：pyproject.toml 是上層共用的設定，devguard fix 不修改它：請調整 docs/ (Python) 在宣告中的 overrides，或直接修改 pyproject.toml（也會影響其他使用它的元件）`。擁有那份設定的上層元件，`fix` 照常修改。

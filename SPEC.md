@@ -548,6 +548,8 @@ CLI 只為專案用到的語言產生設定。monorepo 只在 repo 根目錄放�
 | 結構化的共用檔 | `pyproject.toml` 的 `[tool.*]`、golangci 設定檔（`.golangci.json` / `.toml` / `.yaml` / `.yml`）、`tsconfig.json`、`.prettierrc`、`.npmrc`（只有帳密引用，不寫 `registry=`）、`.vscode/*`、`.claude/settings.json` | 只修改 CLI 管理的 key，並保留註解與順序（YAML 用 `yaml`，JSONC 用 `jsonc-parser`，TOML 用 `@decimalturn/toml-patch`；`@shopify/toml-patch` 需要在執行時載入 wasm，可能無法打包進 Bun exe）。YAML（golangci 設定檔，以及 `install` 寫入的 `.pre-commit-config.yaml`、lefthook 設定）中修改沒有碰到的行逐字保留：flow collection 的寫法（`[a]` 或 `[ a ]`）、行尾註解前的對齊空白、引號都不變；新增或修改的 flow collection 不加內側空白（#87）。TOML 的修改結果無法解析時不寫入該檔，改為印出要套用的修改 |
 | 建置檔與程式碼形式的設定檔 | `pom.xml`、`build.gradle`、`settings.gradle`、`vitest.config.ts`、`eslint.config.js` | 不自動修改，只印出要套用的片段或 diff |
 
+新建的 JSON／JSONC 檔（`.prettierrc`、`.vscode/*.json`、`tsconfig.json` 等）的縮排（#211）：依序取專案 Prettier 設定的 `useTabs`／`tabWidth`，否則 `.editorconfig` 中適用於該檔案的 `indent_style`／`indent_size`（`indent_size = tab` 時用 `tab_width`；由檔案所在目錄往上找，遇到 `root = true` 停止，較近的檔案優先，section 的 glob 比對路徑，後面的 section 覆蓋前面的），都沒有時用 2 個空白，這樣 `fix` 之後 Prettier 不會把剛產生的檔案報成 `prettier/format`。修改既有檔案時仍沿用該檔案自己的縮排；不執行 Prettier，也不讀 `.editorconfig` 的其他屬性。
+
 ### 9.3 互動方式
 
 - 互動式終端機：先預覽，確認後才套用。

@@ -74,6 +74,11 @@ async function readConfig(root: string, subDir: string): Promise<Read | undefine
   return undefined;
 }
 
+/** The options of the Prettier config that applies to `subDir` (found from `dir` upward); undefined when none. */
+export async function prettierOptions(dir: string, subDir: string): Promise<Record<string, unknown> | undefined> {
+  return (await readConfig(dir, subDir))?.options;
+}
+
 /** `format.printWidth` / `format.endOfLine` against the Prettier config (style items: judged by the declared value). */
 export async function checkPrettier(root: string, judge: SettingsJudge): Promise<void> {
   const config = await readConfig(root, judge.dir);

@@ -5,6 +5,7 @@ import { nodeExec, type Exec } from "../process/exec.ts";
 import { redactSecrets } from "../report/redact.ts";
 import { fileCategory, type FileCategory } from "./category.ts";
 import { editConfigText, editFormat, parseConfigText } from "./edit.ts";
+import { projectIndent } from "./indent.ts";
 import type { KeyEdit, Repair } from "./repair.ts";
 import { readIfExists } from "../shared/fs.ts";
 
@@ -134,7 +135,8 @@ async function planWrite(
   const unparseable = { rest: repairs, printAs: "unparseable" } as const;
   let after: string;
   try {
-    after = editConfigText(file, before, edits);
+    const indent = editFormat(file, before) === "jsonc" ? await projectIndent(cwd, file) : undefined;
+    after = editConfigText(file, before, edits, indent);
   } catch (error) {
     if (editFormat(file, before) === "toml") return unparseable;
     throw error;
