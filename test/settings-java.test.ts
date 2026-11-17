@@ -616,4 +616,81 @@ describe("build plugins (#98)", () => {
       expect(missing(await check(svc(pom(undefined, profile, "")), decl))).toEqual([]);
     });
   });
+
+  describe("Apache RAT excludes (#218)", () => {
+    const rat = (configuration = "", version = "") =>
+      `<plugin><groupId>org.apache.rat</groupId><artifactId>apache-rat-plugin</artifactId>${version}<configuration>${configuration}</configuration></plugin>`;
+    const withRat = (ratPlugin: string, parentPom?: string) => ({
+      ...GOOD,
+      "pom.xml": pom(undefined, parentPom, PLUGINS + ratPlugin),
+    });
+    const ratFindings = async (files: Record<string, string | undefined>) =>
+      (await check(files)).filter((f) => f.rule === "settings/rat-excludes");
+
+    it("reports a RAT plugin with no excludes, with a snippet naming the devguard files", async () => {
+      const found = await ratFindings(withRat(rat()));
+      expect(rules(found)).toEqual(["error:settings/rat-excludes"]);
+      expect(found[0]).toMatchObject({ file: "pom.xml" });
+      expect(found[0]?.repairs?.[0]).toMatchObject({ op: "snippet", file: "pom.xml" });
+      const snippet = snippetOf(found[0]);
+      expect(snippet).toContain("<inputExcludes>");
+      expect(snippet).toContain("<inputExclude>.devguard.yaml</inputExclude>");
+      expect(snippet).toContain("<inputExclude>pmd-ruleset.xml</inputExclude>");
+    });
+
+    it("uses <excludes> for a plugin older than 0.17", async () => {
+      const found = await ratFindings(withRat(rat("", "<version>0.16.1</version>")));
+      expect(snippetOf(found[0])).toContain("<excludes>");
+      expect(snippetOf(found[0])).toContain("<exclude>.devguard.yaml</exclude>");
+    });
+
+    it("lists only what the existing excludes leave out", async () => {
+      const found = await ratFindings(
+        withRat(rat("<inputExcludes><inputExclude>.devguard.yaml</inputExclude></inputExcludes>")),
+      );
+      expect(snippetOf(found[0])).not.toContain(".devguard.yaml");
+      expect(snippetOf(found[0])).toContain("pmd-ruleset.xml");
+    });
+
+    it("accepts excludes that cover the files, in either element name or with globs", async () => {
+      const both = (name: string, item: string) =>
+        `<${name}><${item}>**/.devguard.yaml</${item}><${item}>**/*.xml</${item}></${name}>`;
+      expect(await ratFindings(withRat(rat(both("excludes", "exclude"))))).toEqual([]);
+      expect(await ratFindings(withRat(rat(both("inputExcludes", "inputExclude"))))).toEqual([]);
+      const single = "<inputExclude>.devguard.yaml</inputExclude><inputExclude>pmd-ruleset.xml</inputExclude>";
+      expect(await ratFindings(withRat(rat(single)))).toEqual([]);
+    });
+
+    it("reports nothing without a RAT plugin", async () => {
+      expect(await ratFindings(GOOD)).toEqual([]);
+    });
+
+    it("reads a RAT plugin from pluginManagement, and leaves a parent outside the repo alone", async () => {
+      const managed = `</plugins><pluginManagement><plugins>${rat()}</plugins></pluginManagement><plugins>`;
+      expect(rules(await ratFindings(withRat(managed)))).toEqual(["error:settings/rat-excludes"]);
+      const external =
+        "<parent><groupId>g</groupId><artifactId>p</artifactId><version>1</version><relativePath/></parent>";
+      expect(await ratFindings({ ...GOOD, "pom.xml": pom(undefined, external, PLUGINS) })).toEqual([]);
+    });
+
+    it("reports nothing when the excludes come from a file or a pattern devguard cannot read", async () => {
+      expect(await ratFindings(withRat(rat("<excludeFile>.rat-excludes</excludeFile>")))).toEqual([]);
+      expect(
+        await ratFindings(withRat(rat("<inputExcludes><inputExclude>%regex[.*]</inputExclude></inputExcludes>"))),
+      ).toEqual([]);
+    });
+
+    it("points the PMD file at the config devguard found", async () => {
+      const files = { ...withRat(rat()), "pmd-ruleset.xml": undefined, "config/pmd/ruleset.xml": PMD };
+      const found = await ratFindings({
+        ...files,
+        "pom.xml": pom(
+          undefined,
+          "",
+          PLUGINS.replace("pmd-ruleset.xml", "${maven.multiModuleProjectDirectory}/config/pmd/ruleset.xml") + rat(),
+        ),
+      });
+      expect(snippetOf(found[0])).toContain("config/pmd/ruleset.xml");
+    });
+  });
 });

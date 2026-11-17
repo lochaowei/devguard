@@ -5,6 +5,7 @@ import type { JavaTarget } from "../settings/java/common.ts";
 import { checkPmd } from "../settings/java/pmd.ts";
 import { checkLombok } from "../settings/java/lombok.ts";
 import { checkBuildPlugins } from "../settings/java/plugins.ts";
+import { checkRatExcludes } from "../settings/java/rat.ts";
 import { checkJavaVersion } from "../settings/java/version.ts";
 import type { CheckLayer } from "./types.ts";
 
@@ -28,6 +29,7 @@ export const javaSettingsLayer: CheckLayer = {
         ...(await checkPmd(t)),
         ...(await checkLombok(t)),
         ...(await checkBuildPlugins(t)),
+        ...(await checkRatExcludes(t)),
       );
     }
     return { findings };
