@@ -189,6 +189,7 @@ devguard 用 golangci-lint 自己的規則找出它實際採用的設定檔，�
 - **工具版本範圍（`team@1.0.0` 佔位值）**：
   - `tools.eslint`：`>=10,<11`、`tools.prettier`：`>=3,<4`、`tools.typescript`：`>=6,<7`、`tools.typescript-eslint`：`>=8,<9`、`tools.eslint-plugin-sonarjs`：`>=3,<4`（`team@1.1.0` 已移除這一項）
   - `tools.biome`（`@biomejs/biome`）：`>=2,<3`
+  - 沒有 lockfile（例如 `package-lock=false`）鎖定某個工具時，改讀實際安裝的版本：元件目錄往上最近的 `node_modules/<套件>/package.json` 的 `version`；超出範圍一樣回報 `tool-version/out-of-range`，訊息寫「安裝的」版本，指向該 `package.json`。有 lockfile 時以 lockfile 為準（#212）
   - `tools.vitest`：`>=5,<6`（`team@1.1.0`：`>=4.1,<6`）、`tools.jest`：`>=30,<31`
 - **程式碼檢查（`code` 層）**：
   - `lint`：`eslint --format json`（`--staged` 時透過 `--stdin` 讀取 staged 內容；或 `biome lint --reporter=github`，Biome 2.x 從 stdin 不回報 lint 診斷，所以 `--staged` 時也檢查工作目錄版本）
