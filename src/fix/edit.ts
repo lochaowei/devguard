@@ -193,8 +193,9 @@ function underTable(toml: string, name: string): string {
     .join("\n");
 }
 
-function jsonFormatting(text: string): FormattingOptions {
-  const indent = /\n([ \t]+)"/.exec(text)?.[1] ?? "  ";
+/** The file's own indentation; `fallback` (the project's, #211) when it has none yet, else two spaces. */
+function jsonFormatting(text: string, fallback = "  "): FormattingOptions {
+  const indent = /\n([ \t]+)"/.exec(text)?.[1] ?? fallback;
   return { insertSpaces: !indent.startsWith("\t"), tabSize: indent.startsWith("\t") ? 1 : indent.length, eol: "\n" };
 }
 
@@ -272,9 +273,9 @@ function appendBelowTrailingComment(
   ];
 }
 
-function editJsonc(text: string, edits: readonly KeyEdit[]): string {
+function editJsonc(text: string, edits: readonly KeyEdit[], indent?: string): string {
   let out = text.trim() === "" ? "{}\n" : text;
-  const formattingOptions = jsonFormatting(out);
+  const formattingOptions = jsonFormatting(out, indent);
   for (const e of pathEdits(edits)) {
     const value = valueAfter(e, getIn(parseJsoncTree(out), e.path));
     const width = ("layout" in e ? e.layout?.printWidth : undefined) ?? DEFAULT_WIDTH;
@@ -317,7 +318,7 @@ function editLines(text: string, edits: readonly KeyEdit[]): string {
   return lines.join("\n") + "\n";
 }
 
-const EDITORS: Record<EditFormat, (text: string, edits: readonly KeyEdit[]) => string> = {
+const EDITORS: Record<EditFormat, (text: string, edits: readonly KeyEdit[], indent?: string) => string> = {
   toml: editToml,
   jsonc: editJsonc,
   yaml: editYaml,
@@ -335,10 +336,10 @@ export function usesCrlf(text: string): boolean {
  * lines, key order, CRLF line endings) as it was (SPEC §9.2, #84). `text` is "" for a file that does not exist yet,
  * which gets LF.
  */
-export function editConfigText(file: string, text: string, edits: readonly KeyEdit[]): string {
+export function editConfigText(file: string, text: string, edits: readonly KeyEdit[], indent?: string): string {
   const format = editFormat(file, text);
   if (!format) throw new Error(`${file} 不是 CLI 能修改的結構化設定檔`);
-  const out = EDITORS[format](text.replace(/\r\n/g, "\n"), edits);
+  const out = EDITORS[format](text.replace(/\r\n/g, "\n"), edits, indent);
   return usesCrlf(text) ? out.replace(/\n/g, "\r\n") : out;
 }
 
